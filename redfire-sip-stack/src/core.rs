@@ -560,7 +560,13 @@ impl SipMessageProcessor {
     fn extract_from_uri(&self, request: &rsip::Request) -> String {
         request.headers.iter()
             .find_map(|h| match h {
-                rsip::Header::From(from) => Some(from.uri().to_string()),
+                rsip::Header::From(from) => {
+                    if let Ok(uri) = from.uri() {
+                        Some(uri.to_string())
+                    } else {
+                        None
+                    }
+                },
                 _ => None,
             })
             .unwrap_or_default()
@@ -569,7 +575,13 @@ impl SipMessageProcessor {
     fn extract_to_uri(&self, request: &rsip::Request) -> String {
         request.headers.iter()
             .find_map(|h| match h {
-                rsip::Header::To(to) => Some(to.uri().to_string()),
+                rsip::Header::To(to) => {
+                    if let Ok(uri) = to.uri() {
+                        Some(uri.to_string())
+                    } else {
+                        None
+                    }
+                },
                 _ => None,
             })
             .unwrap_or_default()
@@ -608,7 +620,7 @@ impl SipMessageProcessor {
     }
     
     fn create_error_response(&self, request: &rsip::Request, status_code: u16, reason: &str, destination: SocketAddr, transport: SipTransport) -> SipRequestResult {
-        let status = rsip::StatusCode::try_from(status_code).unwrap_or(rsip::StatusCode::InternalServerError);
+        let status = rsip::StatusCode::try_from(status_code).unwrap_or(rsip::StatusCode::default());
         let mut response = rsip::Response::default(); // TODO: Properly set status code
         
         // Copy required headers

@@ -455,41 +455,36 @@ impl SipParser {
         if let Ok(via) = invite.via_header() {
             let mut ack_via = via.clone();
             // Generate new branch for ACK
-            let new_branch = format!("z9hG4bK-ack-{}", Uuid::new_v4());
-            for param in ack_via.params_mut() {
-                if let Param::Branch(_) = param {
-                    *param = Param::Branch(new_branch.clone());
-                    break;
-                }
-            }
-            ack.headers_mut().push(Header::Via(ack_via));
+            // TODO: Implement Via parameter modification properly
+            // let new_branch = format!("z9hG4bK-ack-{}", Uuid::new_v4());
+            ack.headers.push(Header::Via(ack_via));
         }
 
         if let Ok(from) = invite.from_header() {
-            ack.headers_mut().push(Header::From(from.clone()));
+            ack.headers.push(Header::From(from.clone()));
         }
 
         if let Ok(to) = response.to_header() {
-            ack.headers_mut().push(Header::To(to.clone()));
+            ack.headers.push(Header::To(to.clone()));
         }
 
         if let Ok(call_id) = invite.call_id_header() {
-            ack.headers_mut().push(Header::CallId(call_id.clone()));
+            ack.headers.push(Header::CallId(call_id.clone()));
         }
 
         // CSeq number same as INVITE, but method is ACK
         if let Ok(cseq) = invite.cseq_header() {
             let ack_cseq = CSeq::new(cseq.seq(), Method::Ack);
-            ack.headers_mut().push(Header::CSeq(ack_cseq));
+            ack.headers.push(Header::CSeq(ack_cseq));
         }
 
         // Max-Forwards
-        let max_forwards = rsip::headers::MaxForwards::new("70");
-        ack.headers_mut().push(Header::MaxForwards(max_forwards));
+        let max_forwards = rsip::headers::MaxForwards::default();
+        ack.headers.push(Header::MaxForwards(max_forwards));
 
         // Content-Length: 0
         let content_length = ContentLength::default();
-        ack.headers_mut().push(Header::ContentLength(content_length));
+        ack.headers.push(Header::ContentLength(content_length));
 
         Ok(ack)
     }
