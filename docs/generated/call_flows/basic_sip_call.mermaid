@@ -4,25 +4,25 @@ sequenceDiagram
     participant RedfireSwitch
     participant UserAgentB
 
-    UserAgentA ->+ RedfireSwitch: INVITE
+    UserAgentA ->> RedfireSwitch: INVITE
     Note over UserAgentA,RedfireSwitch: Initial call setup
-    RedfireSwitch -->>- UserAgentA: 100 Trying
+    RedfireSwitch -->> UserAgentA: 100 Trying
     Note over RedfireSwitch,UserAgentA: Call processing
-    RedfireSwitch ->+ UserAgentB: INVITE
+    RedfireSwitch ->> UserAgentB: INVITE
     Note over RedfireSwitch,UserAgentB: Forward call to destination
-    UserAgentB -->>- RedfireSwitch: 200 OK
+    UserAgentB -->> RedfireSwitch: 200 OK
     Note over UserAgentB,RedfireSwitch: Call answered
-    RedfireSwitch -->>- UserAgentA: 200 OK
+    RedfireSwitch -->> UserAgentA: 200 OK
     Note over RedfireSwitch,UserAgentA: Forward answer
-    UserAgentA ->+ RedfireSwitch: ACK
+    UserAgentA ->> RedfireSwitch: ACK
     Note over UserAgentA,RedfireSwitch: Acknowledge call setup
-    RedfireSwitch ->+ UserAgentB: ACK
+    RedfireSwitch ->> UserAgentB: ACK
     Note over RedfireSwitch,UserAgentB: Forward acknowledgment
-    UserAgentA ->+ RedfireSwitch: BYE
+    UserAgentA ->> RedfireSwitch: BYE
     Note over UserAgentA,RedfireSwitch: End call
-    RedfireSwitch ->+ UserAgentB: BYE
+    RedfireSwitch ->> UserAgentB: BYE
     Note over RedfireSwitch,UserAgentB: Forward call termination
-    UserAgentB -->>- RedfireSwitch: 200 OK
+    UserAgentB -->> RedfireSwitch: 200 OK
     Note over UserAgentB,RedfireSwitch: Confirm termination
-    RedfireSwitch -->>- UserAgentA: 200 OK
+    RedfireSwitch -->> UserAgentA: 200 OK
     Note over RedfireSwitch,UserAgentA: Forward confirmation

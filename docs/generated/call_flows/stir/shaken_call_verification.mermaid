@@ -6,13 +6,13 @@ sequenceDiagram
     participant CertificateAuthority
     participant Destination
 
-    Caller ->+ OriginatingProvider: INVITE +15551234567
+    Caller ->> OriginatingProvider: INVITE +15551234567
     Note over Caller,OriginatingProvider: Outgoing call
-    OriginatingProvider ->+ RedfireSwitch: INVITE (with Identity header)
+    OriginatingProvider ->> RedfireSwitch: INVITE (with Identity header)
     Note over OriginatingProvider,RedfireSwitch: Call with STIR/SHAKEN identity
     RedfireSwitch ->> CertificateAuthority: Certificate Lookup
     Note over RedfireSwitch,CertificateAuthority: Verify certificate
     CertificateAuthority ->> RedfireSwitch: Certificate Valid
     Note over CertificateAuthority,RedfireSwitch: Certificate verification result
-    RedfireSwitch ->+ Destination: INVITE (verified)
+    RedfireSwitch ->> Destination: INVITE (verified)
     Note over RedfireSwitch,Destination: Forward verified call
