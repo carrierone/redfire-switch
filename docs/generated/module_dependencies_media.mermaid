@@ -1,0 +1,51 @@
+graph TD
+    %% Media Processing Module Dependencies - Audio/Video Pipeline
+    
+    %% Core Media Components
+    media_plane[Media Plane Controller]
+    codec[Audio Codec Engine]
+    rtp_proxy[RTP Proxy]
+    
+    %% Monitoring and Quality
+    rtp_monitor[RTP Traffic Monitor]
+    mos_scoring[MOS Quality Scoring]
+    
+    %% Advanced Features
+    video_passthrough[Video Passthrough]
+    
+    %% External Libraries
+    dasp[DASP Audio Library]
+    hound[Audio File I/O]
+    cudarc[CUDA Runtime (Optional)]
+    
+    %% Dependencies
+    media_plane --> codec
+    media_plane --> rtp_proxy
+    media_plane --> rtp_monitor
+    media_plane --> video_passthrough
+    
+    rtp_proxy --> codec
+    rtp_monitor --> mos_scoring
+    
+    %% External dependencies
+    codec --> dasp
+    rtp_proxy --> hound
+    codec --> cudarc
+    
+    %% Data flow
+    rtp_proxy -.->|Audio Data| codec
+    codec -.->|Transcoded Audio| rtp_proxy
+    rtp_monitor -.->|Quality Metrics| mos_scoring
+    
+    %% Styling
+    classDef coreModule fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef audioModule fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
+    classDef videoModule fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef monitorModule fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef externalModule fill:#f5f5f5,stroke:#424242,stroke-width:2px
+    
+    class media_plane coreModule
+    class codec,rtp_proxy audioModule
+    class video_passthrough videoModule
+    class rtp_monitor,mos_scoring monitorModule
+    class dasp,hound,cudarc externalModule

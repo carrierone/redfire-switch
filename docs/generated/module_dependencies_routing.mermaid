@@ -1,0 +1,79 @@
+graph TD
+    %% Routing Engine Module Dependencies - Call Routing Architecture
+    
+    %% Core Routing
+    routing_engine[Routing Engine Core]
+    enhanced_routing[Enhanced Routing Logic]
+    
+    %% Routing Types
+    origination_routing[Origination Routing]
+    termination_routing[Termination Routing]
+    emergency_routing[Emergency Routing]
+    enum_routing[ENUM Routing]
+    advanced_routing[Advanced Routing]
+    
+    %% Supporting Services
+    lerg_nanpa[LERG/NANPA Database]
+    cnam[CNAM Lookup Service]
+    cnam_service[CNAM Service Provider]
+    number_manipulation[Number Manipulation]
+    
+    %% Call Management
+    call_control[Call Control]
+    call_simulator[Call Simulator]
+    
+    %% CLI Tools
+    lerg_nanpa_cli[LERG/NANPA CLI]
+    cnam_cli[CNAM CLI] 
+    call_control_cli[Call Control CLI]
+    simulation_cli[Simulation CLI]
+    
+    %% External APIs
+    telique_api[Telique API]
+    twilio_api[Twilio API]
+    
+    %% Dependencies
+    routing_engine --> enhanced_routing
+    enhanced_routing --> origination_routing
+    enhanced_routing --> termination_routing
+    enhanced_routing --> emergency_routing
+    enhanced_routing --> enum_routing
+    enhanced_routing --> advanced_routing
+    
+    origination_routing --> lerg_nanpa
+    termination_routing --> lerg_nanpa
+    emergency_routing --> lerg_nanpa
+    
+    enhanced_routing --> cnam
+    cnam --> cnam_service
+    cnam_service --> telique_api
+    
+    routing_engine --> number_manipulation
+    
+    call_control --> origination_routing
+    call_control --> termination_routing
+    call_simulator --> origination_routing
+    call_simulator --> termination_routing
+    
+    %% CLI connections
+    lerg_nanpa_cli --> lerg_nanpa
+    cnam_cli --> cnam
+    call_control_cli --> call_control
+    simulation_cli --> call_simulator
+    
+    twilio_api --> origination_routing
+    
+    %% Styling
+    classDef coreModule fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef routingModule fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
+    classDef dataModule fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef controlModule fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef cliModule fill:#fce4ec,stroke:#880e4f,stroke-width:2px
+    classDef apiModule fill:#f5f5f5,stroke:#424242,stroke-width:2px
+    
+    class routing_engine,enhanced_routing coreModule
+    class origination_routing,termination_routing,emergency_routing,enum_routing,advanced_routing routingModule
+    class lerg_nanpa,cnam,cnam_service,number_manipulation dataModule
+    class call_control,call_simulator controlModule
+    class lerg_nanpa_cli,cnam_cli,call_control_cli,simulation_cli cliModule
+    class telique_api,twilio_api apiModule

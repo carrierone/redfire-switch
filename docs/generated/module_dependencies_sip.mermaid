@@ -1,0 +1,66 @@
+graph TD
+    %% SIP Stack Module Dependencies - Detailed View
+    
+    %% SIP Core Components
+    sip_core[SIP Core Engine]
+    sip_server[SIP Server] 
+    sip_parser[SIP Message Parser]
+    sip_transport[SIP Transport Layer]
+    sip_authentication[SIP Authentication]
+    sip_state[SIP State Manager]
+    sip_compliance[SIP Compliance Checker]
+    sip_interop[SIP Interoperability]
+    
+    %% Advanced SIP Features
+    sipt_sipi[SIP-T/SIP-I Support]
+    stir_shaken[STIR/SHAKEN]
+    stir_shaken_fraud[STIR/SHAKEN Fraud Detection]
+    
+    %% CLI and Debug Tools
+    sip_debug_cli[SIP Debug CLI]
+    enhanced_cli[Enhanced CLI Interface]
+    
+    %% External Libraries
+    rsip[RSIP Library]
+    tokio[Tokio Runtime]
+    
+    %% Dependencies
+    sip_core --> sip_parser
+    sip_core --> sip_transport
+    sip_core --> sip_authentication
+    sip_core --> sip_state
+    
+    sip_server --> sip_core
+    sip_server --> sip_compliance
+    sip_server --> sip_interop
+    
+    sip_parser --> rsip
+    sip_transport --> tokio
+    sip_authentication --> sip_state
+    
+    sip_server --> sipt_sipi
+    sip_server --> stir_shaken
+    stir_shaken --> stir_shaken_fraud
+    
+    sip_debug_cli --> sip_parser
+    sip_debug_cli --> sip_core
+    enhanced_cli --> sip_debug_cli
+    
+    %% Security and Standards
+    sip_compliance --> sipt_sipi
+    sip_compliance --> stir_shaken
+    
+    %% Styling
+    classDef coreModule fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef parserModule fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef securityModule fill:#ffebee,stroke:#c62828,stroke-width:2px
+    classDef advancedModule fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
+    classDef toolModule fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef externalModule fill:#f5f5f5,stroke:#424242,stroke-width:2px
+    
+    class sip_core,sip_server coreModule
+    class sip_parser,sip_transport,sip_state parserModule
+    class sip_authentication,stir_shaken,stir_shaken_fraud securityModule
+    class sipt_sipi,sip_compliance,sip_interop advancedModule
+    class sip_debug_cli,enhanced_cli toolModule
+    class rsip,tokio externalModule

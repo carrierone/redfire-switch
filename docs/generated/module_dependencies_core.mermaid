@@ -1,0 +1,74 @@
+graph TD
+    %% Core Module Dependencies - High Level Architecture
+    
+    %% Main application entry point
+    main[Main Application]
+    
+    %% Core modules
+    config[Configuration]
+    handlers[Request Handlers]
+    monitor[System Monitor]
+    security[Security Layer]
+    
+    %% SIP Core
+    sip_core[SIP Core Engine]
+    sip_server[SIP Server]
+    sip_parser[SIP Parser]
+    sip_transport[SIP Transport]
+    sip_authentication[SIP Authentication]
+    
+    %% Routing Engine
+    routing_engine[Routing Engine]
+    enhanced_routing[Enhanced Routing]
+    origination_routing[Origination Routing]
+    termination_routing[Termination Routing]
+    emergency_routing[Emergency Routing]
+    
+    %% Media Processing
+    codec[Audio Codec Engine]
+    rtp_proxy[RTP Proxy]
+    media_plane[Media Plane]
+    
+    %% External APIs
+    rest_api[REST API]
+    mcp_server[MCP Server]
+    
+    %% Dependencies
+    main --> config
+    main --> handlers
+    main --> monitor
+    main --> sip_server
+    
+    handlers --> security
+    handlers --> routing_engine
+    handlers --> sip_core
+    
+    sip_server --> sip_core
+    sip_core --> sip_parser
+    sip_core --> sip_transport
+    sip_core --> sip_authentication
+    
+    routing_engine --> enhanced_routing
+    routing_engine --> origination_routing
+    routing_engine --> termination_routing
+    routing_engine --> emergency_routing
+    
+    sip_server --> media_plane
+    media_plane --> codec
+    media_plane --> rtp_proxy
+    
+    rest_api --> handlers
+    mcp_server --> handlers
+    
+    %% Styling
+    classDef coreModule fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef sipModule fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef routingModule fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
+    classDef mediaModule fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef apiModule fill:#fce4ec,stroke:#880e4f,stroke-width:2px
+    
+    class main,config,handlers,monitor,security coreModule
+    class sip_core,sip_server,sip_parser,sip_transport,sip_authentication sipModule
+    class routing_engine,enhanced_routing,origination_routing,termination_routing,emergency_routing routingModule
+    class codec,rtp_proxy,media_plane mediaModule
+    class rest_api,mcp_server apiModule

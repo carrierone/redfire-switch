@@ -6,9 +6,13 @@
 
 1. [Architecture Overview](architecture.md)
 2. [API Documentation](api_documentation.md)
-3. [Module Dependencies](module_dependencies.mermaid)
-4. [Call Flows](call_flows/)
-5. [Configuration Examples](../config/)
+3. [Module Dependencies - System Overview](module_dependencies.mermaid)
+4. [Module Dependencies - Core Components](module_dependencies_core.mermaid)
+5. [Module Dependencies - SIP Stack](module_dependencies_sip.mermaid)  
+6. [Module Dependencies - Routing Engine](module_dependencies_routing.mermaid)
+7. [Module Dependencies - Media Processing](module_dependencies_media.mermaid)
+8. [Call Flows](call_flows/)
+9. [Configuration Examples](../config/)
 
 ## Quick Start
 
@@ -40,6 +44,18 @@ cargo build --release
 - 📊 **Monitoring**: Comprehensive CDR and analytics
 - 🚨 **Emergency**: 911/112 call routing
 - 📱 **Modern**: IMS/VoLTE support
+
+## Architecture Diagrams
+
+The system architecture is documented through multiple focused diagrams to stay within GitHub's 500-edge Mermaid limit:
+
+- **System Overview**: High-level components and data flow
+- **Core Components**: Main application architecture 
+- **SIP Stack**: Protocol implementation details
+- **Routing Engine**: Call routing logic and services
+- **Media Processing**: Audio/video pipeline
+
+Each diagram contains 20-40 nodes for optimal viewing and GitHub compatibility.
 
 ## Documentation Generation
 
