@@ -384,7 +384,7 @@ impl G7222Encoder {
         let mut target = vec![0.0; L_SUBFR_WB];
         
         // Apply perceptual weighting for wideband
-        let gamma1 = 0.92; // Slightly different for wideband
+        let gamma1: f32 = 0.92; // Slightly different for wideband
         let gamma2 = 0.7;
         
         for i in 0..L_SUBFR_WB {

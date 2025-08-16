@@ -77,7 +77,7 @@ pub mod sipt_sipi;
 
 // Re-export main SIP types
 pub use parser::{
-    SipParser, SipMessage, SipTransport, DialogState, SipDialog, SipTransaction,
+    SipParser, SipMessage, DialogState, SipDialog, SipTransaction,
     TransactionState, TransactionTimers, InviteTransactionState, NonInviteTransactionState,
 };
 
@@ -89,7 +89,6 @@ pub use rsip::{
     Version as SipVersion,
     Uri as SipUri,
     Error as ParseError,
-    HeaderValue,
 };
 
 pub use state::{

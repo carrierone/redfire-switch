@@ -127,9 +127,9 @@ impl SipStateManager {
 
     /// Process SIP request
     async fn process_request(&self, message: &SipMessage, request: &Request) -> Result<SipStateAction> {
-        let call_id = crate::sip_parser::utils::extract_call_id(&message.message)?;
-        let from_tag = crate::sip_parser::utils::extract_from_tag(&message.message)?;
-        let to_tag = crate::sip_parser::utils::extract_to_tag(&message.message)?;
+        let call_id = crate::parser::utils::extract_call_id(&message.message)?;
+        let from_tag = crate::parser::utils::extract_from_tag(&message.message)?;
+        let to_tag = crate::parser::utils::extract_to_tag(&message.message)?;
 
         match request.method() {
             Method::Invite => self.process_invite_request(message, request, &call_id, from_tag, to_tag).await,
@@ -142,9 +142,9 @@ impl SipStateManager {
 
     /// Process SIP response
     async fn process_response(&self, message: &SipMessage, response: &Response) -> Result<SipStateAction> {
-        let call_id = crate::sip_parser::utils::extract_call_id(&message.message)?;
-        let from_tag = crate::sip_parser::utils::extract_from_tag(&message.message)?;
-        let to_tag = crate::sip_parser::utils::extract_to_tag(&message.message)?;
+        let call_id = crate::parser::utils::extract_call_id(&message.message)?;
+        let from_tag = crate::parser::utils::extract_from_tag(&message.message)?;
+        let to_tag = crate::parser::utils::extract_to_tag(&message.message)?;
 
         // Find transaction
         let transaction_id = self.extract_transaction_id_from_response(response)?;
@@ -154,7 +154,7 @@ impl SipStateManager {
             self.update_transaction_state_for_response(&mut transaction, response)?;
             
             // Handle dialog creation/update for 2xx responses
-            if crate::sip_parser::utils::is_success_response(&message.message) {
+            if crate::parser::utils::is_success_response(&message.message) {
                 if let Some(to_tag) = to_tag {
                     let dialog_id = format!("{}:{}:{}", call_id, from_tag.unwrap_or_default(), to_tag);
                     self.create_or_update_dialog(&dialog_id, &call_id, from_tag, Some(to_tag), message).await?;
@@ -164,7 +164,7 @@ impl SipStateManager {
             Ok(SipStateAction::ProcessResponse {
                 transaction_id: transaction_id.clone(),
                 dialog_id: None, // Will be set if dialog exists
-                requires_ack: crate::sip_parser::utils::is_success_response(&message.message) && 
+                requires_ack: crate::parser::utils::is_success_response(&message.message) && 
                              transaction.method == Method::Invite,
             })
         } else {

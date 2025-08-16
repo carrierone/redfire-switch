@@ -19,7 +19,7 @@ hex = "0.4"
 
 # GPU dependencies (optional)
 cudarc = { version = "0.11", optional = true, features = ["driver", "nvrtc"] }
-hip_rs = { version = "0.1", optional = true }
+hip-rs = { version = "0.1", optional = true }
 
 # Additional audio processing
 uuid = "1.0"
@@ -30,7 +30,7 @@ chrono = { version = "0.4", features = ["serde"] }
 [features]
 default = []
 cuda = ["dep:cudarc"]
-rocm = ["dep:hip_rs"]
+rocm = ["dep:hip-rs"]
 gpu = ["cuda"] # Default GPU backend
 
 [lib]
