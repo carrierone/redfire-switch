@@ -268,6 +268,12 @@ This project is licensed under the GNU General Public License v3.0 or later - se
 
 For commercial support, licensing, and enterprise deployments, contact [Carrier One Inc](https://www.carrierone.com).
 
+## Support the Project
+
+If you find this project helpful, consider supporting its development:
+
+[![ko-fi](https://storage.ko-fi.com/cdn/brandasset/v2/support_me_on_kofi_beige.png)](https://ko-fi.com/E1E41JOHFS)
+
 ---
 
 **Built with ❤️ in Rust for the telecommunications industry**
