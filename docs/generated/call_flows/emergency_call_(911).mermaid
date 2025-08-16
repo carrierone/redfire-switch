@@ -1,0 +1,13 @@
+sequenceDiagram
+    title Emergency Call (911)
+    participant EmergencyCaller
+    participant RedfireSwitch
+    participant EmergencyRouter
+    participant PSAP
+
+    EmergencyCaller ->+ RedfireSwitch: INVITE 911
+    Note over EmergencyCaller,RedfireSwitch: Emergency call
+    RedfireSwitch ->> EmergencyRouter: Route to Originating DID Provider
+    Note over RedfireSwitch,EmergencyRouter: Determine routing based on DID
+    RedfireSwitch ->+ PSAP: INVITE 911
+    Note over RedfireSwitch,PSAP: Route to Public Safety

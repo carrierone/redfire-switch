@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="utf-8"?>
+<include>
+  <context name="public">
+    <extension name="unloop">
+      <condition field="${unroll_loops}" expression="^true$"/>
+      <condition field="${sip_looped_call}" expression="^true$">
+        <action application="deflect" data="${destination_number}"/>
+      </condition>
+    </extension>
+
+    <!-- Test extensions for Redfire Switch -->
+    
+    <!-- Echo Test -->
+    <extension name="echo-test">
+      <condition field="destination_number" expression="^(999)$">
+        <action application="answer"/>
+        <action application="sleep" data="1000"/>
+        <action application="echo"/>
+      </condition>
+    </extension>
+
+    <!-- DTMF Collection Test -->
+    <extension name="dtmf-test">
+      <condition field="destination_number" expression="^(998)$">
+        <action application="answer"/>
+        <action application="sleep" data="1000"/>
+        <action application="play_and_get_digits" data="1 10 3 5000 # tone_stream://%(10000,0,350,440) silence_stream://250 dtmf_digits \d+"/>
+        <action application="say" data="en number pronounced ${dtmf_digits}"/>
+        <action application="sleep" data="2000"/>
+        <action application="hangup"/>
+      </condition>
+    </extension>
+
+    <!-- Call Quality Test -->
+    <extension name="quality-test">
+      <condition field="destination_number" expression="^(997)$">
+        <action application="answer"/>
+        <action application="sleep" data="2000"/>
+        <action application="playback" data="$${hold_music}"/>
+      </condition>
+    </extension>
+
+    <!-- Load Test Endpoint -->
+    <extension name="load-test">
+      <condition field="destination_number" expression="^(996)$">
+        <action application="answer"/>
+        <action application="sleep" data="5000"/>
+        <action application="hangup"/>
+      </condition>
+    </extension>
+
+    <!-- Conference Test -->
+    <extension name="conference-test">
+      <condition field="destination_number" expression="^(5000)$">
+        <action application="answer"/>
+        <action application="conference" data="redfire-test@default"/>
+      </condition>
+    </extension>
+
+    <!-- Test Users 3001-3010 -->
+    <extension name="test-users">
+      <condition field="destination_number" expression="^(300[1-9]|3010)$">
+        <action application="answer"/>
+        <action application="sleep" data="1000"/>
+        <action application="playback" data="ivr/ivr-hello.wav"/>
+        <action application="sleep" data="3000"/>
+        <action application="hangup"/>
+      </condition>
+    </extension>
+
+    <!-- Codec Testing -->
+    <extension name="codec-ulaw-test">
+      <condition field="destination_number" expression="^(8001)$">
+        <action application="answer"/>
+        <action application="set" data="absolute_codec_string=PCMU"/>
+        <action application="playback" data="misc/misc-freeswitch_is_state_of_the_art.wav"/>
+        <action application="hangup"/>
+      </condition>
+    </extension>
+
+    <extension name="codec-alaw-test">
+      <condition field="destination_number" expression="^(8002)$">
+        <action application="answer"/>
+        <action application="set" data="absolute_codec_string=PCMA"/>
+        <action application="playback" data="misc/misc-freeswitch_is_state_of_the_art.wav"/>
+        <action application="hangup"/>
+      </condition>
+    </extension>
+
+    <extension name="codec-g729-test">
+      <condition field="destination_number" expression="^(8003)$">
+        <action application="answer"/>
+        <action application="set" data="absolute_codec_string=G729"/>
+        <action application="playback" data="misc/misc-freeswitch_is_state_of_the_art.wav"/>
+        <action application="hangup"/>
+      </condition>
+    </extension>
+
+    <!-- Long Duration Test -->
+    <extension name="long-call-test">
+      <condition field="destination_number" expression="^(995)$">
+        <action application="answer"/>
+        <action application="sleep" data="2000"/>
+        <action application="endless_playback" data="$${hold_music}"/>
+      </condition>
+    </extension>
+
+    <!-- Call Transfer Test -->
+    <extension name="transfer-test">
+      <condition field="destination_number" expression="^(994)$">
+        <action application="answer"/>
+        <action application="sleep" data="2000"/>
+        <action application="playback" data="ivr/ivr-please_hold_while_party_contacted.wav"/>
+        <action application="transfer" data="999 XML public"/>
+      </condition>
+    </extension>
+
+    <!-- Early Media Test -->
+    <extension name="early-media-test">
+      <condition field="destination_number" expression="^(993)$">
+        <action application="pre_answer"/>
+        <action application="playback" data="ivr/ivr-please_hold.wav"/>
+        <action application="sleep" data="3000"/>
+        <action application="answer"/>
+        <action application="playback" data="ivr/ivr-thank_you.wav"/>
+        <action application="hangup"/>
+      </condition>
+    </extension>
+
+    <!-- Busy Signal Test -->
+    <extension name="busy-test">
+      <condition field="destination_number" expression="^(992)$">
+        <action application="respond" data="486 Busy Here"/>
+      </condition>
+    </extension>
+
+    <!-- No Answer Test -->
+    <extension name="no-answer-test">
+      <condition field="destination_number" expression="^(991)$">
+        <action application="ring_ready"/>
+        <action application="sleep" data="30000"/>
+        <action application="respond" data="408 Request Timeout"/>
+      </condition>
+    </extension>
+
+    <!-- Outbound to Redfire via Gateway -->
+    <extension name="outbound-to-redfire">
+      <condition field="destination_number" expression="^1([2-9][0-8][0-9][2-9][0-9]{6})$">
+        <action application="set" data="call_direction=outbound"/>
+        <action application="bridge" data="sofia/gateway/redfire-trunk/$1"/>
+      </condition>
+    </extension>
+
+    <!-- NANPA Numbers without leading 1 -->
+    <extension name="outbound-nanpa">
+      <condition field="destination_number" expression="^([2-9][0-8][0-9][2-9][0-9]{6})$">
+        <action application="set" data="call_direction=outbound"/>
+        <action application="bridge" data="sofia/gateway/redfire-trunk/1$1"/>
+      </condition>
+    </extension>
+
+    <!-- International Numbers -->
+    <extension name="international">
+      <condition field="destination_number" expression="^(011.+)$">
+        <action application="set" data="call_direction=outbound"/>
+        <action application="bridge" data="sofia/gateway/redfire-trunk/$1"/>
+      </condition>
+    </extension>
+
+    <!-- Default: Send to Redfire -->
+    <extension name="default">
+      <condition field="destination_number" expression="^(.+)$">
+        <action application="log" data="INFO Sending call to Redfire: ${destination_number}"/>
+        <action application="bridge" data="sofia/gateway/redfire-test/${destination_number}"/>
+      </condition>
+    </extension>
+
+  </context>
+</include>

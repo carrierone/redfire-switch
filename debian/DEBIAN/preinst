@@ -1,0 +1,84 @@
+#!/bin/bash
+set -e
+
+# Pre-installation script for Redfire Switch
+
+case "$1" in
+    install|upgrade)
+        # Check if running as root
+        if [ "$(id -u)" != "0" ]; then
+            echo "Error: This package must be installed as root" >&2
+            exit 1
+        fi
+
+        # Check system requirements
+        echo "Checking system requirements..."
+        
+        # Check minimum kernel version (for advanced networking features)
+        kernel_version=$(uname -r | cut -d. -f1,2)
+        required_version="4.14"
+        if [ "$(printf '%s\n' "$required_version" "$kernel_version" | sort -V | head -n1)" != "$required_version" ]; then
+            echo "Warning: Kernel version $kernel_version may not support all features. Recommended: $required_version or higher"
+        fi
+
+        # Check available memory (minimum 1GB recommended)
+        mem_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+        mem_gb=$((mem_kb / 1024 / 1024))
+        if [ "$mem_gb" -lt 1 ]; then
+            echo "Warning: Less than 1GB RAM detected. Performance may be affected."
+        fi
+
+        # Check if ports are available
+        for port in 5060 5061; do
+            if ss -tlun | grep -q ":${port} "; then
+                echo "Warning: Port $port appears to be in use. This may conflict with Redfire Switch."
+            fi
+        done
+
+        # Create system users before package installation
+        echo "Creating system users..."
+        
+        if ! getent group redfire >/dev/null 2>&1; then
+            addgroup --system redfire
+            echo "Created system group: redfire"
+        fi
+
+        if ! getent passwd redfire >/dev/null 2>&1; then
+            adduser --system --no-create-home --home /var/lib/redfire-switch \
+                    --shell /usr/sbin/nologin --group redfire redfire
+            echo "Created system user: redfire"
+        fi
+
+        if ! getent passwd redfire-web >/dev/null 2>&1; then
+            adduser --system --no-create-home --home /var/lib/redfire-switch/web \
+                    --shell /usr/sbin/nologin --ingroup redfire redfire-web
+            echo "Created system user: redfire-web"
+        fi
+
+        # Create directories early
+        mkdir -p /var/lib/redfire-switch
+        mkdir -p /var/log/redfire-switch
+        mkdir -p /etc/redfire-switch
+        mkdir -p /run/redfire-switch
+
+        # Set preliminary permissions
+        chown redfire:redfire /var/lib/redfire-switch
+        chown redfire:redfire /var/log/redfire-switch
+        chown root:redfire /etc/redfire-switch
+        chown redfire:redfire /run/redfire-switch
+        
+        chmod 750 /var/lib/redfire-switch
+        chmod 750 /var/log/redfire-switch
+        chmod 750 /etc/redfire-switch
+        chmod 755 /run/redfire-switch
+
+        ;;
+    abort-upgrade)
+        ;;
+    *)
+        echo "preinst called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

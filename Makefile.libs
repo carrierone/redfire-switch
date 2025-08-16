@@ -1,0 +1,260 @@
+# Redfire Switch Libraries Makefile
+# Copyright (C) 2025 Carrier One Inc and contributors
+#
+# This Makefile handles building and installing only the libraries
+# (codec engine and SIP stack) without the main application.
+
+.PHONY: all clean install uninstall test help check-deps build-codec build-sip build-sip-minimal
+.DEFAULT_GOAL := help
+
+# Configuration
+PREFIX ?= /usr/local
+BUILD_TYPE ?= release
+FEATURES ?= 
+CODEC_LIB_DIR = redfire-codec-engine
+SIP_LIB_DIR = redfire-sip-stack
+SIP_MINIMAL_LIB_DIR = redfire-sip-stack-minimal
+
+# Colors for output
+BLUE = \033[0;34m
+GREEN = \033[0;32m
+YELLOW = \033[1;33m
+RED = \033[0;31m
+NC = \033[0m
+
+# Auto-detect GPU support
+ifeq ($(shell command -v nvcc 2> /dev/null),)
+    ifeq ($(shell command -v hipcc 2> /dev/null),)
+        GPU_FEATURES =
+    else
+        GPU_FEATURES = rocm
+    endif
+else
+    GPU_FEATURES = cuda
+endif
+
+# Set features if not explicitly provided
+ifeq ($(FEATURES),)
+    FEATURES = $(GPU_FEATURES)
+endif
+
+# Build flags
+ifeq ($(BUILD_TYPE),release)
+    CARGO_FLAGS = --release
+else
+    CARGO_FLAGS = 
+endif
+
+ifneq ($(FEATURES),)
+    CARGO_FLAGS += --features $(FEATURES)
+endif
+
+# Target directory
+ifeq ($(BUILD_TYPE),release)
+    TARGET_DIR = target/release
+else
+    TARGET_DIR = target/debug
+endif
+
+help: ## Show this help message
+	@echo "$(BLUE)Redfire Switch Libraries Build System$(NC)"
+	@echo "======================================"
+	@echo ""
+	@echo "Available targets:"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(BLUE)%-15s$(NC) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "Configuration:"
+	@echo "  PREFIX=$(PREFIX)"
+	@echo "  BUILD_TYPE=$(BUILD_TYPE)"
+	@echo "  FEATURES=$(FEATURES)"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make all                    # Build both libraries"
+	@echo "  make install PREFIX=/opt   # Install to /opt"
+	@echo "  make BUILD_TYPE=debug all  # Debug build"
+	@echo "  make FEATURES=cuda all     # Force CUDA support"
+
+check-deps: ## Check system dependencies
+	@echo "$(BLUE)[INFO]$(NC) Checking dependencies..."
+	@command -v cargo >/dev/null 2>&1 || (echo "$(RED)[ERROR]$(NC) Rust/Cargo not found" && exit 1)
+	@command -v pkg-config >/dev/null 2>&1 || echo "$(YELLOW)[WARNING]$(NC) pkg-config not found"
+	@echo "$(GREEN)[SUCCESS]$(NC) Dependencies check completed"
+
+build-codec: check-deps ## Build codec engine library
+	@echo "$(BLUE)[INFO]$(NC) Building codec engine library..."
+	@cd $(CODEC_LIB_DIR) && cargo build $(CARGO_FLAGS)
+	@echo "$(GREEN)[SUCCESS]$(NC) Codec engine library built"
+
+build-sip: check-deps ## Build SIP stack library
+	@echo "$(BLUE)[INFO]$(NC) Building SIP stack library..."
+	@cd $(SIP_LIB_DIR) && cargo build $(CARGO_FLAGS)
+	@echo "$(GREEN)[SUCCESS]$(NC) SIP stack library built"
+
+build-sip-minimal: check-deps ## Build minimal SIP stack library
+	@echo "$(BLUE)[INFO]$(NC) Building minimal SIP stack library..."
+	@cd $(SIP_MINIMAL_LIB_DIR) && cargo build $(CARGO_FLAGS)
+	@echo "$(GREEN)[SUCCESS]$(NC) Minimal SIP stack library built"
+
+all: build-codec build-sip build-sip-minimal ## Build all libraries
+
+test: ## Run tests for all libraries
+	@echo "$(BLUE)[INFO]$(NC) Running codec engine tests..."
+	@cd $(CODEC_LIB_DIR) && cargo test $(CARGO_FLAGS)
+	@echo "$(BLUE)[INFO]$(NC) Running SIP stack tests..."
+	@cd $(SIP_LIB_DIR) && cargo test $(CARGO_FLAGS)
+	@echo "$(BLUE)[INFO]$(NC) Running minimal SIP stack tests..."
+	@cd $(SIP_MINIMAL_LIB_DIR) && cargo test $(CARGO_FLAGS)
+	@echo "$(GREEN)[SUCCESS]$(NC) All tests passed"
+
+clean: ## Clean build artifacts
+	@echo "$(BLUE)[INFO]$(NC) Cleaning build artifacts..."
+	@cd $(CODEC_LIB_DIR) && cargo clean
+	@cd $(SIP_LIB_DIR) && cargo clean
+	@cd $(SIP_MINIMAL_LIB_DIR) && cargo clean
+	@echo "$(GREEN)[SUCCESS]$(NC) Clean completed"
+
+install: all ## Install libraries to PREFIX
+	@echo "$(BLUE)[INFO]$(NC) Installing libraries to $(PREFIX)..."
+	@mkdir -p $(PREFIX)/lib $(PREFIX)/include/redfire $(PREFIX)/lib/pkgconfig
+	
+	# Install codec engine library
+	@if [ -f $(CODEC_LIB_DIR)/$(TARGET_DIR)/libredfire_codec_engine.rlib ]; then \
+		cp $(CODEC_LIB_DIR)/$(TARGET_DIR)/libredfire_codec_engine.rlib $(PREFIX)/lib/; \
+		echo "$(BLUE)[INFO]$(NC) Installed codec engine library (Rust static)"; \
+	fi
+	@if [ -f $(CODEC_LIB_DIR)/$(TARGET_DIR)/libredfire_codec_engine.so ]; then \
+		cp $(CODEC_LIB_DIR)/$(TARGET_DIR)/libredfire_codec_engine.so $(PREFIX)/lib/; \
+		echo "$(BLUE)[INFO]$(NC) Installed codec engine library (shared)"; \
+	fi
+	
+	# Install SIP stack library
+	@if [ -f $(SIP_LIB_DIR)/$(TARGET_DIR)/libredfire_sip_stack.rlib ]; then \
+		cp $(SIP_LIB_DIR)/$(TARGET_DIR)/libredfire_sip_stack.rlib $(PREFIX)/lib/; \
+		echo "$(BLUE)[INFO]$(NC) Installed SIP stack library (Rust static)"; \
+	fi
+	@if [ -f $(SIP_LIB_DIR)/$(TARGET_DIR)/libredfire_sip_stack.so ]; then \
+		cp $(SIP_LIB_DIR)/$(TARGET_DIR)/libredfire_sip_stack.so $(PREFIX)/lib/; \
+		echo "$(BLUE)[INFO]$(NC) Installed SIP stack library (shared)"; \
+	fi
+	
+	# Install minimal SIP stack library
+	@if [ -f $(SIP_MINIMAL_LIB_DIR)/$(TARGET_DIR)/libredfire_sip_stack_minimal.rlib ]; then \
+		cp $(SIP_MINIMAL_LIB_DIR)/$(TARGET_DIR)/libredfire_sip_stack_minimal.rlib $(PREFIX)/lib/; \
+		echo "$(BLUE)[INFO]$(NC) Installed minimal SIP stack library (Rust static)"; \
+	fi
+	@if [ -f $(SIP_MINIMAL_LIB_DIR)/$(TARGET_DIR)/libredfire_sip_stack_minimal.so ]; then \
+		cp $(SIP_MINIMAL_LIB_DIR)/$(TARGET_DIR)/libredfire_sip_stack_minimal.so $(PREFIX)/lib/; \
+		echo "$(BLUE)[INFO]$(NC) Installed minimal SIP stack library (shared)"; \
+	fi
+	
+	# Create pkg-config files
+	@$(MAKE) _create-pkgconfig
+	
+	# Update library cache if installing to system location
+	@if [ "$(PREFIX)" = "/usr/local" ] || [ "$(PREFIX)" = "/usr" ]; then \
+		if command -v ldconfig >/dev/null 2>&1; then \
+			ldconfig; \
+		fi; \
+	fi
+	
+	@echo "$(GREEN)[SUCCESS]$(NC) Installation completed"
+	@echo "$(BLUE)[INFO]$(NC) Libraries installed to: $(PREFIX)"
+
+_create-pkgconfig: ## Internal: Create pkg-config files
+	@echo "prefix=$(PREFIX)" > /tmp/redfire-codec-engine.pc
+	@echo "exec_prefix=\$${prefix}" >> /tmp/redfire-codec-engine.pc
+	@echo "libdir=\$${exec_prefix}/lib" >> /tmp/redfire-codec-engine.pc
+	@echo "includedir=\$${prefix}/include" >> /tmp/redfire-codec-engine.pc
+	@echo "" >> /tmp/redfire-codec-engine.pc
+	@echo "Name: Redfire Codec Engine" >> /tmp/redfire-codec-engine.pc
+	@echo "Description: Professional audio codec translation engine" >> /tmp/redfire-codec-engine.pc
+	@echo "Version: 0.1.0" >> /tmp/redfire-codec-engine.pc
+	@echo "Libs: -L\$${libdir} -lredfire_codec_engine" >> /tmp/redfire-codec-engine.pc
+	@echo "Cflags: -I\$${includedir}" >> /tmp/redfire-codec-engine.pc
+	@mv /tmp/redfire-codec-engine.pc $(PREFIX)/lib/pkgconfig/
+	
+	@echo "prefix=$(PREFIX)" > /tmp/redfire-sip-stack.pc
+	@echo "exec_prefix=\$${prefix}" >> /tmp/redfire-sip-stack.pc
+	@echo "libdir=\$${exec_prefix}/lib" >> /tmp/redfire-sip-stack.pc
+	@echo "includedir=\$${prefix}/include" >> /tmp/redfire-sip-stack.pc
+	@echo "" >> /tmp/redfire-sip-stack.pc
+	@echo "Name: Redfire SIP Stack" >> /tmp/redfire-sip-stack.pc
+	@echo "Description: Complete SIP, SIP-I, and SIP-T protocol stack" >> /tmp/redfire-sip-stack.pc
+	@echo "Version: 0.1.0" >> /tmp/redfire-sip-stack.pc
+	@echo "Libs: -L\$${libdir} -lredfire_sip_stack" >> /tmp/redfire-sip-stack.pc
+	@echo "Cflags: -I\$${includedir}" >> /tmp/redfire-sip-stack.pc
+	@mv /tmp/redfire-sip-stack.pc $(PREFIX)/lib/pkgconfig/
+	
+	@echo "prefix=$(PREFIX)" > /tmp/redfire-sip-stack-minimal.pc
+	@echo "exec_prefix=\$${prefix}" >> /tmp/redfire-sip-stack-minimal.pc
+	@echo "libdir=\$${exec_prefix}/lib" >> /tmp/redfire-sip-stack-minimal.pc
+	@echo "includedir=\$${prefix}/include" >> /tmp/redfire-sip-stack-minimal.pc
+	@echo "" >> /tmp/redfire-sip-stack-minimal.pc
+	@echo "Name: Redfire SIP Stack Minimal" >> /tmp/redfire-sip-stack-minimal.pc
+	@echo "Description: Lightweight SIP implementation with minimal dependencies" >> /tmp/redfire-sip-stack-minimal.pc
+	@echo "Version: 0.1.0" >> /tmp/redfire-sip-stack-minimal.pc
+	@echo "Libs: -L\$${libdir} -lredfire_sip_stack_minimal" >> /tmp/redfire-sip-stack-minimal.pc
+	@echo "Cflags: -I\$${includedir}" >> /tmp/redfire-sip-stack-minimal.pc
+	@mv /tmp/redfire-sip-stack-minimal.pc $(PREFIX)/lib/pkgconfig/
+
+uninstall: ## Uninstall libraries from PREFIX
+	@echo "$(BLUE)[INFO]$(NC) Uninstalling libraries from $(PREFIX)..."
+	@rm -f $(PREFIX)/lib/libredfire_codec_engine.*
+	@rm -f $(PREFIX)/lib/libredfire_sip_stack.*
+	@rm -f $(PREFIX)/lib/libredfire_sip_stack_minimal.*
+	@rm -f $(PREFIX)/lib/pkgconfig/redfire-codec-engine.pc
+	@rm -f $(PREFIX)/lib/pkgconfig/redfire-sip-stack.pc
+	@rm -f $(PREFIX)/lib/pkgconfig/redfire-sip-stack-minimal.pc
+	@rmdir $(PREFIX)/include/redfire 2>/dev/null || true
+	@echo "$(GREEN)[SUCCESS]$(NC) Uninstallation completed"
+
+check: test ## Alias for test
+
+info: ## Show build information
+	@echo "$(BLUE)Build Information$(NC)"
+	@echo "=================="
+	@echo "Prefix: $(PREFIX)"
+	@echo "Build Type: $(BUILD_TYPE)"
+	@echo "Features: $(FEATURES)"
+	@echo "Target Directory: $(TARGET_DIR)"
+	@echo "Cargo Flags: $(CARGO_FLAGS)"
+	@echo ""
+	@echo "$(BLUE)Library Status$(NC)"
+	@echo "==============="
+	@if [ -f $(CODEC_LIB_DIR)/$(TARGET_DIR)/libredfire_codec_engine.rlib ]; then \
+		echo "$(GREEN)✓$(NC) Codec engine library (static)"; \
+	else \
+		echo "$(RED)✗$(NC) Codec engine library (static)"; \
+	fi
+	@if [ -f $(SIP_LIB_DIR)/$(TARGET_DIR)/libredfire_sip_stack.rlib ]; then \
+		echo "$(GREEN)✓$(NC) SIP stack library (static)"; \
+	else \
+		echo "$(RED)✗$(NC) SIP stack library (static)"; \
+	fi
+
+# Developer targets
+dev-install: BUILD_TYPE=debug ## Install debug build for development
+dev-install: install
+
+release-install: BUILD_TYPE=release ## Install release build for production
+release-install: install
+
+# Documentation targets
+doc: ## Generate documentation for both libraries
+	@echo "$(BLUE)[INFO]$(NC) Generating documentation..."
+	@cd $(CODEC_LIB_DIR) && cargo doc --no-deps $(CARGO_FLAGS)
+	@cd $(SIP_LIB_DIR) && cargo doc --no-deps $(CARGO_FLAGS)
+	@echo "$(GREEN)[SUCCESS]$(NC) Documentation generated"
+
+doc-open: doc ## Generate and open documentation
+	@cd $(CODEC_LIB_DIR) && cargo doc --open --no-deps $(CARGO_FLAGS)
+
+# Package targets
+package: all ## Create distributable package
+	@echo "$(BLUE)[INFO]$(NC) Creating package..."
+	@mkdir -p dist/redfire-libs-$(shell date +%Y%m%d)
+	@cp -r $(CODEC_LIB_DIR)/$(TARGET_DIR)/libredfire_codec_engine.* dist/redfire-libs-$(shell date +%Y%m%d)/ 2>/dev/null || true
+	@cp -r $(SIP_LIB_DIR)/$(TARGET_DIR)/libredfire_sip_stack.* dist/redfire-libs-$(shell date +%Y%m%d)/ 2>/dev/null || true
+	@cp README.md LICENSE dist/redfire-libs-$(shell date +%Y%m%d)/ 2>/dev/null || true
+	@tar -czf dist/redfire-libs-$(shell date +%Y%m%d).tar.gz -C dist redfire-libs-$(shell date +%Y%m%d)
+	@echo "$(GREEN)[SUCCESS]$(NC) Package created: dist/redfire-libs-$(shell date +%Y%m%d).tar.gz"

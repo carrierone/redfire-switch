@@ -1,0 +1,18 @@
+# Systemd tmpfiles configuration for Redfire Switch
+# This file creates runtime directories and sets permissions
+
+# Runtime directory
+d /run/redfire-switch 0755 redfire redfire -
+
+# Log directory
+d /var/log/redfire-switch 0750 redfire redfire -
+
+# Data directory 
+d /var/lib/redfire-switch 0750 redfire redfire -
+d /var/lib/redfire-switch/web 0750 redfire-web redfire -
+d /var/lib/redfire-switch/recordings 0750 redfire redfire -
+d /var/lib/redfire-switch/cdr 0750 redfire redfire -
+d /var/lib/redfire-switch/session-store 0750 redfire redfire -
+
+# Configuration directory permissions
+z /etc/redfire-switch 0750 root redfire -

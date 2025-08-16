@@ -1,0 +1,19 @@
+INVITE sip:+15559876543@127.0.0.1 SIP/2.0
+Via: SIP/2.0/UDP 127.0.0.1:12345;branch=z9hG4bK-sipi-test
+From: <sip:+15551234567@127.0.0.1:12345>;tag=sipi-test
+To: <sip:+15559876543@127.0.0.1>
+Call-ID: sipi-test-123
+CSeq: 1 INVITE
+Contact: <sip:+15551234567@127.0.0.1:12345>
+User-Agent: SIP-I-Tester/1.0
+Content-Type: application/sdp
+Content-Length: 150
+
+v=0
+o=sipi 12345 67890 IN IP4 127.0.0.1
+s=SIP-I Test Call
+c=IN IP4 127.0.0.1
+t=0 0
+m=audio 8000 RTP/AVP 0 8
+a=rtpmap:0 PCMU/8000
+a=rtpmap:8 PCMA/8000

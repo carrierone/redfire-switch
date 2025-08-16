@@ -1,0 +1,31 @@
+@startuml
+!theme plain
+title Basic SIP Call
+
+participant "User Agent A" as UserAgentA
+participant "Redfire Switch" as RedfireSwitch
+participant "User Agent B" as UserAgentB
+
+UserAgentA -> RedfireSwitch : INVITE
+note over UserAgentA,RedfireSwitch : Initial call setup
+RedfireSwitch --> UserAgentA : 100 Trying
+note over RedfireSwitch,UserAgentA : Call processing
+RedfireSwitch -> UserAgentB : INVITE
+note over RedfireSwitch,UserAgentB : Forward call to destination
+UserAgentB --> RedfireSwitch : 200 OK
+note over UserAgentB,RedfireSwitch : Call answered
+RedfireSwitch --> UserAgentA : 200 OK
+note over RedfireSwitch,UserAgentA : Forward answer
+UserAgentA -> RedfireSwitch : ACK
+note over UserAgentA,RedfireSwitch : Acknowledge call setup
+RedfireSwitch -> UserAgentB : ACK
+note over RedfireSwitch,UserAgentB : Forward acknowledgment
+UserAgentA -> RedfireSwitch : BYE
+note over UserAgentA,RedfireSwitch : End call
+RedfireSwitch -> UserAgentB : BYE
+note over RedfireSwitch,UserAgentB : Forward call termination
+UserAgentB --> RedfireSwitch : 200 OK
+note over UserAgentB,RedfireSwitch : Confirm termination
+RedfireSwitch --> UserAgentA : 200 OK
+note over RedfireSwitch,UserAgentA : Forward confirmation
+@enduml

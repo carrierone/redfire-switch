@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<include>
+  <context name="techprefix">
+    
+    <!-- Tech Prefix Testing Context -->
+    
+    <!-- Test *1001* prefix -->
+    <extension name="tech-prefix-1001">
+      <condition field="destination_number" expression="^\*1001\*([2-9][0-8][0-9][2-9][0-9]{6})$">
+        <action application="answer"/>
+        <action application="sleep" data="1000"/>
+        <action application="playback" data="ivr/ivr-you_have_reached.wav"/>
+        <action application="say" data="en number pronounced $1"/>
+        <action application="playback" data="ivr/ivr-with_tech_prefix.wav"/>
+        <action application="say" data="en name_spelled 1001"/>
+        <action application="sleep" data="2000"/>
+        <action application="hangup"/>
+      </condition>
+    </extension>
+
+    <!-- Test 1001* prefix (without leading *) -->
+    <extension name="tech-prefix-1001-alt">
+      <condition field="destination_number" expression="^1001\*([2-9][0-8][0-9][2-9][0-9]{6})$">
+        <action application="answer"/>
+        <action application="sleep" data="1000"/>
+        <action application="playback" data="ivr/ivr-you_have_reached.wav"/>
+        <action application="say" data="en number pronounced $1"/>
+        <action application="playback" data="ivr/ivr-with_tech_prefix.wav"/>
+        <action application="say" data="en name_spelled 1001"/>
+        <action application="sleep" data="2000"/>
+        <action application="hangup"/>
+      </condition>
+    </extension>
+
+    <!-- Test +1001 prefix -->
+    <extension name="tech-prefix-plus-1001">
+      <condition field="destination_number" expression="^\+1001([2-9][0-8][0-9][2-9][0-9]{6})$">
+        <action application="answer"/>
+        <action application="sleep" data="1000"/>
+        <action application="playback" data="ivr/ivr-you_have_reached.wav"/>
+        <action application="say" data="en number pronounced $1"/>
+        <action application="playback" data="ivr/ivr-with_tech_prefix.wav"/>
+        <action application="say" data="en name_spelled plus-1001"/>
+        <action application="sleep" data="2000"/>
+        <action application="hangup"/>
+      </condition>
+    </extension>
+
+    <!-- Test other tech prefixes -->
+    <extension name="tech-prefix-2002">
+      <condition field="destination_number" expression="^\*2002\*([2-9][0-8][0-9][2-9][0-9]{6})$">
+        <action application="answer"/>
+        <action application="sleep" data="1000"/>
+        <action application="playback" data="ivr/ivr-you_have_reached.wav"/>
+        <action application="say" data="en number pronounced $1"/>
+        <action application="playback" data="ivr/ivr-with_tech_prefix.wav"/>
+        <action application="say" data="en name_spelled 2002"/>
+        <action application="sleep" data="2000"/>
+        <action application="hangup"/>
+      </condition>
+    </extension>
+
+    <!-- Default tech prefix handler -->
+    <extension name="tech-prefix-default">
+      <condition field="destination_number" expression="^(.+)$">
+        <action application="answer"/>
+        <action application="sleep" data="1000"/>
+        <action application="playbook" data="ivr/ivr-tech_prefix_received.wav"/>
+        <action application="say" data="en name_spelled ${destination_number}"/>
+        <action application="sleep" data="2000"/>
+        <action application="hangup"/>
+      </condition>
+    </extension>
+
+  </context>
+</include>

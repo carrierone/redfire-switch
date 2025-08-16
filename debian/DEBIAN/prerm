@@ -1,0 +1,50 @@
+#!/bin/bash
+set -e
+
+# Pre-removal script for Redfire Switch
+
+case "$1" in
+    remove|upgrade|deconfigure)
+        echo "Stopping Redfire Switch services..."
+
+        if [ -x /bin/systemctl ]; then
+            # Stop all related services
+            for service in redfire-switch-web redfire-switch-bgp redfire-switch; do
+                if systemctl is-active --quiet "$service.service" 2>/dev/null; then
+                    echo "Stopping $service..."
+                    systemctl stop "$service.service" || true
+                fi
+            done
+
+            # Wait for graceful shutdown
+            sleep 2
+
+            # Disable services on removal (not upgrade)
+            if [ "$1" = "remove" ]; then
+                for service in redfire-switch-web redfire-switch-bgp redfire-switch; do
+                    if systemctl is-enabled --quiet "$service.service" 2>/dev/null; then
+                        echo "Disabling $service..."
+                        systemctl disable "$service.service" || true
+                    fi
+                done
+            fi
+        fi
+
+        # Kill any remaining processes
+        if pgrep -f redfire-switch >/dev/null 2>&1; then
+            echo "Terminating remaining Redfire Switch processes..."
+            pkill -TERM -f redfire-switch || true
+            sleep 5
+            pkill -KILL -f redfire-switch || true
+        fi
+
+        ;;
+    failed-upgrade)
+        ;;
+    *)
+        echo "prerm called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

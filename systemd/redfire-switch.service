@@ -1,0 +1,62 @@
+[Unit]
+Description=Redfire Switch - High-Performance SIP Switch
+Documentation=https://github.com/carrierone/redfire-switch
+After=network-online.target postgresql.service redis.service
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=notify
+ExecStartPre=/usr/bin/redfire-switch check-config
+ExecStart=/usr/bin/redfire-switch start --config /etc/redfire-switch/config.toml
+ExecReload=/bin/kill -HUP $MAINPID
+ExecStop=/usr/bin/redfire-switch stop --graceful
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=redfire-switch
+
+# Security hardening
+User=redfire
+Group=redfire
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/redfire-switch /var/log/redfire-switch /run/redfire-switch
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RemoveIPC=true
+PrivateMounts=true
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# Resource limits
+LimitNOFILE=65535
+LimitNPROC=32768
+LimitCORE=infinity
+TasksMax=4096
+MemoryMax=8G
+CPUQuota=800%
+
+# Environment
+Environment="RUST_LOG=info"
+Environment="RUST_BACKTRACE=1"
+EnvironmentFile=-/etc/redfire-switch/environment
+
+# Capabilities for binding to privileged ports (SIP 5060/5061)
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+# Watchdog
+WatchdogSec=30s
+
+[Install]
+WantedBy=multi-user.target

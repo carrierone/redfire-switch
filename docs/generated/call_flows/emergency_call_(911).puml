@@ -1,0 +1,16 @@
+@startuml
+!theme plain
+title Emergency Call (911)
+
+participant "Emergency Caller" as EmergencyCaller
+participant "Redfire Switch" as RedfireSwitch
+participant "Emergency Router" as EmergencyRouter
+participant "PSAP" as PSAP
+
+EmergencyCaller -> RedfireSwitch : INVITE 911
+note over EmergencyCaller,RedfireSwitch : Emergency call
+RedfireSwitch ->> EmergencyRouter : Route to Originating DID Provider
+note over RedfireSwitch,EmergencyRouter : Determine routing based on DID
+RedfireSwitch -> PSAP : INVITE 911
+note over RedfireSwitch,PSAP : Route to Public Safety
+@enduml

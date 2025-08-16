@@ -1,0 +1,40 @@
+[package]
+name = "redfire-sip-stack"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "Complete SIP, SIP-I, and SIP-T protocol stack implementation"
+authors = ["Carrier One Inc", "Redfire Switch Contributors"]
+repository = "https://github.com/carrierone/redfire-switch"
+keywords = ["sip", "voip", "telecom", "isup", "ss7"]
+categories = ["network-programming", "parser-implementations"]
+
+[dependencies]
+anyhow = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+tracing = "0.1"
+nom = "7.1"
+bitflags = "2.4"
+hex = "0.4"
+uuid = { version = "1.0", features = ["v4"] }
+dashmap = "5.5"
+colored = "2.1"
+rsip = "0.4"
+base64 = "0.21"
+sha2 = "0.10"
+md5 = "0.7"
+regex = "1.10"
+termion = "2.0"
+ipnet = "2.9"
+rand = "0.8"
+tokio-rustls = "0.24"
+rustls = "0.21"
+chrono = { version = "0.4", features = ["serde"] }
+
+[lib]
+name = "redfire_sip_stack"
+path = "src/lib.rs"
+
+[dev-dependencies]
+tokio-test = "0.4"

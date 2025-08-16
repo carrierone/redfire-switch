@@ -1,0 +1,178 @@
+version: '3.8'
+
+services:
+  # Asterisk SIP Server
+  asterisk:
+    image: andrius/asterisk:18-current
+    container_name: redfire-test-asterisk
+    hostname: asterisk-test
+    ports:
+      - "5061:5060/udp"
+      - "5061:5060/tcp"  
+      - "10000-10100:10000-10100/udp"  # RTP range
+    volumes:
+      - ../asterisk/sip.conf:/etc/asterisk/sip.conf:ro
+      - ../asterisk/pjsip.conf:/etc/asterisk/pjsip.conf:ro
+      - ../asterisk/extensions.conf:/etc/asterisk/extensions.conf:ro
+      - ../logs/asterisk:/var/log/asterisk
+      - ../recordings/asterisk:/var/lib/asterisk/sounds/custom
+    environment:
+      - ASTERISK_UID=1001
+      - ASTERISK_GID=1001
+    restart: unless-stopped
+    networks:
+      redfire-test:
+        ipv4_address: 172.20.0.10
+    command: ["asterisk", "-f", "-vvvvv"]
+
+  # FreeSWITCH SIP Server  
+  freeswitch:
+    image: freeswitch/freeswitch:v1.10.7-release
+    container_name: redfire-test-freeswitch
+    hostname: freeswitch-test
+    ports:
+      - "5063:5063/udp"
+      - "5064:5064/udp"
+      - "5065:5065/udp"
+      - "5066:5066/udp"
+      - "20000-20500:20000-20500/udp"  # RTP range
+    volumes:
+      - ../freeswitch/sofia.conf.xml:/etc/freeswitch/autoload_configs/sofia.conf.xml:ro
+      - ../freeswitch/dialplan/public.xml:/etc/freeswitch/dialplan/public.xml:ro
+      - ../freeswitch/dialplan/techprefix.xml:/etc/freeswitch/dialplan/techprefix.xml:ro
+      - ../logs/freeswitch:/var/log/freeswitch
+      - ../recordings/freeswitch:/var/lib/freeswitch/recordings
+    restart: unless-stopped
+    networks:
+      redfire-test:
+        ipv4_address: 172.20.0.11
+    command: ["freeswitch", "-nonat", "-nocal", "-nort", "-c"]
+
+  # SIPp Load Testing Container
+  sipp:
+    image: ctaloi/sipp:latest
+    container_name: redfire-test-sipp
+    hostname: sipp-test
+    volumes:
+      - ../pjsip/scenarios:/scenarios:ro
+      - ../logs/pjsip:/logs
+      - ../scripts:/scripts:ro
+    working_dir: /scenarios
+    networks:
+      redfire-test:
+        ipv4_address: 172.20.0.12
+    profiles:
+      - testing
+    command: ["sleep", "infinity"]  # Keep container running for manual tests
+
+  # PJSUA Test Client
+  pjsua:
+    image: ubuntu:20.04
+    container_name: redfire-test-pjsua
+    hostname: pjsua-test
+    volumes:
+      - ../pjsip/config:/config:ro
+      - ../sounds:/sounds:ro
+      - ../recordings/pjsip:/recordings
+      - ../logs/pjsip:/logs
+    working_dir: /config
+    networks:
+      redfire-test:
+        ipv4_address: 172.20.0.13
+    profiles:
+      - testing
+    environment:
+      - DEBIAN_FRONTEND=noninteractive
+    command: |
+      bash -c "
+        apt-get update && 
+        apt-get install -y pjsip-tools sox libsox-fmt-all && 
+        tail -f /dev/null
+      "
+
+  # Test Results Web Server
+  nginx:
+    image: nginx:alpine
+    container_name: redfire-test-nginx
+    hostname: nginx-reports
+    ports:
+      - "8080:80"
+    volumes:
+      - ../logs/reports:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      redfire-test:
+        ipv4_address: 172.20.0.14
+    profiles:
+      - reports
+
+  # Packet Capture and Analysis
+  tcpdump:
+    image: nicolaka/netshoot
+    container_name: redfire-test-capture
+    hostname: packet-capture
+    volumes:
+      - ../logs:/logs
+    networks:
+      redfire-test:
+        ipv4_address: 172.20.0.15
+    profiles:
+      - monitoring
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    command: ["sleep", "infinity"]
+
+  # Monitoring and Metrics
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: redfire-test-prometheus  
+    hostname: prometheus-monitoring
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      redfire-test:
+        ipv4_address: 172.20.0.16
+    profiles:
+      - monitoring
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+
+  # Grafana Dashboard
+  grafana:
+    image: grafana/grafana:latest
+    container_name: redfire-test-grafana
+    hostname: grafana-dashboard
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      redfire-test:
+        ipv4_address: 172.20.0.17
+    profiles:
+      - monitoring
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=redfire123
+
+volumes:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  redfire-test:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1

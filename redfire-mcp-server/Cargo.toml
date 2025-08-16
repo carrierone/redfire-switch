@@ -1,0 +1,43 @@
+[package]
+name = "redfire-mcp-server"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "MCP (Model Context Protocol) server for Redfire Switch AI integration"
+authors = ["Carrier One Inc", "Redfire Switch Contributors"]
+repository = "https://github.com/carrierone/redfire-switch"
+keywords = ["mcp", "ai", "sip", "telecom", "codec"]
+categories = ["network-programming", "development-tools"]
+
+[dependencies]
+# Core dependencies
+tokio = { version = "1.0", features = ["full"] }
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+# HTTP server for MCP protocol
+warp = "0.3"
+async-trait = "0.1"
+
+# Redfire libraries
+redfire-codec-engine = { path = "../redfire-codec-engine" }
+redfire-sip-stack = { path = "../redfire-sip-stack" }
+
+# Utilities
+uuid = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4.0", features = ["derive"] }
+base64 = "0.21"
+
+[features]
+default = []
+cuda = ["redfire-codec-engine/cuda"]
+rocm = ["redfire-codec-engine/rocm"]
+gpu = ["cuda"]
+
+[[bin]]
+name = "redfire-mcp"
+path = "src/main.rs"

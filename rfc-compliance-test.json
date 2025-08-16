@@ -1,0 +1,279 @@
+{
+  "rfc_compliance_tests": {
+    "rfc_3261_core_sip": {
+      "title": "RFC 3261 - Session Initiation Protocol (SIP)",
+      "priority": "CRITICAL",
+      "description": "Core SIP specification - fundamental for any SIP implementation",
+      "requirements": [
+        "INVITE method support",
+        "REGISTER method support", 
+        "OPTIONS method support",
+        "ACK method support",
+        "BYE method support",
+        "CANCEL method support",
+        "Response code handling (1xx, 2xx, 3xx, 4xx, 5xx, 6xx)",
+        "Via header processing",
+        "From/To header processing",
+        "Call-ID generation and tracking",
+        "CSeq numbering",
+        "Contact header handling",
+        "Content-Length validation",
+        "SDP body processing",
+        "Transaction layer",
+        "Transport layer (UDP/TCP/TLS)"
+      ],
+      "test_scenarios": [
+        "basic_invite_flow",
+        "registration_test", 
+        "options_ping",
+        "call_termination",
+        "invalid_message_handling",
+        "header_validation",
+        "response_code_generation"
+      ]
+    },
+    "rfc_3262_prack": {
+      "title": "RFC 3262 - Reliability of Provisional Responses in SIP (PRACK)",
+      "priority": "HIGH",
+      "description": "Critical for carrier networks requiring reliable delivery",
+      "requirements": [
+        "PRACK method support",
+        "RSeq header generation",
+        "RAck header processing", 
+        "Provisional response reliability",
+        "100rel support in Require/Supported headers",
+        "Retransmission handling"
+      ],
+      "test_scenarios": [
+        "prack_180_ringing",
+        "prack_183_session_progress",
+        "prack_timeout_handling",
+        "prack_without_100rel",
+        "prack_sequence_validation"
+      ]
+    },
+    "rfc_3263_dns_srv": {
+      "title": "RFC 3263 - Locating SIP Servers",
+      "priority": "MEDIUM", 
+      "description": "DNS SRV record resolution for SIP URIs",
+      "requirements": [
+        "DNS SRV record lookup",
+        "NAPTR record processing",
+        "Transport protocol selection",
+        "Load balancing",
+        "Failover mechanisms"
+      ],
+      "test_scenarios": [
+        "srv_record_lookup",
+        "naptr_resolution",
+        "transport_selection",
+        "failover_testing"
+      ]
+    },
+    "rfc_3264_sdp_offer_answer": {
+      "title": "RFC 3264 - An Offer/Answer Model with SDP",
+      "priority": "HIGH",
+      "description": "SDP negotiation for media sessions",
+      "requirements": [
+        "SDP offer generation",
+        "SDP answer processing",
+        "Media format negotiation",
+        "Hold/resume support",
+        "Direction attributes (sendrecv, sendonly, recvonly, inactive)"
+      ],
+      "test_scenarios": [
+        "basic_offer_answer",
+        "codec_negotiation",
+        "hold_resume",
+        "direction_attribute_handling"
+      ]
+    },
+    "rfc_3265_event_notification": {
+      "title": "RFC 3265 - Session Initiation Protocol (SIP)-Specific Event Notification",
+      "priority": "MEDIUM",
+      "description": "SUBSCRIBE/NOTIFY framework",
+      "requirements": [
+        "SUBSCRIBE method support",
+        "NOTIFY method support",
+        "Event header processing",
+        "Subscription state management",
+        "Expires header handling"
+      ],
+      "test_scenarios": [
+        "basic_subscription",
+        "notify_delivery",
+        "subscription_expiry",
+        "subscription_termination"
+      ]
+    },
+    "rfc_3311_update": {
+      "title": "RFC 3311 - The Session Initiation Protocol (SIP) UPDATE Method",
+      "priority": "MEDIUM",
+      "description": "Session parameter updates without re-INVITE",
+      "requirements": [
+        "UPDATE method support",
+        "Session modification",
+        "Precondition updates"
+      ],
+      "test_scenarios": [
+        "session_update",
+        "precondition_update",
+        "update_rejection"
+      ]
+    },
+    "rfc_3326_reason_header": {
+      "title": "RFC 3326 - The Reason Header Field for SIP",
+      "priority": "HIGH",
+      "description": "Call termination reason codes - critical for Class 4",
+      "requirements": [
+        "Reason header generation",
+        "Q.850 cause codes",
+        "SIP response code mapping",
+        "Multiple reason values",
+        "ISUP cause code support"
+      ],
+      "test_scenarios": [
+        "reason_header_generation",
+        "q850_cause_codes",
+        "isup_cause_mapping",
+        "multiple_reasons"
+      ]
+    },
+    "rfc_3398_isup_sip": {
+      "title": "RFC 3398 - ISUP to SIP Interworking",
+      "priority": "CRITICAL",
+      "description": "Essential for telco interconnection",
+      "requirements": [
+        "ISUP parameter mapping",
+        "Calling party number translation",
+        "Called party number translation",
+        "Release cause mapping",
+        "Progress indication mapping",
+        "Generic number mapping"
+      ],
+      "test_scenarios": [
+        "isup_iam_to_invite",
+        "isup_anm_to_200ok",
+        "isup_rel_to_bye",
+        "calling_party_mapping",
+        "release_cause_mapping"
+      ]
+    },
+    "rfc_3515_refer": {
+      "title": "RFC 3515 - The Session Initiation Protocol (SIP) REFER Method",
+      "priority": "MEDIUM",
+      "description": "Call transfer functionality",
+      "requirements": [
+        "REFER method support",
+        "Refer-To header processing",
+        "Replaces header support",
+        "NOTIFY with refer event",
+        "Transfer completion notification"
+      ],
+      "test_scenarios": [
+        "blind_transfer",
+        "attended_transfer",
+        "refer_notification",
+        "transfer_failure"
+      ]
+    },
+    "rfc_3581_rport": {
+      "title": "RFC 3581 - Symmetric Response Routing",
+      "priority": "HIGH",
+      "description": "NAT traversal - important for carrier edge",
+      "requirements": [
+        "rport parameter support",
+        "Symmetric response routing",
+        "NAT detection",
+        "Via header modification"
+      ],
+      "test_scenarios": [
+        "rport_processing",
+        "symmetric_routing",
+        "nat_detection"
+      ]
+    },
+    "rfc_4566_sdp": {
+      "title": "RFC 4566 - Session Description Protocol (SDP)",
+      "priority": "HIGH",
+      "description": "Media description and negotiation",
+      "requirements": [
+        "SDP syntax validation",
+        "Media line processing",
+        "Attribute handling",
+        "Connection information",
+        "Timing information"
+      ],
+      "test_scenarios": [
+        "sdp_validation",
+        "media_processing",
+        "attribute_handling",
+        "malformed_sdp"
+      ]
+    },
+    "rfc_6026_transaction_handling": {
+      "title": "RFC 6026 - Correct Transaction Handling for 2xx Responses to INVITE",
+      "priority": "HIGH",
+      "description": "Proper INVITE transaction handling",
+      "requirements": [
+        "Multiple 2xx response handling",
+        "ACK routing for each 2xx",
+        "Transaction termination",
+        "Dialog creation"
+      ],
+      "test_scenarios": [
+        "multiple_2xx_responses",
+        "ack_routing",
+        "transaction_cleanup"
+      ]
+    },
+    "rfc_8224_stir": {
+      "title": "RFC 8224 - Authenticated Identity Management in SIP (STIR)",
+      "priority": "CRITICAL",
+      "description": "Call authentication - mandatory for US carriers",
+      "requirements": [
+        "Identity header creation",
+        "PASSporT token generation",
+        "Certificate validation",
+        "Signature verification",
+        "Date/freshness validation"
+      ],
+      "test_scenarios": [
+        "identity_header_creation",
+        "passport_validation",
+        "certificate_chain_validation",
+        "signature_verification",
+        "freshness_check"
+      ]
+    },
+    "rfc_8225_shaken": {
+      "title": "RFC 8225 - PASSporT Extension for SHAKEN",
+      "priority": "CRITICAL", 
+      "description": "SHAKEN implementation for North American carriers",
+      "requirements": [
+        "Attestation level assignment",
+        "Originating service provider identification",
+        "Destination verification",
+        "PASSporT claims validation"
+      ],
+      "test_scenarios": [
+        "attestation_level_a",
+        "attestation_level_b", 
+        "attestation_level_c",
+        "origid_validation",
+        "dest_validation"
+      ]
+    }
+  },
+  "test_configuration": {
+    "test_environment": "automated",
+    "report_format": "json",
+    "compliance_threshold": {
+      "critical": 100,
+      "high": 95,
+      "medium": 80
+    },
+    "test_timeout": 30,
+    "retry_count": 3
+  }
+}

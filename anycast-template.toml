@@ -1,0 +1,209 @@
+# Redfire Switch Anycast Configuration Template
+# Copy to /etc/redfire-switch/anycast.toml and customize for your cluster
+
+# Enable or disable anycast clustering
+enabled = true
+
+# Node configuration for this instance
+[node]
+node_id = "switch-1"                    # Unique identifier for this node
+name = "Primary SIP Switch"             # Human-readable name
+local_ip = "10.0.1.10"                  # Local IP for cluster communication
+anycast_ip = "203.0.113.100"            # Shared anycast IP (all nodes bind to this)
+priority = 100                          # Priority for load balancing (1-255)
+capacity = 10000                        # Maximum concurrent sessions
+region = "us-east-1"                    # Geographic region
+zone = "us-east-1a"                     # Availability zone
+
+# Custom metadata for this node
+[node.metadata]
+datacenter = "dc1"
+rack = "r1"
+environment = "production"
+
+# Session storage configuration for distributed state
+[session_store]
+store_type = "Redis"                    # Redis, PostgreSQL, Memory
+
+# Redis configuration (recommended for production)
+[session_store.connection]
+urls = [
+    "redis://10.0.1.20:6379/0",       # Primary Redis node
+    "redis://10.0.1.21:6379/0",       # Redis cluster nodes (optional)
+    "redis://10.0.1.22:6379/0"
+]
+pool_size = 10                          # Connection pool size
+timeout_ms = 5000                       # Connection timeout
+username = "redfire"                    # Redis username (Redis 6+)
+password = "redis_password"             # Redis password
+tls = false                             # Enable TLS for Redis connections
+
+# Session storage tuning
+ttl = 3600                              # Session TTL in seconds (1 hour)
+compression = "Lz4"                     # None, Gzip, Lz4, Zstd
+batch_size = 100                        # Batch operations for performance
+
+# Alternative: PostgreSQL for persistence
+# [session_store]
+# store_type = "PostgreSQL"
+# [session_store.connection]
+# urls = ["postgresql://redfire:password@10.0.1.30:5432/redfire_switch"]
+# pool_size = 20
+# timeout_ms = 10000
+
+# Alternative: Memory store for testing
+# [session_store]
+# store_type = "Memory"
+
+# Cluster membership management
+[cluster]
+protocol = "Gossip"                     # Gossip, Static
+
+# Gossip protocol configuration (SWIM-based)
+[cluster.gossip]
+bind_addr = "0.0.0.0:7946"              # Gossip bind address
+seeds = [                               # Seed nodes for cluster discovery
+    "10.0.1.11:7946",                  # Other cluster nodes
+    "10.0.1.12:7946",
+    "10.0.1.13:7946"
+]
+interval_ms = 1000                      # Gossip interval in milliseconds
+node_timeout_ms = 10000                 # Node timeout (mark as down)
+suspicion_timeout_ms = 5000             # Suspicion timeout (mark as suspected)
+
+# Alternative: Static membership (no discovery)
+# [cluster]
+# protocol = "Static"
+# [[cluster.static_members]]
+# node_id = "switch-2"
+# address = "10.0.1.11:7946"
+# priority = 90
+# 
+# [[cluster.static_members]]
+# node_id = "switch-3"
+# address = "10.0.1.12:7946"
+# priority = 80
+
+# Health monitoring configuration
+[health]
+enabled = true
+check_interval_ms = 30000               # Health check interval (30 seconds)
+check_timeout_ms = 5000                 # Health check timeout
+failure_threshold = 3                   # Failures before marking unhealthy
+recovery_threshold = 2                  # Successes before marking healthy
+
+# Session synchronization settings
+[session_sync]
+enabled = true
+sync_interval_ms = 5000                 # Sync interval (5 seconds)
+sync_types = [                          # Types of sessions to synchronize
+    "ActiveCalls",                      # Active call sessions
+    "Registrations"                     # SIP registrations
+    # "Subscriptions",                  # SIP subscriptions (optional)
+    # "Dialogs"                         # SIP dialogs (optional)
+]
+conflict_resolution = "LastWrite"       # LastWrite, FirstWrite, Merge
+
+# Time drift monitoring configuration
+[time_sync]
+enabled = true                           # Enable time drift monitoring
+check_interval_ms = 60000               # Check interval (60 seconds)
+warning_threshold_ms = 15               # Warn when drift > 15ms (call timing)
+critical_threshold_ms = 1000            # Critical when drift > 1000ms (CDR accuracy)
+warn_on_drift = true                    # Send warnings to administrators
+log_drift_details = false              # Log detailed drift information
+
+# Important Notes:
+# ================
+#
+# 6. TIME SYNCHRONIZATION:
+#    - Install and configure ntpd or chronyd on ALL cluster nodes
+#    - Use the same NTP servers across all nodes for consistency
+#    - Monitor time drift between nodes as it affects call timing
+#    - Example NTP configuration:
+#      server pool.ntp.org
+#      server time.google.com
+#      driftfile /var/lib/ntp/drift
+#
+# 
+# 1. ANYCAST IP CONFIGURATION:
+#    - All nodes in the cluster should use the same anycast_ip
+#    - The anycast IP should be configured on a loopback interface
+#    - Example: ip addr add 203.0.113.100/32 dev lo
+#    - Network routers handle BGP announcements, not the switches
+#
+# 2. NETWORK REQUIREMENTS:
+#    - Your network infrastructure must announce the anycast IP via BGP
+#    - Configure your routers/BGP speakers to advertise the anycast prefix
+#    - Example router config:
+#      network 203.0.113.100/32
+#      neighbor 10.0.1.1 advertise 203.0.113.100/32
+#
+# 3. SESSION SYNCHRONIZATION:
+#    - All call state is shared across cluster nodes
+#    - If one node fails, others can continue handling existing calls
+#    - Sessions are automatically cleaned up when they expire
+#
+# 4. LOAD BALANCING:
+#    - Network-level load balancing via anycast routing
+#    - Calls are distributed based on network path costs
+#    - No application-level load balancing needed
+#
+# 5. HEALTH MONITORING:
+#    - Unhealthy nodes should stop announcing the anycast route
+#    - This requires integration with your BGP infrastructure
+#    - Consider using route health checks in your BGP configuration
+
+# Example Linux network configuration:
+# ====================================
+# 
+# 1. Add anycast IP to loopback:
+#    ip addr add 203.0.113.100/32 dev lo
+#
+# 2. Configure routing (example with BIRD):
+#    # /etc/bird/bird.conf
+#    protocol static anycast_routes {
+#        route 203.0.113.100/32 blackhole;
+#        export all;
+#    }
+#
+# 3. Health-based route withdrawal:
+#    # Remove route when unhealthy
+#    ip route del 203.0.113.100/32 dev lo
+#    # Add route when healthy
+#    ip route add 203.0.113.100/32 dev lo
+
+# Example systemctl integration:
+# ==============================
+#
+# Create a script that manages the anycast route based on health:
+# /usr/local/bin/anycast-health-check:
+#
+# #!/bin/bash
+# ANYCAST_IP="203.0.113.100/32"
+# 
+# if redfire-switch anycast health; then
+#     # Add route if healthy
+#     ip route replace $ANYCAST_IP dev lo 2>/dev/null || true
+# else
+#     # Remove route if unhealthy  
+#     ip route del $ANYCAST_IP dev lo 2>/dev/null || true
+# fi
+#
+# Run this script periodically via cron or systemd timer.
+
+# Security considerations:
+# =======================
+# 
+# 1. Encrypt cluster communication:
+#    - Use TLS for Redis connections
+#    - Consider VPN or encrypted overlay for gossip traffic
+#
+# 2. Authentication:
+#    - Use Redis AUTH or PostgreSQL authentication
+#    - Restrict network access to cluster nodes only
+#
+# 3. Firewall rules:
+#    - Allow cluster gossip traffic (port 7946/udp)
+#    - Allow session store traffic (Redis/PostgreSQL ports)
+#    - Restrict access to cluster nodes only

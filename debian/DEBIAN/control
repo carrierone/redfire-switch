@@ -1,0 +1,27 @@
+Package: redfire-switch
+Version: 0.1.0-1
+Section: comm
+Priority: optional
+Architecture: amd64
+Essential: no
+Depends: libc6 (>= 2.31), libssl3 | libssl1.1, libpq5, adduser, systemd
+Recommends: redis-server, postgresql, exabgp, bird2
+Suggests: nginx, certbot, fail2ban
+Installed-Size: 50000
+Maintainer: Carrier One Inc <engineering@carrierone.com>
+Description: High-Performance SIP Switch with BGP Anycast Clustering
+ Redfire Switch is a carrier-grade SIP switch implementation written in Rust
+ that provides high-performance call routing, billing, and fraud detection.
+ .
+ Features include:
+  * High-performance SIP stack with RFC 3261 compliance
+  * Advanced routing with LCR, quality metrics, and failover
+  * Real-time billing engine with CDR generation
+  * BGP Anycast clustering for geographic distribution
+  * STIR/SHAKEN fraud detection and call attestation
+  * Comprehensive fraud protection and rate limiting
+  * Web-based management interface
+  * Enterprise-grade security and monitoring
+ .
+ This package provides the complete Redfire Switch system including
+ systemd service files, configuration templates, and management tools.

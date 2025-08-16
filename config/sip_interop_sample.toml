@@ -1,0 +1,359 @@
+# Redfire Switch - SIP Interoperability Sample Configuration
+# Comprehensive configuration for Class 4 switch interoperability
+# with SOFIA SIP, PJSIP, Asterisk, and FreeSWITCH
+
+[sip_interop]
+# Enable SIP interoperability layer
+enabled = true
+# Enable strict RFC compliance mode
+strict_rfc_compliance = true
+# Enable compatibility quirks for specific stacks
+enable_compatibility_quirks = true
+
+# Supported SIP extensions
+supported_extensions = [
+    "SessionTimers",    # RFC 4028
+    "Prack",           # RFC 3262
+    "Update",          # RFC 3311
+    "Refer",           # RFC 3515
+    "Message",         # RFC 3428
+    "Publish",         # RFC 3903
+    "Replaces",        # RFC 3891
+    "ReasonHeader",    # RFC 3326
+    "CallerPreferences", # RFC 3841
+    "ConnectedIdentity", # RFC 4916
+    "DialogEvents",    # RFC 4235
+    "StirShaken"       # RFC 8224/8225
+]
+
+# Session Timer Configuration (RFC 4028)
+[sip_interop.session_timers]
+enabled = true
+session_expires = 1800     # 30 minutes
+min_se = 90               # 90 seconds minimum
+refresher = "uas"         # User Agent Server
+add_timer_headers = true
+
+# PRACK Configuration (RFC 3262)
+[sip_interop.prack_config]
+enabled = true
+require_prack = false     # Don't force PRACK
+supported_options = ["100rel"]
+
+# Dialog Events Configuration (RFC 4235)
+[sip_interop.dialog_events]
+enabled = true
+default_expires = 3600    # 1 hour
+max_expires = 86400       # 24 hours
+
+# Security Configuration
+[sip_interop.security_config]
+enable_tls = true
+enable_srtp = true
+require_auth = true
+auth_methods = ["Digest", "Bearer"]
+enable_stir_shaken = true
+
+# SOFIA SIP (FreeSWITCH) Stack Configuration
+[sip_interop.stack_configs.sofia]
+user_agent_patterns = ["sofia", "FreeSWITCH"]
+quirks = [
+    "RequireContactInRegister",
+    "StrictRouteHandling",
+    "PreferIpv4"
+]
+supported_methods = [
+    "INVITE", "ACK", "CANCEL", "BYE", "REGISTER", "OPTIONS",
+    "INFO", "UPDATE", "REFER", "MESSAGE", "SUBSCRIBE", "NOTIFY",
+    "PUBLISH", "PRACK"
+]
+preferred_transports = ["UDP", "TCP", "TLS"]
+
+# SOFIA SIP specific headers
+[sip_interop.stack_configs.sofia.custom_headers]
+"X-FS-Support" = "update_display,send_info"
+
+# SOFIA SDP preferences
+[sip_interop.stack_configs.sofia.sdp_preferences]
+codec_priority = ["PCMU", "PCMA", "G729", "G722"]
+force_codec_order = true
+enable_bandwidth = true
+preferred_ptime = [20, 30]
+multi_media_lines = true
+
+# PJSIP Stack Configuration
+[sip_interop.stack_configs.pjsip]
+user_agent_patterns = ["PJSUA", "pjsip"]
+quirks = [
+    "FlexibleContactHandling",
+    "PermissiveViaParsing",
+    "SupportCompactHeaders"
+]
+supported_methods = [
+    "INVITE", "ACK", "CANCEL", "BYE", "REGISTER", "OPTIONS",
+    "INFO", "UPDATE", "REFER", "MESSAGE", "SUBSCRIBE", "NOTIFY",
+    "PRACK"
+]
+preferred_transports = ["UDP", "TCP", "TLS"]
+
+# PJSIP SDP preferences
+[sip_interop.stack_configs.pjsip.sdp_preferences]
+codec_priority = ["PCMU", "PCMA", "G722"]
+force_codec_order = false
+enable_bandwidth = true
+preferred_ptime = [20]
+multi_media_lines = true
+
+# Asterisk Stack Configuration
+[sip_interop.stack_configs.asterisk]
+user_agent_patterns = ["Asterisk"]
+quirks = [
+    "AsteriskSessionTimers",
+    "FlexibleSdpParsing",
+    "AsteriskAuthHandling",
+    "SupportCompactHeaders"
+]
+supported_methods = [
+    "INVITE", "ACK", "CANCEL", "BYE", "REGISTER", "OPTIONS",
+    "INFO", "UPDATE", "REFER", "MESSAGE", "SUBSCRIBE", "NOTIFY"
+]
+preferred_transports = ["UDP", "TCP", "TLS"]
+
+# Asterisk custom headers
+[sip_interop.stack_configs.asterisk.custom_headers]
+"X-Asterisk-HangupCause" = "normal"
+"X-Asterisk-HangupCauseCode" = "16"
+
+# Asterisk SDP preferences
+[sip_interop.stack_configs.asterisk.sdp_preferences]
+codec_priority = ["PCMU", "PCMA", "GSM"]
+force_codec_order = false
+enable_bandwidth = false
+preferred_ptime = [20]
+multi_media_lines = false
+
+# FreeSWITCH Stack Configuration
+[sip_interop.stack_configs.freeswitch]
+user_agent_patterns = ["FreeSWITCH", "mod_sofia"]
+quirks = [
+    "FreeswitchVariables",
+    "StrictRouteHandling",
+    "RequireContactInRegister"
+]
+supported_methods = [
+    "INVITE", "ACK", "CANCEL", "BYE", "REGISTER", "OPTIONS",
+    "INFO", "UPDATE", "REFER", "MESSAGE", "SUBSCRIBE", "NOTIFY",
+    "PUBLISH", "PRACK"
+]
+preferred_transports = ["UDP", "TCP", "TLS"]
+
+# FreeSWITCH custom headers
+[sip_interop.stack_configs.freeswitch.custom_headers]
+"X-FS-Support" = "update_display,send_info"
+
+# FreeSWITCH SDP preferences
+[sip_interop.stack_configs.freeswitch.sdp_preferences]
+codec_priority = ["PCMU", "PCMA", "G729", "G722"]
+force_codec_order = true
+enable_bandwidth = true
+preferred_ptime = [20, 30, 40]
+multi_media_lines = true
+
+# RFC Implementation Status
+[rfc_compliance]
+# Core RFCs - REQUIRED
+rfc3261_sip_core = "complete"           # SIP 2.0 Core
+rfc3263_sip_dns = "complete"            # SIP DNS Resolution
+rfc3264_offer_answer = "complete"       # Offer/Answer with SDP
+
+# Essential RFCs - RECOMMENDED
+rfc3262_prack = "complete"              # PRACK
+rfc3311_update = "complete"             # UPDATE Method
+rfc3326_reason = "complete"             # Reason Header
+rfc3515_refer = "complete"              # REFER Method
+rfc3581_symmetric_rtp = "complete"      # Symmetric RTP
+rfc4028_session_timers = "complete"     # Session Timers
+rfc6026_invite_handling = "complete"    # Correct INVITE Handling
+
+# Advanced RFCs - OPTIONAL
+rfc3265_events = "complete"             # Event Notification
+rfc3428_message = "complete"            # MESSAGE Method
+rfc3841_caller_prefs = "complete"       # Caller Preferences
+rfc3891_replaces = "complete"           # Replaces Header
+rfc3903_publish = "complete"            # PUBLISH Method
+rfc4235_dialog_events = "complete"      # Dialog Events
+rfc4916_connected_id = "complete"       # Connected Identity
+
+# Security RFCs - RECOMMENDED
+rfc8224_stir = "complete"               # STIR
+rfc8225_shaken = "complete"             # SHAKEN/PASSporT
+
+# Class 4 Specific Features
+[class4_features]
+# High-volume processing
+max_cps = 10000                         # Calls per second
+sub_ms_routing = true                   # Sub-millisecond routing
+
+# Carrier interconnect
+sip_i_support = true                    # SIP-I (ISUP over SIP)
+sip_t_support = true                    # SIP-T (ISUP tunneling)
+q850_mapping = true                     # Q.850 cause codes
+billing_records = true                  # CDR generation
+lcr_enabled = true                      # Least Cost Routing
+
+# Media handling
+transcoding = true                      # Codec conversion
+media_anchoring = true                  # Media proxy/anchor
+media_bypass = true                     # Direct media when possible
+
+# Quality and monitoring
+mos_scoring = true                      # Mean Opinion Score
+rtp_monitoring = true                   # RTP quality monitoring
+jitter_buffer = true                    # Adaptive jitter buffer
+
+# Regulatory compliance
+stir_shaken_required = true             # STIR/SHAKEN mandatory
+emergency_routing = true                # E911/emergency services
+number_portability = true               # LNP support
+fraud_detection = true                  # Fraud prevention
+
+# Example Curl Commands for Testing Interoperability
+[testing.curl_examples]
+
+# Test SOFIA SIP (FreeSWITCH) compatibility
+test_sofia = '''
+# Basic REGISTER to FreeSWITCH
+curl -X POST "https://fs.example.com:5060" \
+  -H "Content-Type: application/sip" \
+  -d "REGISTER sip:fs.example.com SIP/2.0
+Via: SIP/2.0/UDP 10.0.1.100:5060;branch=z9hG4bK-test123
+From: <sip:test@fs.example.com>;tag=abc123
+To: <sip:test@fs.example.com>
+Call-ID: test-call-id@10.0.1.100
+CSeq: 1 REGISTER
+Contact: <sip:test@10.0.1.100:5060>
+User-Agent: Redfire-Switch/1.0 (RFC3261,RFC4028)
+Max-Forwards: 70
+Content-Length: 0"
+'''
+
+# Test PJSIP compatibility
+test_pjsip = '''
+# Basic OPTIONS to PJSIP
+curl -X POST "https://pjsip.example.com:5060" \
+  -H "Content-Type: application/sip" \
+  -H "Supported: 100rel,timer,update" \
+  -d "OPTIONS sip:pjsip.example.com SIP/2.0
+Via: SIP/2.0/UDP 10.0.1.100:5060;branch=z9hG4bK-opt123;rport
+From: <sip:test@example.com>;tag=def456
+To: <sip:pjsip.example.com>
+Call-ID: options-call@10.0.1.100
+CSeq: 1 OPTIONS
+User-Agent: Redfire-Switch/1.0
+Max-Forwards: 70
+Content-Length: 0"
+'''
+
+# Test Asterisk compatibility
+test_asterisk = '''
+# INVITE with Session Timers to Asterisk
+curl -X POST "https://asterisk.example.com:5060" \
+  -H "Content-Type: application/sip" \
+  -d "INVITE sip:1234@asterisk.example.com SIP/2.0
+Via: SIP/2.0/UDP 10.0.1.100:5060;branch=z9hG4bK-inv123
+From: <sip:test@example.com>;tag=ghi789
+To: <sip:1234@asterisk.example.com>
+Call-ID: invite-call@10.0.1.100
+CSeq: 1 INVITE
+Contact: <sip:test@10.0.1.100:5060>
+Session-Expires: 1800;refresher=uac
+Min-SE: 90
+User-Agent: Redfire-Switch/1.0
+Max-Forwards: 70
+Content-Type: application/sdp
+Content-Length: 200
+
+v=0
+o=- 123456 654321 IN IP4 10.0.1.100
+s=Redfire Session
+c=IN IP4 10.0.1.100
+t=0 0
+m=audio 10000 RTP/AVP 0 8
+a=rtpmap:0 PCMU/8000
+a=rtpmap:8 PCMA/8000
+a=ptime:20"
+'''
+
+# Test FreeSWITCH compatibility
+test_freeswitch = '''
+# SUBSCRIBE for dialog events to FreeSWITCH
+curl -X POST "https://freeswitch.example.com:5060" \
+  -H "Content-Type: application/sip" \
+  -d "SUBSCRIBE sip:dialog@freeswitch.example.com SIP/2.0
+Via: SIP/2.0/UDP 10.0.1.100:5060;branch=z9hG4bK-sub123
+From: <sip:test@example.com>;tag=jkl012
+To: <sip:dialog@freeswitch.example.com>
+Call-ID: subscribe-call@10.0.1.100
+CSeq: 1 SUBSCRIBE
+Event: dialog
+Expires: 3600
+Contact: <sip:test@10.0.1.100:5060>
+User-Agent: Redfire-Switch/1.0
+Max-Forwards: 70
+Content-Length: 0"
+'''
+
+# Performance Tuning for Different Stacks
+[performance_tuning]
+
+# SOFIA SIP optimizations
+[performance_tuning.sofia]
+connection_pooling = true
+udp_buffer_size = 65536
+tcp_keepalive = 30
+tls_session_cache = true
+rtp_timeout = 60
+
+# PJSIP optimizations
+[performance_tuning.pjsip]
+worker_threads = 4
+max_connections = 1000
+tcp_nodelay = true
+compact_headers = true
+symmetric_rtp = true
+
+# Asterisk optimizations
+[performance_tuning.asterisk]
+max_channels = 500
+rtp_start = 10000
+rtp_end = 20000
+jitter_buffer_adaptive = true
+session_timer_default = 1800
+
+# FreeSWITCH optimizations
+[performance_tuning.freeswitch]
+max_sessions = 1000
+rtp_timer_name = "soft"
+core_db_name = "core"
+auto_restart = true
+crash_protection = true
+
+# Monitoring and Diagnostics
+[monitoring]
+enable_sip_trace = true
+trace_level = "info"
+log_failed_calls = true
+monitor_registration = true
+track_dialog_state = true
+measure_response_times = true
+
+# Alert thresholds
+registration_failure_threshold = 10    # failures per minute
+call_failure_threshold = 5             # % failure rate
+response_time_threshold = 1000         # milliseconds
+
+# Quality metrics
+enable_mos_calculation = true
+rtp_packet_loss_threshold = 1          # % packet loss
+jitter_threshold = 30                  # milliseconds
+latency_threshold = 150                # milliseconds

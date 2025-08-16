@@ -1,0 +1,86 @@
+# Development Dockerfile for Redfire Switch
+FROM rust:1.75 AS builder
+
+# Install development dependencies
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    tcpdump \
+    net-tools \
+    iputils-ping \
+    vim \
+    gdb \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy cargo files first for better caching
+COPY Cargo.toml Cargo.lock ./
+
+# Create src directory with dummy main to cache dependencies
+RUN mkdir src && echo "fn main() {}" > src/main.rs
+RUN cargo build --release || true
+RUN rm -rf src
+
+# Copy actual source code
+COPY src ./src
+COPY config-dev.json ./
+
+# Build in debug mode for better debugging
+RUN cargo build
+
+# Runtime stage
+FROM debian:bookworm-slim
+
+# Install runtime dependencies and debugging tools
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libssl3 \
+    tcpdump \
+    tshark \
+    net-tools \
+    iputils-ping \
+    curl \
+    jq \
+    vim \
+    gdb \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy the binary and source for debugging
+COPY --from=builder /app/target/debug/redfire-switch /usr/local/bin/
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/Cargo.toml ./
+
+# Create directories for logs and configs
+RUN mkdir -p /app/logs /app/pcaps
+
+# Health check
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
+    CMD nc -zu localhost 5060 || exit 1
+
+# Debug script
+COPY <<'EOF' /usr/local/bin/debug-switch.sh
+#!/bin/bash
+echo "Starting Redfire Switch in debug mode..."
+echo "Debug options:"
+echo "  - GDB: gdb /usr/local/bin/redfire-switch"
+echo "  - Packet capture: tcpdump -i any -w /app/pcaps/capture.pcap port 5060"
+echo "  - SIP trace: tshark -i any -f 'port 5060' -Y sip"
+
+if [ "$1" = "gdb" ]; then
+    gdb /usr/local/bin/redfire-switch
+elif [ "$1" = "trace" ]; then
+    tshark -i any -f 'port 5060' -Y sip -T fields -e frame.time -e ip.src -e ip.dst -e sip.Method -e sip.Status-Code
+elif [ "$1" = "pcap" ]; then
+    tcpdump -i any -w /app/pcaps/capture-$(date +%Y%m%d-%H%M%S).pcap port 5060
+else
+    exec /usr/local/bin/redfire-switch "$@"
+fi
+EOF
+RUN chmod +x /usr/local/bin/debug-switch.sh
+
+EXPOSE 5060/udp 5060/tcp 8080 9090
+
+ENTRYPOINT ["/usr/local/bin/debug-switch.sh"]

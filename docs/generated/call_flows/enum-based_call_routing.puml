@@ -1,0 +1,23 @@
+@startuml
+!theme plain
+title ENUM-based Call Routing
+
+participant "Caller" as Caller
+participant "Redfire Switch" as RedfireSwitch
+participant "ENUM Service" as ENUMService
+participant "CNAM Service" as CNAMService
+participant "Destination" as Destination
+
+Caller -> RedfireSwitch : INVITE +15551234567
+note over Caller,RedfireSwitch : Call to toll-free number
+RedfireSwitch ->> ENUMService : TFN Lookup
+note over RedfireSwitch,ENUMService : Check TFN database
+ENUMService ->> RedfireSwitch : Route: sip:dest@carrier.com
+note over ENUMService,RedfireSwitch : Return routing information
+RedfireSwitch ->> CNAMService : CNAM Lookup
+note over RedfireSwitch,CNAMService : Get caller name
+CNAMService ->> RedfireSwitch : Name: John Doe
+note over CNAMService,RedfireSwitch : Return caller name
+RedfireSwitch -> Destination : INVITE (with CNAM)
+note over RedfireSwitch,Destination : Forward call with caller ID
+@enduml

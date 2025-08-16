@@ -1,0 +1,63 @@
+{
+  "sip_profiles": [
+    {
+      "name": "default",
+      "bind_ip": "0.0.0.0",
+      "port": 5060,
+      "protocol": "Udp",
+      "allowed_ips": ["127.0.0.1"],
+      "dual_stack": false,
+      "bind_ipv6": null,
+      "ipv6_port": null,
+      "tls_config": null
+    }
+  ],
+  "cnam": {
+    "enabled": true,
+    "provider": {
+      "name": "example-cnam-provider",
+      "url_template": "https://api.cnam-provider.com/lookup?number={number}&api_key={api_key}",
+      "headers": {
+        "User-Agent": "RedFire-Switch/1.0",
+        "Accept": "application/json"
+      },
+      "auth": {
+        "method": "ApiKey",
+        "api_key": "your-api-key-here",
+        "user_id": null,
+        "username": null,
+        "password": null
+      },
+      "response_format": "Json",
+      "retry_config": {
+        "max_retries": 3,
+        "initial_delay_ms": 1000,
+        "max_delay_ms": 10000,
+        "backoff_multiplier": 2.0
+      }
+    },
+    "cache": {
+      "enabled": true,
+      "ttl_seconds": 86400,
+      "max_size": 10000,
+      "persistent": true,
+      "cache_file": "data/cnam_cache.json"
+    },
+    "surcharge_cents": 0.50,
+    "insert_in_from_header": true,
+    "timeout_ms": 5000,
+    "max_concurrent_lookups": 100,
+    "enable_for_did": true,
+    "enable_for_toll_free": true,
+    "exclude_patterns": [
+      "anonymous",
+      "unknown",
+      "restricted",
+      "unavailable"
+    ],
+    "enabled_countries": [
+      "US",
+      "CA"
+    ]
+  }
+}

@@ -1,0 +1,305 @@
+# Redfire Switch Configuration Template
+# Copy to /etc/redfire-switch/config.toml and customize for your environment
+
+[sip]
+# SIP server binding configuration
+bind_address = "0.0.0.0:5060"
+external_ip = "203.0.113.100"  # Your public IP address
+domain = "sip.example.com"     # Your SIP domain
+transport = "UDP"              # UDP, TCP, TLS, WS, WSS
+
+# TLS configuration for secure SIP
+[sip.tls]
+enabled = true
+bind_address = "0.0.0.0:5061"
+certificate_path = "/etc/ssl/certs/sip.example.com.pem"
+private_key_path = "/etc/ssl/private/sip.example.com.key"
+ca_certificate_path = "/etc/ssl/certs/ca-bundle.pem"
+verify_client = false
+
+# WebSocket configuration for WebRTC
+[sip.websocket]
+enabled = false
+bind_address = "0.0.0.0:8080"
+path = "/ws"
+
+# Database configuration
+[database]
+url = "postgresql://redfire:password@localhost/redfire_switch"
+pool_size = 20
+timeout = 30
+ssl_mode = "prefer"
+
+# Redis configuration for session storage and caching
+[redis]
+url = "redis://127.0.0.1:6379/0"
+pool_size = 10
+timeout = 5000
+
+# Routing configuration
+[routing]
+default_route = "carrier1"
+lcr_enabled = true
+quality_routing = true
+failover_enabled = true
+max_route_attempts = 3
+
+# Route selection algorithm
+route_selection = "LeastCost"  # LeastCost, RoundRobin, WeightedRoundRobin, QualityBased
+
+[routing.timeouts]
+invite_timeout = 30
+ringing_timeout = 180
+answer_timeout = 300
+
+# Authentication and security
+[auth]
+enabled = true
+realm = "sip.example.com"
+algorithm = "MD5"
+require_registration = false
+registration_timeout = 3600
+
+# Rate limiting configuration
+[security.rate_limiting]
+enabled = true
+max_calls_per_second = 100
+max_registrations_per_minute = 60
+max_invites_per_minute = 1000
+burst_allowance = 50
+
+# Fraud detection and prevention
+[security.fraud_detection]
+enabled = true
+threshold_score = 75
+block_suspicious_calls = true
+whitelist_enabled = true
+blacklist_enabled = true
+
+# Geographic restrictions
+[security.geo_filtering]
+enabled = false
+allowed_countries = ["US", "CA", "GB"]
+blocked_countries = ["CN", "RU"]
+
+# STIR/SHAKEN configuration
+[security.stir_shaken]
+enabled = true
+verification_required = false
+certificate_path = "/etc/ssl/certs/stir-shaken.pem"
+private_key_path = "/etc/ssl/private/stir-shaken.key"
+service_provider_id = "1234"
+authority = "https://authenticate.example.com"
+
+# Media handling configuration
+[media]
+rtp_port_range_start = 10000
+rtp_port_range_end = 20000
+rtp_timeout = 60
+dtmf_detection = true
+recording_enabled = false
+recording_path = "/var/lib/redfire-switch/recordings"
+
+# Codec preferences (in order of preference)
+[[media.codecs]]
+name = "PCMU"
+payload_type = 0
+sample_rate = 8000
+enabled = true
+
+[[media.codecs]]
+name = "PCMA"
+payload_type = 8
+sample_rate = 8000
+enabled = true
+
+[[media.codecs]]
+name = "G722"
+payload_type = 9
+sample_rate = 16000
+enabled = true
+
+[[media.codecs]]
+name = "G729"
+payload_type = 18
+sample_rate = 8000
+enabled = false  # Requires license
+
+# Billing and CDR configuration
+[billing]
+enabled = true
+cdr_format = "JSON"  # JSON, CSV, SQL
+cdr_output = "Database"  # Database, File, HTTP
+real_time_billing = true
+currency = "USD"
+
+[billing.rates]
+default_rate_per_minute = 0.01  # $0.01 per minute
+connection_fee = 0.005          # $0.005 connection fee
+minimum_charge = 0.01           # Minimum $0.01 charge
+
+# CDR file output (if enabled)
+[billing.file_output]
+directory = "/var/lib/redfire-switch/cdr"
+rotation_size = "100MB"
+rotation_time = "daily"
+compression = true
+
+# Monitoring and metrics
+[monitoring]
+metrics_enabled = true
+prometheus_endpoint = "127.0.0.1:9091"
+health_check_interval = 30
+health_check_endpoint = "/health"
+
+# Performance tuning
+[performance]
+worker_threads = 0  # 0 = auto-detect CPU cores
+max_connections = 10000
+connection_timeout = 30
+keep_alive_timeout = 300
+
+# Buffer sizes (in bytes)
+read_buffer_size = 65536
+write_buffer_size = 65536
+
+# Logging configuration
+[logging]
+level = "info"  # error, warn, info, debug, trace
+format = "json"  # json, text
+output = "journald"  # journald, file, stdout
+
+# File logging (if enabled)
+[logging.file]
+path = "/var/log/redfire-switch/redfire-switch.log"
+max_size = "100MB"
+max_files = 10
+compress = true
+
+# Emergency services configuration
+[emergency]
+enabled = true
+route_back_to_originator = true
+override_routing = true
+
+# Emergency number patterns
+emergency_patterns = [
+    "911",
+    "112",
+    "999",
+    "000"
+]
+
+# Trunk configuration examples
+[[trunks]]
+id = "carrier1"
+name = "Primary Carrier"
+type = "Termination"
+enabled = true
+priority = 1
+weight = 100
+
+[trunks.sip]
+host = "sip.carrier1.com"
+port = 5060
+transport = "UDP"
+username = "your_username"
+password = "your_password"
+from_domain = "sip.example.com"
+
+[trunks.routing]
+prefix_patterns = ["1", "011"]
+codec_preferences = ["PCMU", "PCMA"]
+max_concurrent_calls = 1000
+
+[[trunks]]
+id = "carrier2"
+name = "Backup Carrier"
+type = "Termination"
+enabled = true
+priority = 2
+weight = 50
+
+[trunks.sip]
+host = "sip.carrier2.com"
+port = 5060
+transport = "UDP"
+username = "your_username"
+password = "your_password"
+
+# Customer/origination trunk example
+[[trunks]]
+id = "customer1"
+name = "Customer PBX"
+type = "Origination"
+enabled = true
+auth_required = true
+
+[trunks.auth]
+username = "customer1"
+password = "secure_password"
+ip_whitelist = ["192.168.1.100", "192.168.1.0/24"]
+
+[trunks.limits]
+max_concurrent_calls = 100
+rate_limit_cps = 10
+
+# Number manipulation rules
+[[number_manipulation]]
+name = "US NANP Normalization"
+pattern = "^1?([2-9][0-9]{2}[2-9][0-9]{6})$"
+replacement = "1$1"
+direction = "Both"  # Inbound, Outbound, Both
+priority = 1
+
+[[number_manipulation]]
+name = "Remove International Prefix"
+pattern = "^011(.+)$"
+replacement = "+$1"
+direction = "Outbound"
+priority = 2
+
+# Quality monitoring
+[quality]
+monitoring_enabled = true
+mos_calculation = true
+jitter_threshold = 50    # milliseconds
+packet_loss_threshold = 1.0  # percent
+latency_threshold = 150  # milliseconds
+
+# Alerting thresholds
+[quality.alerts]
+low_mos_threshold = 3.0
+high_packet_loss_threshold = 5.0
+high_jitter_threshold = 100
+
+# File paths and directories
+[paths]
+data_dir = "/var/lib/redfire-switch"
+log_dir = "/var/log/redfire-switch"
+config_dir = "/etc/redfire-switch"
+pid_file = "/run/redfire-switch/redfire-switch.pid"
+
+# Feature flags
+[features]
+anycast_clustering = false  # Enable anycast clustering (network-level)
+web_interface = false       # Enable web management interface  
+api_server = true           # Enable REST API
+websocket_api = false       # Enable WebSocket API
+grpc_api = false           # Enable gRPC API
+
+# API configuration
+[api]
+enabled = true
+bind_address = "127.0.0.1:8081"
+authentication_required = true
+api_key = "your-api-key-here"
+cors_enabled = true
+allowed_origins = ["http://localhost:3000", "https://admin.example.com"]
+
+# Development and debugging (disable in production)
+[debug]
+enabled = false
+sip_message_logging = false
+detailed_call_logs = false
+performance_profiling = false

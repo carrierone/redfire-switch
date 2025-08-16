@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  # Redfire Switch - Debug Mode
+  redfire-switch:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: redfire-switch-dev
+    ports:
+      - "5060:5060/udp"
+      - "5060:5060/tcp"
+      - "8080:8080"  # REST API
+      - "9090:9090"  # Debug port
+    environment:
+      - RUST_LOG=debug
+      - RUST_BACKTRACE=1
+      - SIP_DEBUG=true
+      - SINGLE_CALL_MODE=true
+    volumes:
+      - ./config-dev.json:/app/config.json
+      - ./logs:/app/logs
+      - ./target:/app/target
+    networks:
+      - sip-test
+    command: ["cargo", "run", "--", "--config", "/app/config.json", "--debug", "start"]
+
+  # SIPp UAC (Caller)
+  sipp-uac:
+    image: ctaloi/sipp
+    container_name: sipp-uac
+    depends_on:
+      - redfire-switch
+    volumes:
+      - ./tests/sipp/scenarios:/scenarios
+      - ./tests/sipp/data:/data
+      - ./tests/sipp/logs:/logs
+    networks:
+      - sip-test
+    command: ["-sn", "uac", "-r", "1", "-rp", "1000", "-m", "1", "redfire-switch:5060"]
+
+  # SIPp UAS (Callee) 
+  sipp-uas:
+    image: ctaloi/sipp
+    container_name: sipp-uas
+    ports:
+      - "5061:5060/udp"
+      - "5061:5060/tcp"
+    volumes:
+      - ./tests/sipp/scenarios:/scenarios
+      - ./tests/sipp/data:/data
+      - ./tests/sipp/logs:/logs
+    networks:
+      - sip-test
+    command: ["-sn", "uas", "-p", "5060"]
+
+  # Wireshark for packet capture (optional)
+  wireshark:
+    image: lscr.io/linuxserver/wireshark:latest
+    container_name: wireshark
+    cap_add:
+      - NET_ADMIN
+    network_mode: host
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+    volumes:
+      - ./pcaps:/config/pcaps
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+networks:
+  sip-test:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/24

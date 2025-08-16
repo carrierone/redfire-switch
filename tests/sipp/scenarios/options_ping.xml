@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+
+<!-- SIP OPTIONS Ping Test Scenario -->
+<scenario name="OPTIONS Ping Test">
+  
+  <!-- Send OPTIONS -->
+  <send retrans="500">
+    <![CDATA[
+      OPTIONS sip:ping@[remote_ip]:[remote_port] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=[branch]
+      Max-Forwards: 70
+      From: "SIPp Monitor" <sip:monitor@[local_ip]:[local_port]>;tag=[call_number]
+      To: <sip:ping@[remote_ip]:[remote_port]>
+      Call-ID: [call_id]
+      CSeq: 1 OPTIONS
+      Contact: <sip:monitor@[local_ip]:[local_port];transport=[transport]>
+      User-Agent: SIPp Monitor
+      Accept: application/sdp
+      Content-Length: 0
+    ]]>
+  </send>
+
+  <!-- Receive 200 OK -->
+  <recv response="200" rtd="true">
+    <action>
+      <ereg regexp="Allow: (.+)" search_in="msg" assign_to="dummy,allowed_methods"/>
+      <log message="OPTIONS Response received. Allowed methods: [$allowed_methods]"/>
+    </action>
+  </recv>
+
+  <!-- Pause before next ping -->
+  <pause milliseconds="1000"/>
+
+  <!-- Response time statistics -->
+  <ResponseTimeRepartition value="10, 20, 30, 40, 50, 100, 150, 200, 500, 1000"/>
+
+</scenario>

@@ -1,0 +1,71 @@
+#!/bin/bash
+set -e
+
+# Post-removal script for Redfire Switch
+
+case "$1" in
+    purge)
+        echo "Purging Redfire Switch configuration and data..."
+
+        # Remove configuration files
+        rm -rf /etc/redfire-switch
+
+        # Remove log files  
+        rm -rf /var/log/redfire-switch
+
+        # Remove runtime files
+        rm -rf /run/redfire-switch
+
+        # Ask about removing data directory
+        if [ -d /var/lib/redfire-switch ]; then
+            echo "Remove Redfire Switch data directory (/var/lib/redfire-switch)?"
+            echo "This includes call records, session data, and local databases."
+            echo "Type 'yes' to remove, anything else to keep:"
+            read -r response
+            if [ "$response" = "yes" ]; then
+                rm -rf /var/lib/redfire-switch
+                echo "Data directory removed"
+            else
+                echo "Data directory preserved at /var/lib/redfire-switch"
+            fi
+        fi
+
+        # Remove system users
+        if getent passwd redfire-web >/dev/null 2>&1; then
+            deluser --system redfire-web >/dev/null 2>&1 || true
+            echo "Removed system user: redfire-web"
+        fi
+
+        if getent passwd redfire >/dev/null 2>&1; then
+            deluser --system redfire >/dev/null 2>&1 || true
+            echo "Removed system user: redfire"
+        fi
+
+        if getent group redfire >/dev/null 2>&1; then
+            delgroup --system redfire >/dev/null 2>&1 || true
+            echo "Removed system group: redfire"
+        fi
+
+        # Remove logrotate configuration
+        rm -f /etc/logrotate.d/redfire-switch
+
+        # Remove systemd tmpfiles configuration
+        rm -f /usr/lib/tmpfiles.d/redfire-switch.conf
+
+        echo "Redfire Switch has been completely removed"
+        ;;
+
+    remove|upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+        # Clean up systemd if services are removed
+        if [ -x /bin/systemctl ]; then
+            systemctl daemon-reload || true
+        fi
+        ;;
+
+    *)
+        echo "postrm called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

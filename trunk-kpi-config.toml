@@ -1,0 +1,179 @@
+# Trunk KPI Monitoring Configuration
+# Copy to /etc/redfire-switch/trunk-kpi.toml and customize
+
+# Enable trunk-level KPI monitoring
+enabled = true
+
+# KPI calculation intervals (in seconds)
+calculation_interval = 10      # How often to calculate KPIs
+retention_days = 7            # How long to keep historical KPI data
+
+# Time windows for KPI calculations
+[time_windows]
+one_minute = true             # Enable 1-minute KPI windows
+five_minutes = true           # Enable 5-minute KPI windows  
+fifteen_minutes = true        # Enable 15-minute KPI windows
+
+# FAS (False Answer Supervision) detection configuration
+[fas_detection]
+enabled = true                # Enable FAS detection
+min_duration_ms = 1000        # Minimum call duration for FAS detection (1 second)
+max_duration_ms = 10000       # Maximum call duration for FAS detection (10 seconds)
+threshold_percentage = 15.0   # Percentage threshold for FAS alarm (15%)
+min_sample_size = 10          # Minimum number of calls needed to evaluate FAS
+
+# Quality thresholds for alerting
+[quality_thresholds]
+asr_warning = 90.0           # ASR below this triggers warning (%)
+asr_critical = 85.0          # ASR below this triggers critical alert (%)
+ccr_warning = 88.0           # CCR below this triggers warning (%)
+ccr_critical = 80.0          # CCR below this triggers critical alert (%)
+pdd_warning = 3000           # PDD above this triggers warning (ms)
+pdd_critical = 5000          # PDD above this triggers critical alert (ms)
+fas_warning = 10.0           # FAS above this triggers warning (%)
+fas_critical = 20.0          # FAS above this triggers critical alert (%)
+
+# Media quality thresholds
+[media_quality_thresholds]
+mos_warning = 3.5            # MOS below this triggers warning
+mos_critical = 3.0           # MOS below this triggers critical alert
+packet_loss_warning = 1.0    # Packet loss above this triggers warning (%)
+packet_loss_critical = 3.0   # Packet loss above this triggers critical alert (%)
+jitter_warning = 50.0        # Jitter above this triggers warning (ms)
+jitter_critical = 100.0      # Jitter above this triggers critical alert (ms)
+
+# Alerting configuration
+[alerting]
+enabled = true               # Enable alerting
+email_notifications = true  # Send email alerts
+sms_notifications = false   # Send SMS alerts
+webhook_notifications = false # Send webhook alerts
+syslog_notifications = true # Send syslog alerts
+
+# Alert suppression
+alert_cooldown_minutes = 5   # Don't repeat same alert for 5 minutes
+max_alerts_per_hour = 20     # Maximum alerts per hour per trunk
+
+# Email configuration (if email_notifications = true)
+[email]
+smtp_server = "smtp.example.com"
+smtp_port = 587
+username = "alerts@example.com"
+password = "your_password"
+from_address = "redfire-switch@example.com"
+to_addresses = ["admin@example.com", "noc@example.com"]
+subject_prefix = "[Redfire Switch] "
+
+# Webhook configuration (if webhook_notifications = true)
+[webhook]
+url = "https://your-webhook.example.com/alerts"
+method = "POST"
+headers = { "Content-Type" = "application/json", "Authorization" = "Bearer your-token" }
+timeout_seconds = 10
+
+# Storage configuration
+[storage]
+backend = "Database"         # Database, Redis, File
+# For Database backend
+database_table = "trunk_kpis"
+# For Redis backend  
+redis_url = "redis://localhost:6379/1"
+redis_key_prefix = "trunk_kpi:"
+# For File backend
+file_directory = "/var/lib/redfire-switch/kpi"
+file_format = "json"         # json, csv
+
+# Reporting configuration
+[reporting]
+auto_generate_reports = true # Generate automatic reports
+daily_report_time = "06:00"  # Time to generate daily reports (HH:MM)
+weekly_report_day = "monday" # Day to generate weekly reports
+monthly_report_day = 1       # Day of month to generate monthly reports
+
+# Report formats and destinations
+report_formats = ["json", "csv", "pdf"]
+report_directory = "/var/lib/redfire-switch/reports"
+email_reports = true         # Email reports to administrators
+
+# Performance optimization
+[performance]
+batch_size = 1000           # Batch size for database operations  
+max_concurrent_calculations = 4 # Max concurrent KPI calculations
+memory_limit_mb = 512       # Memory limit for KPI calculations
+enable_compression = true   # Compress stored KPI data
+
+# Debugging and logging
+[debug]
+log_level = "info"          # error, warn, info, debug, trace
+log_kpi_calculations = false # Log each KPI calculation
+log_fas_detection = true    # Log FAS detection events
+log_performance_metrics = false # Log performance metrics
+export_metrics_to_prometheus = true # Export to Prometheus
+
+# Trunk-specific overrides
+# Override settings for specific trunks
+[[trunk_overrides]]
+trunk_id = "premium_carrier"
+fas_detection.threshold_percentage = 5.0  # Stricter FAS detection
+quality_thresholds.asr_critical = 95.0    # Higher ASR requirement
+
+[[trunk_overrides]]
+trunk_id = "test_trunk"  
+enabled = false           # Disable KPI monitoring for test trunk
+
+# Example KPI rules for automated actions
+[[kpi_rules]]
+name = "Low ASR Alert"
+condition = "asr < 85.0 AND total_attempts > 50"
+time_window = "5min"
+action = "alert"
+severity = "critical"
+message = "ASR dropped below 85% with significant call volume"
+
+[[kpi_rules]]
+name = "High FAS Detection" 
+condition = "fas_percentage > 15.0 AND total_answers > 20"
+time_window = "5min"
+action = "alert"
+severity = "warning"  
+message = "Possible False Answer Supervision detected"
+
+[[kpi_rules]]
+name = "Route Quality Degradation"
+condition = "pdd_avg > 3000 AND avg_mos < 3.5"
+time_window = "5min"
+action = "alert"
+severity = "warning"
+message = "Route quality degraded - high PDD and low MOS"
+
+# Important Notes:
+# ================
+#
+# 1. KPI CALCULATIONS:
+#    - ASR (Answer-Seizure Ratio) = (Answered Calls / Total Attempts) * 100
+#    - CCR (Call Completion Ratio) = (Completed Calls / Total Attempts) * 100  
+#    - ACD (Average Call Duration) = Total Duration / Answered Calls
+#    - PDD (Post Dial Delay) = Time from INVITE to 200 OK
+#
+# 2. FAS DETECTION:
+#    - Monitors for unusually high rates of short-duration calls
+#    - Indicates potential false answer supervision by carriers
+#    - Can cause billing discrepancies and revenue loss
+#
+# 3. QUALITY MONITORING:
+#    - MOS (Mean Opinion Score) should be > 4.0 for good quality
+#    - Packet loss should be < 1% for acceptable quality  
+#    - Jitter should be < 30ms for good voice quality
+#    - RTT should be < 150ms for acceptable latency
+#
+# 4. ALERTING BEST PRACTICES:
+#    - Set appropriate thresholds based on your SLAs
+#    - Use alert suppression to avoid alert storms
+#    - Configure multiple notification channels
+#    - Test alerting regularly
+#
+# 5. PERFORMANCE CONSIDERATIONS:
+#    - KPI calculations run every 10 seconds by default
+#    - Adjust batch_size based on call volume
+#    - Monitor memory usage during peak hours
+#    - Enable compression for large datasets

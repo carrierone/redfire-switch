@@ -1,0 +1,20 @@
+[package]
+name = "redfire-sip-stack-minimal"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "Minimal SIP stack implementation for Redfire Switch"
+authors = ["Carrier One Inc", "Redfire Switch Contributors"]
+
+[dependencies]
+anyhow = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+tracing = "0.1"
+nom = "7.1"
+uuid = { version = "1.0", features = ["v4"] }
+regex = "1.10"
+
+[lib]
+name = "redfire_sip_stack_minimal"
+path = "src/lib.rs"

@@ -1,0 +1,118 @@
+#!/bin/bash
+set -e
+
+# Post-installation script for Redfire Switch
+
+case "$1" in
+    configure)
+        echo "Configuring Redfire Switch..."
+
+        # Set final file permissions
+        chown root:root /usr/bin/redfire-switch
+        chmod 755 /usr/bin/redfire-switch
+
+        # Set up configuration directory
+        if [ ! -f /etc/redfire-switch/config.toml ]; then
+            cp /usr/share/redfire-switch/config-template.toml /etc/redfire-switch/config.toml
+            echo "Created default configuration file"
+        fi
+
+        if [ ! -f /etc/redfire-switch/bgp-anycast.toml ]; then
+            cp /usr/share/redfire-switch/bgp-anycast-template.toml /etc/redfire-switch/bgp-anycast.toml
+            echo "Created BGP Anycast configuration file"
+        fi
+
+        # Set configuration permissions
+        chown root:redfire /etc/redfire-switch/*.toml
+        chmod 640 /etc/redfire-switch/*.toml
+
+        # Set up log rotation
+        if [ -f /usr/share/redfire-switch/logrotate ]; then
+            cp /usr/share/redfire-switch/logrotate /etc/logrotate.d/redfire-switch
+            chown root:root /etc/logrotate.d/redfire-switch
+            chmod 644 /etc/logrotate.d/redfire-switch
+        fi
+
+        # Create systemd tmpfiles
+        if [ -f /usr/lib/tmpfiles.d/redfire-switch.conf ]; then
+            systemd-tmpfiles --create /usr/lib/tmpfiles.d/redfire-switch.conf
+        fi
+
+        # Enable and start systemd services
+        if [ -x /bin/systemctl ]; then
+            systemctl daemon-reload
+
+            # Enable main service
+            systemctl enable redfire-switch.service
+            echo "Enabled redfire-switch.service"
+
+            # Enable BGP service if BGP Anycast is configured
+            if grep -q "enabled.*=.*true" /etc/redfire-switch/bgp-anycast.toml 2>/dev/null; then
+                systemctl enable redfire-switch-bgp.service
+                echo "Enabled redfire-switch-bgp.service"
+            fi
+
+            # Optionally enable web interface
+            if [ -f /etc/redfire-switch/web-enabled ]; then
+                systemctl enable redfire-switch-web.service
+                echo "Enabled redfire-switch-web.service"
+            fi
+
+            # Start services
+            echo "Starting Redfire Switch services..."
+            if systemctl start redfire-switch.service; then
+                echo "✓ Redfire Switch started successfully"
+            else
+                echo "⚠ Failed to start Redfire Switch. Check configuration and logs."
+                echo "  Use: journalctl -u redfire-switch.service"
+            fi
+        fi
+
+        # Create initial database schema if PostgreSQL is available
+        if command -v psql >/dev/null 2>&1; then
+            if [ -f /usr/share/redfire-switch/schema.sql ]; then
+                echo "Database schema is available at /usr/share/redfire-switch/schema.sql"
+                echo "Run the following to initialize the database:"
+                echo "  sudo -u postgres createdb redfire_switch"
+                echo "  sudo -u postgres psql redfire_switch < /usr/share/redfire-switch/schema.sql"
+            fi
+        fi
+
+        # Display post-installation information
+        echo ""
+        echo "=== Redfire Switch Installation Complete ==="
+        echo ""
+        echo "Configuration files:"
+        echo "  Main config:      /etc/redfire-switch/config.toml"
+        echo "  BGP Anycast:      /etc/redfire-switch/bgp-anycast.toml"
+        echo ""
+        echo "Service management:"
+        echo "  Status:           systemctl status redfire-switch"
+        echo "  Logs:             journalctl -u redfire-switch"
+        echo "  Reload config:    systemctl reload redfire-switch"
+        echo ""
+        echo "Web interface (if enabled):"
+        echo "  URL:              http://localhost:8080"
+        echo "  Enable:           touch /etc/redfire-switch/web-enabled && systemctl enable --now redfire-switch-web"
+        echo ""
+        echo "Documentation:"
+        echo "  Manual:           man redfire-switch"
+        echo "  Examples:         /usr/share/doc/redfire-switch/examples/"
+        echo ""
+        echo "Next steps:"
+        echo "1. Edit /etc/redfire-switch/config.toml for your environment"
+        echo "2. Configure database connection and initialize schema"
+        echo "3. Set up SIP trunks and routing rules"
+        echo "4. Configure BGP Anycast if using clustering"
+        echo ""
+
+        ;;
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+    *)
+        echo "postinst called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

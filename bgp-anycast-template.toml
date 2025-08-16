@@ -1,0 +1,281 @@
+# Redfire Switch BGP Anycast Configuration Template
+# Copy to /etc/redfire-switch/bgp-anycast.toml and customize for your cluster
+
+# Enable or disable BGP Anycast clustering
+enabled = true
+
+# Node configuration for this instance
+[node]
+node_id = "switch-1"              # Unique identifier for this node
+name = "Primary SIP Switch"       # Human-readable name
+region = "us-east-1"              # Geographic region
+zone = "us-east-1a"               # Availability zone
+priority = 100                    # Priority for load balancing (1-255)
+capacity = 10000                  # Maximum call capacity
+metadata = { datacenter = "dc1", rack = "r1" }  # Additional metadata
+
+# BGP configuration
+[bgp]
+daemon = "ExaBgp"                 # ExaBgp, Native, Bird, FrRouting, GoBgp
+router_id = "203.0.113.100"       # BGP router ID (usually same as node IP)
+local_as = 65001                  # Local AS number
+med = 100                         # Multi-Exit Discriminator
+communities = [65001]             # BGP communities to tag routes
+
+# BGP neighbors configuration
+[[bgp.neighbors]]
+address = "203.0.113.1"           # Neighbor IP address
+remote_as = 65000                 # Neighbor AS number
+password = "bgp_password_1"       # MD5 password (optional)
+multihop = false                  # Enable multihop BGP
+next_hop_self = true              # Override next-hop attribute
+
+[[bgp.neighbors]]
+address = "203.0.113.2"
+remote_as = 65000
+password = "bgp_password_2"
+multihop = false
+next_hop_self = true
+
+# IP prefixes to advertise via BGP Anycast
+[[bgp.advertised_prefixes]]
+prefix = "203.0.113.100/32"       # Anycast IP for SIP service
+next_hop = null                   # Use default next-hop
+communities = [65001]             # BGP communities
+
+[[bgp.advertised_prefixes]]
+prefix = "203.0.113.200/32"       # Additional anycast IP
+next_hop = null
+communities = [65001, 65002]
+
+# ExaBGP specific configuration
+[bgp.exabgp]
+api_host = "127.0.0.1"
+api_port = 5000
+config_file = "/etc/exabgp/exabgp.conf"
+process_name = "redfire-switch-bgp"
+
+# BIRD specific configuration  
+[bgp.bird]
+config_file = "/etc/bird/bird.conf"
+control_socket = "/run/bird/bird.ctl"
+protocol_name = "redfire_bgp"
+
+# Session storage configuration for distributed state
+[session_store]
+store_type = "Redis"              # Redis, Etcd, Consul, RocksDb
+
+# Redis cluster configuration
+[session_store.connection]
+urls = [
+    "redis://10.0.1.10:6379/0",  # Redis cluster nodes
+    "redis://10.0.1.11:6379/0",
+    "redis://10.0.1.12:6379/0"
+]
+pool_size = 10                    # Connection pool size
+timeout = 5000                    # Timeout in milliseconds
+
+[session_store.redis]
+cluster_mode = true               # Enable Redis cluster mode
+read_from_replicas = true         # Allow reads from replica nodes
+username = "redfire"              # Redis username (Redis 6+)
+password = "redis_password"       # Redis password
+
+# Session storage tuning
+compression = "Lz4"               # None, Gzip, Lz4, Zstd
+ttl = 3600                        # Session TTL in seconds
+batch_size = 100                  # Batch operations for performance
+
+# Alternative: etcd configuration
+# [session_store.etcd]
+# endpoints = ["http://10.0.1.10:2379", "http://10.0.1.11:2379"]
+# username = "redfire"
+# password = "etcd_password"
+# dial_timeout = 5000
+# request_timeout = 3000
+
+# Alternative: Consul configuration
+# [session_store.consul]
+# address = "10.0.1.10:8500"
+# datacenter = "dc1"
+# token = "consul_token"
+# scheme = "http"
+
+# Cluster membership management
+[cluster]
+protocol = "Gossip"               # Gossip, Static, Consul
+
+# Gossip protocol configuration (SWIM-based)
+[cluster.gossip]
+bind_addr = "0.0.0.0:7946"        # Gossip bind address
+seeds = [                         # Seed nodes for cluster discovery
+    "10.0.1.10:7946",
+    "10.0.1.11:7946",
+    "10.0.1.12:7946"
+]
+interval = 1000                   # Gossip interval in milliseconds
+node_timeout = 10000              # Node timeout in milliseconds
+suspicion_timeout = 5000          # Suspicion timeout in milliseconds
+max_gossip_packet_size = 1024     # Maximum gossip packet size
+
+# Static membership (alternative to gossip)
+# [cluster.static]
+# members = [
+#     { node_id = "switch-1", address = "10.0.1.10", priority = 100 },
+#     { node_id = "switch-2", address = "10.0.1.11", priority = 90 },
+#     { node_id = "switch-3", address = "10.0.1.12", priority = 80 }
+# ]
+
+# Health monitoring configuration
+[health]
+enabled = true
+check_interval = 30000            # Health check interval in milliseconds
+check_timeout = 5000              # Health check timeout in milliseconds
+failure_threshold = 3             # Failures before marking unhealthy
+recovery_threshold = 2            # Successes before marking healthy
+
+# Health check types to perform
+checks = [
+    "SessionStore",               # Check session store connectivity
+    "SipStack",                  # Check SIP stack health
+    "SystemResources",           # Check CPU, memory, disk
+    "NetworkConnectivity"        # Check network connectivity
+]
+
+# Resource thresholds for health checks
+[health.thresholds]
+max_cpu_usage = 90.0             # Maximum CPU usage percentage
+max_memory_usage = 85.0          # Maximum memory usage percentage
+max_disk_usage = 90.0            # Maximum disk usage percentage
+min_free_memory_mb = 512         # Minimum free memory in MB
+
+# BGP route advertisement behavior
+[advertisement]
+advertise_on_startup = false      # Advertise immediately on startup
+withdraw_on_shutdown = true      # Withdraw routes on shutdown
+health_based_advertisement = true # Advertise based on health status
+gradual_traffic_shift = true     # Gradually shift traffic using MED
+
+# Advertisement delays
+startup_delay = 30000            # Delay before first advertisement (ms)
+health_check_delay = 10000       # Delay after health recovery (ms)
+shutdown_grace_period = 60000    # Grace period before withdrawal (ms)
+
+# Load balancing and traffic engineering
+[load_balancing]
+algorithm = "WeightedRoundRobin"  # RoundRobin, WeightedRoundRobin, LeastConnections
+weight_adjustment_enabled = true  # Dynamically adjust weights
+weight_adjustment_interval = 60000 # Weight adjustment interval (ms)
+
+# MED (Multi-Exit Discriminator) manipulation
+med_base_value = 100             # Base MED value
+med_adjustment_factor = 10       # MED adjustment per load unit
+max_med_value = 1000             # Maximum MED value
+
+# Session synchronization
+[session_sync]
+enabled = true
+sync_interval = 5000             # Sync interval in milliseconds
+batch_size = 1000                # Sessions per batch
+conflict_resolution = "LastWrite" # LastWrite, FirstWrite, Merge
+
+# Types of sessions to synchronize
+sync_types = [
+    "ActiveCalls",               # Active call sessions
+    "Registrations",            # SIP registrations
+    "Subscriptions",            # SIP subscriptions
+    "Dialogs"                   # SIP dialogs
+]
+
+# Geographic load distribution
+[geo_distribution]
+enabled = false
+prefer_local_traffic = true     # Prefer traffic from same region
+region_affinity_weight = 0.8    # Weight for regional traffic (0.0-1.0)
+
+# Region definitions
+[geo_distribution.regions]
+"us-east" = ["us-east-1", "us-east-2"]
+"us-west" = ["us-west-1", "us-west-2"]
+"eu" = ["eu-west-1", "eu-central-1"]
+
+# Split-brain protection
+[split_brain]
+protection_enabled = true
+quorum_size = 3                  # Minimum nodes for cluster operation
+isolation_detection_timeout = 30000 # Time to detect isolation (ms)
+isolation_action = "Withdraw"   # Withdraw, Maintain, Degrade
+
+# Monitoring and observability
+[monitoring]
+metrics_enabled = true
+metrics_endpoint = "127.0.0.1:9092"  # Prometheus metrics
+export_bgp_metrics = true       # Export BGP-specific metrics
+export_cluster_metrics = true   # Export cluster health metrics
+export_session_metrics = true   # Export session store metrics
+
+# Metrics to collect
+[monitoring.metrics]
+call_distribution = true        # Call distribution across nodes
+session_replication_lag = true # Session replication latency
+bgp_route_changes = true       # BGP route advertisement changes
+health_check_results = true    # Health check pass/fail rates
+cluster_membership_changes = true # Node join/leave events
+
+# Logging configuration specific to BGP Anycast
+[logging]
+level = "info"                   # error, warn, info, debug, trace
+format = "json"                  # json, text
+component_levels = {             # Per-component log levels
+    bgp = "info",
+    cluster = "info",
+    health = "warn",
+    session_store = "info"
+}
+
+# Advanced configuration
+[advanced]
+# Session handoff timeout when node fails
+session_handoff_timeout = 30000
+
+# Maximum time to wait for session synchronization
+max_sync_wait_time = 10000
+
+# Enable session compression for network efficiency
+session_compression = true
+
+# Session encryption (adds overhead but increases security)
+session_encryption = false
+encryption_key = "your-32-byte-encryption-key-here"
+
+# Network interface binding for cluster traffic
+cluster_interface = "eth0"       # Network interface for cluster communication
+bgp_interface = "eth0"          # Network interface for BGP peering
+
+# Quality of Service markings
+[qos]
+dscp_marking_enabled = false
+bgp_dscp = 46                   # DSCP marking for BGP traffic (EF)
+cluster_dscp = 34               # DSCP marking for cluster traffic (AF41)
+session_dscp = 26               # DSCP marking for session sync (AF31)
+
+# Security configuration
+[security]
+# Encryption for cluster communication
+cluster_encryption_enabled = false
+cluster_encryption_key = "your-cluster-encryption-key"
+
+# BGP MD5 authentication
+bgp_auth_enabled = true
+
+# Session store authentication
+session_store_tls = false
+session_store_cert_path = "/etc/ssl/certs/session-store.pem"
+session_store_key_path = "/etc/ssl/private/session-store.key"
+
+# Development and testing options (disable in production)
+[debug]
+enable_debug_logging = false
+simulate_failures = false       # Simulate random failures for testing
+test_mode = false              # Enable test mode with relaxed timeouts
+bgp_dry_run = false           # Don't actually advertise routes

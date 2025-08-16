@@ -1,0 +1,21 @@
+@startuml
+!theme plain
+title STIR/SHAKEN Call Verification
+
+participant "Caller" as Caller
+participant "Originating Provider" as OriginatingProvider
+participant "Redfire Switch" as RedfireSwitch
+participant "Certificate Authority" as CertificateAuthority
+participant "Destination" as Destination
+
+Caller -> OriginatingProvider : INVITE +15551234567
+note over Caller,OriginatingProvider : Outgoing call
+OriginatingProvider -> RedfireSwitch : INVITE (with Identity header)
+note over OriginatingProvider,RedfireSwitch : Call with STIR/SHAKEN identity
+RedfireSwitch ->> CertificateAuthority : Certificate Lookup
+note over RedfireSwitch,CertificateAuthority : Verify certificate
+CertificateAuthority ->> RedfireSwitch : Certificate Valid
+note over CertificateAuthority,RedfireSwitch : Certificate verification result
+RedfireSwitch -> Destination : INVITE (verified)
+note over RedfireSwitch,Destination : Forward verified call
+@enduml

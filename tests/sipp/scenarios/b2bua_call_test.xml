@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+
+<!-- B2BUA Call Test Scenario -->
+<scenario name="B2BUA Call Test">
+  
+  <!-- Send INVITE to test B2BUA functionality -->
+  <send retrans="500">
+    <![CDATA[
+      INVITE sip:1234567890@[remote_ip]:[remote_port] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=[branch]
+      Max-Forwards: 70
+      From: "B2BUA Test" <sip:test@[local_ip]:[local_port]>;tag=[call_number]
+      To: <sip:1234567890@[remote_ip]:[remote_port]>
+      Call-ID: [call_id]
+      CSeq: 1 INVITE
+      Contact: <sip:test@[local_ip]:[local_port];transport=[transport]>
+      User-Agent: SIPp B2BUA Test
+      Allow: INVITE, ACK, CANCEL, BYE, OPTIONS, INFO, UPDATE
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=test 12345 67890 IN IP[local_ip_type] [local_ip]
+      s=B2BUA Test Call
+      c=IN IP[media_ip_type] [media_ip]
+      t=0 0
+      m=audio [media_port] RTP/AVP 0 8 101
+      a=rtpmap:0 PCMU/8000
+      a=rtpmap:8 PCMA/8000
+      a=rtpmap:101 telephone-event/8000
+      a=fmtp:101 0-15
+      a=sendrecv
+    ]]>
+  </send>
+
+  <!-- Receive 100 Trying (should come from B2BUA) -->
+  <recv response="100" optional="true" timeout="5000">
+  </recv>
+
+  <!-- Receive 180 Ringing (optional, may come from termination) -->
+  <recv response="180" optional="true" timeout="10000">
+  </recv>
+
+  <!-- Receive 183 Session Progress (optional) -->
+  <recv response="183" optional="true" timeout="5000">
+  </recv>
+
+  <!-- Wait for 200 OK or expect 404/503 if no termination -->
+  <recv response="200,404,503,486" rtd="true" timeout="30000">
+    <action>
+      <ereg regexp="([0-9]+)" search_in="hdr" header="CSeq:" assign_to="cseq_value"/>
+      <log message="B2BUA Response: [$1] - Call processed by B2BUA"/>
+    </action>
+  </recv>
+
+  <!-- If we got 200 OK, send ACK and BYE -->
+  <nop test="1" next="send_ack" if="[$1] == 200"/>
+  
+  <!-- If error response, just log and end -->
+  <log message="B2BUA Test: Received error response [$1] - Expected for testing"/>
+  <pause milliseconds="1000"/>
+  <label id="end"/>
+
+  <!-- Send ACK for 200 OK -->
+  <label id="send_ack"/>
+  <send>
+    <![CDATA[
+      ACK sip:1234567890@[remote_ip]:[remote_port] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=[branch]
+      Max-Forwards: 70
+      From: "B2BUA Test" <sip:test@[local_ip]:[local_port]>;tag=[call_number]
+      To: <sip:1234567890@[remote_ip]:[remote_port]>[peer_tag_param]
+      Call-ID: [call_id]
+      CSeq: 1 ACK
+      Contact: <sip:test@[local_ip]:[local_port];transport=[transport]>
+      Content-Length: 0
+    ]]>
+  </send>
+
+  <!-- Short call duration -->
+  <pause milliseconds="2000"/>
+
+  <!-- Send BYE -->
+  <send retrans="500">
+    <![CDATA[
+      BYE sip:1234567890@[remote_ip]:[remote_port] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=[branch]
+      Max-Forwards: 70
+      From: "B2BUA Test" <sip:test@[local_ip]:[local_port]>;tag=[call_number]
+      To: <sip:1234567890@[remote_ip]:[remote_port]>[peer_tag_param]
+      Call-ID: [call_id]
+      CSeq: 2 BYE
+      Contact: <sip:test@[local_ip]:[local_port];transport=[transport]>
+      Content-Length: 0
+    ]]>
+  </send>
+
+  <!-- Receive 200 OK for BYE -->
+  <recv response="200" crlf="true">
+  </recv>
+
+  <!-- Response time statistics -->
+  <ResponseTimeRepartition value="10, 20, 30, 40, 50, 100, 150, 200, 500, 1000, 2000"/>
+
+  <!-- Call length statistics -->
+  <CallLengthRepartition value="10, 50, 100, 500, 1000, 5000, 10000"/>
+
+</scenario>

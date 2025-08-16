@@ -1,0 +1,62 @@
+[Unit]
+Description=Redfire Switch Anycast Clustering Service
+Documentation=https://github.com/carrierone/redfire-switch
+After=network-online.target redfire-switch.service
+Requires=redfire-switch.service
+PartOf=redfire-switch.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=notify
+ExecStartPre=/usr/bin/redfire-switch anycast check-config --config /etc/redfire-switch/anycast.toml
+ExecStart=/usr/bin/redfire-switch anycast start --config /etc/redfire-switch/anycast.toml
+ExecReload=/bin/kill -HUP $MAINPID
+ExecStop=/usr/bin/redfire-switch anycast stop --graceful
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=redfire-switch-anycast
+
+# Security hardening (inherit from main service)
+User=redfire
+Group=redfire
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/redfire-switch /var/log/redfire-switch /run/redfire-switch
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RemoveIPC=true
+PrivateMounts=true
+SystemCallFilter=@system-service @network-io
+SystemCallErrorNumber=EPERM
+
+# Network capabilities for binding to anycast IP
+AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_ADMIN
+
+# Resource limits
+LimitNOFILE=32768
+LimitNPROC=8192
+TasksMax=2048
+MemoryMax=2G
+CPUQuota=200%
+
+# Environment
+Environment="RUST_LOG=info"
+Environment="ANYCAST_ENABLED=1"
+EnvironmentFile=-/etc/redfire-switch/anycast-environment
+
+# Watchdog
+WatchdogSec=30s
+
+[Install]
+WantedBy=redfire-switch.service

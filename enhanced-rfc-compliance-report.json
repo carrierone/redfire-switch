@@ -1,0 +1,67 @@
+{
+  "test_run_id": "enhanced-rfc-compliance-1755240567",
+  "timestamp": "2025-08-15T06:49:27.288229792Z",
+  "target_system": "127.0.0.1:5060",
+  "stir_shaken_enabled": true,
+  "total_tests": 3,
+  "passed": 3,
+  "failed": 0,
+  "partial": 0,
+  "not_implemented": 0,
+  "errors": 0,
+  "skipped": 0,
+  "compliance_percentage": 100.0,
+  "critical_compliance_percentage": 100.0,
+  "stir_shaken_compliance_percentage": 100.0,
+  "results": [
+    {
+      "test_name": "RFC3261_options_ping",
+      "rfc": "RFC3261",
+      "scenario": "options_ping",
+      "status": "Pass",
+      "message": "Response received: SIP/2.0 200 OK",
+      "timestamp": "2025-08-15T06:49:27.287769552Z",
+      "details": {},
+      "identity_header_present": false,
+      "identity_header_valid": false,
+      "attestation_level": null,
+      "stir_shaken_verified": false
+    },
+    {
+      "test_name": "RFC3261_invite_basic",
+      "rfc": "RFC3261",
+      "scenario": "invite_basic",
+      "status": "Pass",
+      "message": "Response received: SIP/2.0 100 Trying",
+      "timestamp": "2025-08-15T06:49:27.288004377Z",
+      "details": {},
+      "identity_header_present": false,
+      "identity_header_valid": false,
+      "attestation_level": null,
+      "stir_shaken_verified": false
+    },
+    {
+      "test_name": "RFC8224_stir_invite_generation",
+      "rfc": "RFC8224",
+      "scenario": "stir_invite_generation",
+      "status": "Pass",
+      "message": "Response received: SIP/2.0 100 Trying",
+      "timestamp": "2025-08-15T06:49:27.288216679Z",
+      "details": {},
+      "identity_header_present": false,
+      "identity_header_valid": false,
+      "attestation_level": null,
+      "stir_shaken_verified": false
+    }
+  ],
+  "recommendations": [],
+  "stir_shaken_statistics": {
+    "calls_with_identity": 0,
+    "calls_verified": 0,
+    "calls_signed": 0,
+    "attestation_a_count": 0,
+    "attestation_b_count": 0,
+    "attestation_c_count": 0,
+    "verification_failures": 0
+  }
+}

@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+
+<!-- SIP REGISTER Test Scenario -->
+<scenario name="REGISTER Test">
+  
+  <!-- Send REGISTER -->
+  <send retrans="500">
+    <![CDATA[
+      REGISTER sip:[remote_ip]:[remote_port] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=[branch]
+      Max-Forwards: 70
+      From: "Test User" <sip:user1@[remote_ip]>;tag=[call_number]
+      To: "Test User" <sip:user1@[remote_ip]>
+      Call-ID: [call_id]
+      CSeq: 1 REGISTER
+      Contact: <sip:user1@[local_ip]:[local_port];transport=[transport]>
+      User-Agent: SIPp Test Client
+      Expires: 3600
+      Content-Length: 0
+    ]]>
+  </send>
+
+  <!-- Receive 401 Unauthorized (if authentication required) -->
+  <recv response="401" optional="true" next="auth">
+    <action>
+      <ereg regexp="realm=\"([^\"]*)\"" search_in="hdr" header="WWW-Authenticate:" assign_to="dummy,realm"/>
+      <ereg regexp="nonce=\"([^\"]*)\"" search_in="hdr" header="WWW-Authenticate:" assign_to="dummy,nonce"/>
+    </action>
+  </recv>
+
+  <!-- Receive 200 OK (if no auth required) -->
+  <recv response="200" optional="true" next="end">
+    <action>
+      <log message="Registration successful without authentication"/>
+    </action>
+  </recv>
+
+  <!-- Send REGISTER with Authorization -->
+  <label id="auth"/>
+  <send retrans="500">
+    <![CDATA[
+      REGISTER sip:[remote_ip]:[remote_port] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=[branch]
+      Max-Forwards: 70
+      From: "Test User" <sip:user1@[remote_ip]>;tag=[call_number]
+      To: "Test User" <sip:user1@[remote_ip]>
+      Call-ID: [call_id]
+      CSeq: 2 REGISTER
+      Contact: <sip:user1@[local_ip]:[local_port];transport=[transport]>
+      User-Agent: SIPp Test Client
+      Authorization: Digest username="user1",realm="[$realm]",nonce="[$nonce]",uri="sip:[remote_ip]:[remote_port]",response="[authentication]",algorithm=MD5
+      Expires: 3600
+      Content-Length: 0
+    ]]>
+  </send>
+
+  <!-- Receive 200 OK -->
+  <recv response="200" rtd="true">
+    <action>
+      <log message="Registration successful with authentication"/>
+    </action>
+  </recv>
+
+  <label id="end"/>
+
+  <!-- Pause for registration lifetime -->
+  <pause milliseconds="5000"/>
+
+  <!-- Send Un-REGISTER -->
+  <send retrans="500">
+    <![CDATA[
+      REGISTER sip:[remote_ip]:[remote_port] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=[branch]
+      Max-Forwards: 70
+      From: "Test User" <sip:user1@[remote_ip]>;tag=[call_number]
+      To: "Test User" <sip:user1@[remote_ip]>
+      Call-ID: [call_id]
+      CSeq: 3 REGISTER
+      Contact: <sip:user1@[local_ip]:[local_port];transport=[transport]>
+      User-Agent: SIPp Test Client
+      Expires: 0
+      Content-Length: 0
+    ]]>
+  </send>
+
+  <!-- Receive 200 OK for Un-REGISTER -->
+  <recv response="200">
+    <action>
+      <log message="Un-registration successful"/>
+    </action>
+  </recv>
+
+  <!-- Response time statistics -->
+  <ResponseTimeRepartition value="10, 20, 30, 40, 50, 100, 150, 200"/>
+
+</scenario>

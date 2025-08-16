@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="utf-8"?>
+<configuration name="sofia.conf" description="Sofia SIP Stack">
+  <global_settings>
+    <param name="log-level" value="0"/>
+    <param name="tracelevel" value="DEBUG"/>
+    <param name="debug-presence" value="0"/>
+    <param name="capture-server" value="udp:127.0.0.1:9060"/>
+  </global_settings>
+
+  <!-- SIP Profiles for Redfire Testing -->
+  <profiles>
+    
+    <!-- Internal Profile for Test Users -->
+    <profile name="internal">
+      <gateways>
+        <gateway name="redfire-test">
+          <param name="username" value="freeswitch-test"/>
+          <param name="password" value="fs123"/>
+          <param name="proxy" value="127.0.0.1:5060"/>
+          <param name="register" value="false"/>
+          <param name="context" value="public"/>
+          <param name="caller-id-in-from" value="false"/>
+          <param name="supress-cng" value="true"/>
+        </gateway>
+      </gateways>
+      <settings>
+        <param name="bind-params" value="transport=udp"/>
+        <param name="sip-ip" value="127.0.0.1"/>
+        <param name="sip-port" value="5063"/>
+        <param name="rtp-ip" value="127.0.0.1"/>
+        <param name="rtp-port-range-start" value="20000"/>
+        <param name="rtp-port-range-end" value="20100"/>
+        <param name="use-rtp-timer" value="true"/>
+        <param name="codec-prefs" value="PCMU,PCMA,G729,G722,OPUS"/>
+        <param name="inbound-codec-negotiation" value="generous"/>
+        <param name="dtmf-duration" value="2000"/>
+        <param name="dtmf-type" value="rfc2833"/>
+        <param name="context" value="default"/>
+        <param name="dialplan" value="XML"/>
+        <param name="challenge-realm" value="auto_from"/>
+        <param name="nonce-ttl" value="60"/>
+        <param name="auth-calls" value="false"/>
+        <param name="inbound-reg-force-matching-username" value="true"/>
+        <param name="auth-all-packets" value="false"/>
+        <param name="ext-rtp-ip" value="auto-nat"/>
+        <param name="ext-sip-ip" value="auto-nat"/>
+        <param name="rtp-timeout-sec" value="300"/>
+        <param name="rtp-hold-timeout-sec" value="1800"/>
+        <param name="manage-presence" value="false"/>
+        <param name="inbound-codec-prefs" value="PCMU,PCMA,G729,G722"/>
+        <param name="outbound-codec-prefs" value="PCMU,PCMA,G729,G722"/>
+        <param name="record-template" value="$${recordings_dir}/${caller_id_number}.${target_domain}.${strftime(%Y-%m-%d-%H-%M-%S)}.wav"/>
+      </settings>
+    </profile>
+
+    <!-- External Profile for Redfire Switch Communication -->
+    <profile name="external">
+      <gateways>
+        <gateway name="redfire-trunk">
+          <param name="username" value="freeswitch-trunk"/>
+          <param name="password" value="trunk123"/>
+          <param name="proxy" value="127.0.0.1:5060"/>
+          <param name="register" value="false"/>
+          <param name="context" value="public"/>
+          <param name="caller-id-in-from" value="true"/>
+        </gateway>
+      </gateways>
+      <settings>
+        <param name="bind-params" value="transport=udp"/>
+        <param name="sip-ip" value="127.0.0.1"/>
+        <param name="sip-port" value="5064"/>
+        <param name="rtp-ip" value="127.0.0.1"/>
+        <param name="rtp-port-range-start" value="20100"/>
+        <param name="rtp-port-range-end" value="20200"/>
+        <param name="codec-prefs" value="PCMU,PCMA,G729,G722"/>
+        <param name="dtmf-type" value="rfc2833"/>
+        <param name="context" value="public"/>
+        <param name="auth-calls" value="false"/>
+        <param name="apply-inbound-acl" value="rfc1918"/>
+        <param name="local-network-acl" value="rfc1918"/>
+        <param name="record-path" value="$${recordings_dir}"/>
+        <param name="record-template" value="${caller_id_number}.${target_domain}.${strftime(%Y-%m-%d-%H-%M-%S)}.wav"/>
+      </settings>
+    </profile>
+
+    <!-- Tech Prefix Testing Profile -->
+    <profile name="techprefix">
+      <gateways>
+        <gateway name="redfire-techprefix">
+          <param name="username" value="techprefix-test"/>
+          <param name="password" value="tech123"/>
+          <param name="proxy" value="127.0.0.1:5060"/>
+          <param name="register" value="true"/>
+          <param name="context" value="techprefix"/>
+          <param name="caller-id-in-from" value="true"/>
+        </gateway>
+      </gateways>
+      <settings>
+        <param name="bind-params" value="transport=udp"/>
+        <param name="sip-ip" value="127.0.0.1"/>
+        <param name="sip-port" value="5065"/>
+        <param name="rtp-ip" value="127.0.0.1"/>
+        <param name="rtp-port-range-start" value="20200"/>
+        <param name="rtp-port-range-end" value="20300"/>
+        <param name="codec-prefs" value="PCMU,PCMA"/>
+        <param name="dtmf-type" value="rfc2833"/>
+        <param name="context" value="techprefix"/>
+        <param name="auth-calls" value="false"/>
+      </settings>
+    </profile>
+
+    <!-- Load Testing Profile -->
+    <profile name="loadtest">
+      <settings>
+        <param name="bind-params" value="transport=udp"/>
+        <param name="sip-ip" value="127.0.0.1"/>
+        <param name="sip-port" value="5066"/>
+        <param name="rtp-ip" value="127.0.0.1"/>
+        <param name="rtp-port-range-start" value="20300"/>
+        <param name="rtp-port-range-end" value="20500"/>
+        <param name="codec-prefs" value="PCMU"/>
+        <param name="dtmf-type" value="rfc2833"/>
+        <param name="context" value="loadtest"/>
+        <param name="auth-calls" value="false"/>
+        <param name="apply-inbound-acl" value="rfc1918"/>
+        <param name="session-timeout" value="120"/>
+        <param name="minimum-session-expires" value="90"/>
+      </settings>
+    </profile>
+
+  </profiles>
+</configuration>

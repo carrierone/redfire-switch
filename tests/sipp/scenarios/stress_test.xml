@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+
+<!-- Stress Test Scenario - High volume call generation -->
+<scenario name="Stress Test">
+  
+  <!-- Send INVITE with minimal pause -->
+  <send retrans="500">
+    <![CDATA[
+      INVITE sip:stress[call_number]@[remote_ip]:[remote_port] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=[branch]
+      Max-Forwards: 70
+      From: "Stress Test" <sip:stress[call_number]@[local_ip]:[local_port]>;tag=[pid]SIPpTag[call_number]
+      To: <sip:stress[call_number]@[remote_ip]:[remote_port]>
+      Call-ID: [call_id]
+      CSeq: 1 INVITE
+      Contact: <sip:stress[call_number]@[local_ip]:[local_port];transport=[transport]>
+      User-Agent: SIPp Stress Test
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=stress 123456 654321 IN IP[local_ip_type] [local_ip]
+      s=Stress Test
+      c=IN IP[media_ip_type] [media_ip]
+      t=0 0
+      m=audio [auto_media_port] RTP/AVP 0
+      a=rtpmap:0 PCMU/8000
+      a=sendrecv
+    ]]>
+  </send>
+
+  <!-- Expect provisional responses quickly -->
+  <recv response="100" optional="true" timeout="1000">
+  </recv>
+
+  <recv response="180" optional="true" timeout="2000">
+  </recv>
+
+  <!-- Receive 200 OK or error response -->
+  <recv response="200" optional="true" rtd="true" next="ack">
+  </recv>
+
+  <recv response="486" optional="true" next="end">
+  </recv>
+
+  <recv response="503" optional="true" next="end">
+  </recv>
+
+  <recv response="500" optional="true" next="end">
+  </recv>
+
+  <!-- Send ACK if we got 200 -->
+  <label id="ack"/>
+  <send>
+    <![CDATA[
+      ACK sip:stress[call_number]@[remote_ip]:[remote_port] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=[branch]
+      From: "Stress Test" <sip:stress[call_number]@[local_ip]:[local_port]>;tag=[pid]SIPpTag[call_number]
+      To: <sip:stress[call_number]@[remote_ip]:[remote_port]>[peer_tag_param]
+      Call-ID: [call_id]
+      CSeq: 1 ACK
+      Content-Length: 0
+    ]]>
+  </send>
+
+  <!-- Very short call -->
+  <pause milliseconds="100"/>
+
+  <!-- Send BYE immediately -->
+  <send retrans="500">
+    <![CDATA[
+      BYE sip:stress[call_number]@[remote_ip]:[remote_port] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=[branch]
+      From: "Stress Test" <sip:stress[call_number]@[local_ip]:[local_port]>;tag=[pid]SIPpTag[call_number]
+      To: <sip:stress[call_number]@[remote_ip]:[remote_port]>[peer_tag_param]
+      Call-ID: [call_id]
+      CSeq: 2 BYE
+      Content-Length: 0
+    ]]>
+  </send>
+
+  <recv response="200">
+  </recv>
+
+  <label id="end"/>
+
+  <!-- Response time statistics for performance measurement -->
+  <ResponseTimeRepartition value="10, 20, 30, 40, 50, 100, 200, 500, 1000, 2000, 5000"/>
+
+  <!-- Call length statistics -->
+  <CallLengthRepartition value="10, 50, 100, 200, 500, 1000"/>
+
+</scenario>

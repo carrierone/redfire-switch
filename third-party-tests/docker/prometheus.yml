@@ -1,0 +1,35 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Redfire Switch metrics (if exposed)
+  - job_name: 'redfire-switch'
+    static_configs:
+      - targets: ['host.docker.internal:8080']  # Adjust port as needed
+    scrape_interval: 10s
+    metrics_path: /metrics
+
+  # Self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Test infrastructure monitoring
+  - job_name: 'test-infrastructure'
+    static_configs:
+      - targets: 
+          - 'asterisk:5060'
+          - 'freeswitch:5063'
+    scrape_interval: 30s
+    metrics_path: /metrics
+    
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          # - alertmanager:9093

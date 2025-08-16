@@ -1,0 +1,20 @@
+sequenceDiagram
+    title ENUM-based Call Routing
+    participant Caller
+    participant RedfireSwitch
+    participant ENUMService
+    participant CNAMService
+    participant Destination
+
+    Caller ->+ RedfireSwitch: INVITE +15551234567
+    Note over Caller,RedfireSwitch: Call to toll-free number
+    RedfireSwitch ->> ENUMService: TFN Lookup
+    Note over RedfireSwitch,ENUMService: Check TFN database
+    ENUMService ->> RedfireSwitch: Route: sip:dest@carrier.com
+    Note over ENUMService,RedfireSwitch: Return routing information
+    RedfireSwitch ->> CNAMService: CNAM Lookup
+    Note over RedfireSwitch,CNAMService: Get caller name
+    CNAMService ->> RedfireSwitch: Name: John Doe
+    Note over CNAMService,RedfireSwitch: Return caller name
+    RedfireSwitch ->+ Destination: INVITE (with CNAM)
+    Note over RedfireSwitch,Destination: Forward call with caller ID
