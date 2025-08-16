@@ -426,7 +426,7 @@ impl SipStateManager {
         transaction: &mut SipTransaction,
         response: &Response,
     ) -> Result<()> {
-        let status_code = response.status_code().as_u16();
+        let status_code = response.status_code().code();
 
         match &mut transaction.state {
             TransactionState::Invite(invite_state) => {

@@ -118,7 +118,7 @@ pub struct SipDebugFilter {
 }
 
 /// SIP message for debugging
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct SipDebugMessage {
     /// Original SIP message
     pub message: SipMessage,
@@ -135,7 +135,7 @@ pub struct SipDebugMessage {
 }
 
 /// Message direction
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum MessageDirection {
     Inbound,
     Outbound,
@@ -152,7 +152,7 @@ pub struct TrunkInfo {
 }
 
 /// Trunk types
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TrunkType {
     Origination,
     Termination,

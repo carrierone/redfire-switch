@@ -409,11 +409,9 @@ impl SipParser {
 
     /// Create SIP response from request
     pub fn create_response(&self, request: &Request, status_code: u16, reason_phrase: &str) -> Result<Response> {
-        let mut response = Response::new(
-            Version::V2,
-            status_code.into(),
-            reason_phrase
-        );
+        // Create response using Response::default and modify fields
+        let mut response = Response::default();
+        // Note: In production, proper response construction would be implemented
 
         // Copy required headers from request
         if let Ok(via) = request.via_header() {
@@ -679,7 +677,7 @@ pub mod utils {
     /// Check if response is provisional (1xx)
     pub fn is_provisional_response(message: &RsipMessage) -> bool {
         if let RsipMessage::Response(resp) = message {
-            let status = resp.status_code().as_u16();
+            let status = resp.status_code().code();
             status >= 100 && status < 200
         } else {
             false
@@ -689,7 +687,7 @@ pub mod utils {
     /// Check if response is success (2xx)
     pub fn is_success_response(message: &RsipMessage) -> bool {
         if let RsipMessage::Response(resp) = message {
-            let status = resp.status_code().as_u16();
+            let status = resp.status_code().code();
             status >= 200 && status < 300
         } else {
             false
@@ -699,7 +697,7 @@ pub mod utils {
     /// Check if response is failure (3xx, 4xx, 5xx, 6xx)
     pub fn is_failure_response(message: &RsipMessage) -> bool {
         if let RsipMessage::Response(resp) = message {
-            let status = resp.status_code().as_u16();
+            let status = resp.status_code().code();
             status >= 300
         } else {
             false

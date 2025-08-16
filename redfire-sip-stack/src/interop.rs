@@ -749,7 +749,7 @@ impl SipInteropManager {
     
     /// Add session timer headers (RFC 4028)
     fn add_session_timer_headers(&self, response: &mut Response) -> Result<()> {
-        if response.status_code().as_u16() == 200 {
+        if response.status_code().code() == 200 {
             // Add Session-Expires and Min-SE headers for 200 OK responses
             debug!("Adding session timer headers to 200 OK response");
             
