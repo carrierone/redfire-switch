@@ -157,7 +157,7 @@ pub fn create_default_parser() -> SipParser {
 /// Create a default SIP core with basic configuration
 pub async fn create_default_core() -> anyhow::Result<SipCoreEngine> {
     let config = SipCoreConfig::default();
-    Ok(SipCoreEngine::new(config))
+    SipCoreEngine::new(config).await
 }
 
 /// Create a SIP-T/SIP-I service with default configuration

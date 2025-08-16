@@ -313,8 +313,8 @@ impl G729Encoder {
         let mut target = vec![0.0; L_SUBFR];
         
         // Apply perceptual weighting filter
-        let gamma1 = 0.94;
-        let gamma2 = 0.6;
+        let gamma1: f32 = 0.94;
+        let gamma2: f32 = 0.6;
         
         for i in 0..L_SUBFR {
             target[i] = speech[i];
