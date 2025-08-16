@@ -232,6 +232,7 @@ impl SipTransportManager {
         
         let event_sender = self.event_sender.clone();
         let max_message_size = config.max_message_size;
+        let bind_address = config.bind_address;
         
         tokio::spawn(async move {
             let mut buffer = vec![0u8; max_message_size];
@@ -246,7 +247,7 @@ impl SipTransportManager {
                                 let transport_msg = TransportMessage {
                                     message,
                                     source,
-                                    destination: config.bind_address,
+                                    destination: bind_address,
                                     transport: SipTransport::Udp,
                                     received_at: chrono::Utc::now(),
                                     connection_id: None,
@@ -288,13 +289,14 @@ impl SipTransportManager {
         let connections = self.connections.clone();
         let max_message_size = config.max_message_size;
         let connection_timeout = config.connection_timeout;
+        let bind_address = config.bind_address;
         
         tokio::spawn(async move {
             loop {
                 match listener.accept().await {
                     Ok((stream, remote_addr)) => {
                         let connection_id = uuid::Uuid::new_v4().to_string();
-                        let local_addr = config.bind_address;
+                        let local_addr = bind_address;
                         
                         // Register connection
                         let conn_info = ConnectionInfo {
@@ -371,6 +373,7 @@ impl SipTransportManager {
         let connections = self.connections.clone();
         let max_message_size = config.max_message_size;
         let connection_timeout = config.connection_timeout;
+        let bind_address = config.bind_address;
         let tls_acceptor = tls_acceptor.clone();
         
         tokio::spawn(async move {
@@ -380,7 +383,7 @@ impl SipTransportManager {
                         let tls_acceptor = tls_acceptor.clone();
                         let event_sender = event_sender.clone();
                         let connections = connections.clone();
-                        let local_addr = config.bind_address;
+                        let local_addr = bind_address;
                         
                         tokio::spawn(async move {
                             match tls_acceptor.accept(stream).await {
@@ -525,7 +528,7 @@ impl SipTransportManager {
     
     /// Handle TLS connection
     async fn handle_tls_connection(
-        mut stream: TlsStream<TcpStream>,
+        mut stream: tokio_rustls::server::TlsStream<TcpStream>,
         connection_id: String,
         remote_addr: SocketAddr,
         local_addr: SocketAddr,
@@ -639,12 +642,11 @@ impl SipTransportManager {
             .map_err(|e| anyhow!("Cannot open certificate file '{}': {}", filename, e))?;
         let mut reader = std::io::BufReader::new(certfile);
         
-        rustls_pemfile::certs(&mut reader)
+        Ok(rustls_pemfile::certs(&mut reader)
             .map_err(|_| anyhow!("Cannot read certificate file"))?
             .into_iter()
             .map(rustls::Certificate)
-            .collect::<Vec<_>>()
-            .into()
+            .collect::<Vec<_>>())
     }
     
     /// Load private key

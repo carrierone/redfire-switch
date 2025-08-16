@@ -143,7 +143,7 @@ pub enum MessageDirection {
 }
 
 /// Trunk information
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct TrunkInfo {
     pub trunk_id: String,
     pub trunk_name: String,
@@ -152,7 +152,7 @@ pub struct TrunkInfo {
 }
 
 /// Trunk types
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum TrunkType {
     Origination,
     Termination,
@@ -161,7 +161,7 @@ pub enum TrunkType {
 }
 
 /// Call information extracted from SIP message
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct CallInfo {
     pub call_id: String,
     pub ani: Option<String>,
@@ -173,7 +173,7 @@ pub struct CallInfo {
 }
 
 /// Message timing information
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct MessageTiming {
     pub received_at: SystemTime,
     pub processed_at: Option<SystemTime>,
@@ -181,7 +181,7 @@ pub struct MessageTiming {
 }
 
 /// Processing result
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ProcessingResult {
     pub status: ProcessingStatus,
     pub route_decision: Option<String>,
@@ -189,7 +189,7 @@ pub struct ProcessingResult {
 }
 
 /// Processing status
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum ProcessingStatus {
     Success,
     Failed,

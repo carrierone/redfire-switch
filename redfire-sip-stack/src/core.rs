@@ -31,6 +31,7 @@ use std::sync::Arc;
 use tokio::sync::{RwLock, mpsc};
 use tracing::{debug, info, warn, error, instrument};
 use dashmap::DashMap;
+use uuid::Uuid;
 
 /// Core SIP engine configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -382,15 +383,21 @@ impl SipMessageProcessor {
     }
     
     async fn process_sip_request(&self, message: TransportMessage) -> SipRequestResult {
-        // Parse the SIP message
-        let sip_msg = match self.parser.parse_message(&message.message, message.source, message.destination, message.transport) {
-            Ok(msg) => msg,
-            Err(e) => {
-                error!("Failed to parse SIP message: {}", e);
-                return SipRequestResult::Drop {
-                    reason: format!("Parse error: {}", e),
-                };
-            }
+        // Create SipMessage from TransportMessage (already parsed)
+        let parser_transport = match message.transport {
+            crate::transport::SipTransport::Udp => crate::parser::SipTransport::UDP,
+            crate::transport::SipTransport::Tcp => crate::parser::SipTransport::TCP,
+            crate::transport::SipTransport::Tls => crate::parser::SipTransport::TLS,
+            crate::transport::SipTransport::Wss => crate::parser::SipTransport::WSS,
+        };
+        
+        let sip_msg = crate::parser::SipMessage {
+            message: message.message.clone(),
+            source: message.source,
+            destination: message.destination,
+            transport: parser_transport,
+            received_at: message.received_at,
+            message_id: Uuid::new_v4().to_string(),
         };
         
         // Only process requests for now
@@ -417,7 +424,7 @@ impl SipMessageProcessor {
             match auth_result {
                 AuthResult::Authorized { trunk_id, customer_id, tech_prefix, rate_limit: _ } => {
                     debug!("Request authorized: trunk={}, customer={}", trunk_id, customer_id);
-                    return self.process_authorized_request(request, message, trunk_id, customer_id, tech_prefix).await;
+                    return self.process_authorized_request(request, &sip_msg, message, trunk_id, customer_id, tech_prefix).await;
                 },
                 AuthResult::Challenge { realm, nonce, algorithm } => {
                     debug!("Authentication challenge required");
@@ -442,13 +449,14 @@ impl SipMessageProcessor {
             }
         } else {
             // No authentication required, process request
-            return self.process_authorized_request(request, message, "default".to_string(), "default".to_string(), None).await;
+            return self.process_authorized_request(request, &sip_msg, message, "default".to_string(), "default".to_string(), None).await;
         }
     }
     
     async fn process_authorized_request(
         &self,
         request: &rsip::Request,
+        sip_msg: &SipMessage,
         message: TransportMessage,
         trunk_id: String,
         customer_id: String,
@@ -481,7 +489,7 @@ impl SipMessageProcessor {
         self.active_calls.insert(call_id.clone(), context.clone());
         
         // Process with state manager
-        let state_action = match self.state_manager.process_message(&message).await {
+        let state_action = match self.state_manager.process_message(sip_msg).await {
             Ok(action) => action,
             Err(e) => {
                 error!("State manager error: {}", e);
@@ -535,6 +543,36 @@ impl SipMessageProcessor {
                 // This should be handled by state manager internally
                 SipRequestResult::Drop {
                     reason: "Retransmission handled internally".to_string(),
+                }
+            },
+            SipStateAction::ProcessCancel { transaction_id: _, invite_transaction_id: _ } => {
+                info!("Processing CANCEL for call {}", call_id);
+                
+                // Send 200 OK for CANCEL and 487 Request Terminated for original request
+                let response = self.create_ok_response(request);
+                self.active_calls.remove(&call_id);
+                
+                SipRequestResult::SendResponse {
+                    response,
+                    destination: message.source,
+                    transport: message.transport,
+                }
+            },
+            SipStateAction::ProcessOtherRequest { transaction_id: _, method: _ } => {
+                info!("Processing other SIP request for call {}", call_id);
+                
+                // Forward to routing engine for handling
+                SipRequestResult::RouteCall {
+                    context,
+                    original_request: request.clone(),
+                }
+            },
+            SipStateAction::ProcessResponse { transaction_id: _, dialog_id: _, requires_ack: _ } => {
+                debug!("Processing SIP response for call {}", call_id);
+                
+                // Responses are handled by state manager internally
+                SipRequestResult::Drop {
+                    reason: "Response processed by state manager".to_string(),
                 }
             },
             SipStateAction::DropMessage => {
@@ -591,7 +629,7 @@ impl SipMessageProcessor {
         let from_uri = self.extract_from_uri(request);
         
         // Extract user part from URI
-        if let Ok(uri) = rsip::Uri::try_from(from_uri.as_bytes()) {
+        if let Ok(uri) = rsip::Uri::try_from(from_uri.as_str()) {
             // TODO: Extract user info from URI properly
             /*if let Some(user_info) = uri.user_info {
                 let user = user_info.user;*/

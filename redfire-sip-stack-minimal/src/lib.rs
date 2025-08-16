@@ -406,7 +406,7 @@ impl SipParser {
         
         // Parse body if present
         if header_end + 1 < lines.len() {
-            let body_lines: Vec<&str> = lines[(header_end + 1)..].iter().collect();
+            let body_lines: Vec<&str> = lines[(header_end + 1)..].iter().copied().collect();
             if !body_lines.is_empty() {
                 message.body = Some(body_lines.join("\r\n"));
             }

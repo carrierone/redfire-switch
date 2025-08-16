@@ -630,7 +630,7 @@ impl SipAuthenticator {
         
         // Add WWW-Authenticate header
         response.headers.push(rsip::Header::WwwAuthenticate(
-            rsip::headers::WwwAuthenticate::new(www_authenticate.parse()?)
+            rsip::headers::WwwAuthenticate::new(www_authenticate)
         ));
         
         // Add standard headers
