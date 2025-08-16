@@ -190,7 +190,7 @@ impl SipCoreEngine {
         
         // Load authentication configurations
         if config.enable_authentication {
-            let ip_configs = load_ip_auth_configs().await?;
+            let ip_configs = crate::authentication::load_ip_auth_configs().await?;
             for ip_config in ip_configs {
                 authenticator.add_ip_auth_config(ip_config);
             }

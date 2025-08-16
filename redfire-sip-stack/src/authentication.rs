@@ -21,6 +21,91 @@ use tracing::{debug, info, warn, error};
 use rsip::prelude::*;
 // Fail2ban integration removed - can be added as optional feature later
 
+/// Placeholder for Fail2Ban service - stub implementation
+#[derive(Debug)]
+pub struct Fail2BanService;
+
+impl Fail2BanService {
+    pub fn new() -> Self {
+        Self
+    }
+    
+    /// Record SIP failure - stub implementation
+    pub async fn record_sip_failure(
+        &self,
+        _ip: std::net::IpAddr,
+        _failure_type: FailureType,
+        _user: Option<String>,
+        _method: String,
+        _reason: String,
+        _user_agent: Option<String>,
+    ) -> Result<()> {
+        // Stub implementation - in production this would log to fail2ban
+        Ok(())
+    }
+}
+
+/// Failure types for tracking purposes
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FailureType {
+    AuthenticationFailure,
+    InvalidCredentials,
+    RateLimitExceeded,
+    SipInvite,
+    SipRegister,
+    SipSubscribe,
+    SipOptions,
+}
+
+/// Load IP authentication configurations from external source
+/// This is an example implementation - in production this would load from database/config files
+pub async fn load_ip_auth_configs() -> Result<Vec<IpAuthConfig>> {
+    // In production, this would load from database or config file
+    // For now, return example configurations
+    
+    Ok(vec![
+        IpAuthConfig {
+            trunk_id: "carrier1_inbound".to_string(),
+            customer_id: "carrier_one_llc".to_string(),
+            allowed_networks: vec![
+                "10.1.1.0/24".parse()?,
+                "192.168.100.0/24".parse()?,
+                "2001:db8::/32".parse()?,
+            ],
+            required_tech_prefix: Some("1001".to_string()),
+            optional_tech_prefixes: vec!["1002".to_string(), "1003".to_string()],
+            rate_limit: Some(100), // 100 CPS
+            enabled: true,
+            priority: 1,
+        },
+        IpAuthConfig {
+            trunk_id: "carrier2_inbound".to_string(),
+            customer_id: "global_telecom_inc".to_string(),
+            allowed_networks: vec![
+                "203.0.113.0/24".parse()?,
+                "198.51.100.0/24".parse()?,
+            ],
+            required_tech_prefix: None, // No tech prefix required
+            optional_tech_prefixes: vec!["2001".to_string(), "2002".to_string()],
+            rate_limit: Some(50), // 50 CPS
+            enabled: true,
+            priority: 2,
+        },
+        IpAuthConfig {
+            trunk_id: "enterprise_customer1".to_string(),
+            customer_id: "acme_corporation".to_string(),
+            allowed_networks: vec![
+                "172.16.0.0/16".parse()?,
+            ],
+            required_tech_prefix: Some("*001".to_string()),
+            optional_tech_prefixes: vec![],
+            rate_limit: Some(20), // 20 CPS
+            enabled: true,
+            priority: 3,
+        },
+    ])
+}
+
 /// SIP authentication result
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthResult {
@@ -587,50 +672,3 @@ impl SipAuthenticator {
     }
 }
 
-/// Load IP authentication configurations from file/database
-pub async fn load_ip_auth_configs() -> Result<Vec<IpAuthConfig>> {
-    // In production, this would load from database or config file
-    // For now, return example configurations
-    
-    Ok(vec![
-        IpAuthConfig {
-            trunk_id: "carrier1_inbound".to_string(),
-            customer_id: "carrier_one_llc".to_string(),
-            allowed_networks: vec![
-                "10.1.1.0/24".parse()?,
-                "192.168.100.0/24".parse()?,
-                "2001:db8::/32".parse()?,
-            ],
-            required_tech_prefix: Some("1001".to_string()),
-            optional_tech_prefixes: vec!["1002".to_string(), "1003".to_string()],
-            rate_limit: Some(100), // 100 CPS
-            enabled: true,
-            priority: 1,
-        },
-        IpAuthConfig {
-            trunk_id: "carrier2_inbound".to_string(),
-            customer_id: "global_telecom_inc".to_string(),
-            allowed_networks: vec![
-                "203.0.113.0/24".parse()?,
-                "198.51.100.0/24".parse()?,
-            ],
-            required_tech_prefix: None, // No tech prefix required
-            optional_tech_prefixes: vec!["2001".to_string(), "2002".to_string()],
-            rate_limit: Some(50), // 50 CPS
-            enabled: true,
-            priority: 2,
-        },
-        IpAuthConfig {
-            trunk_id: "enterprise_customer1".to_string(),
-            customer_id: "acme_corporation".to_string(),
-            allowed_networks: vec![
-                "172.16.0.0/16".parse()?,
-            ],
-            required_tech_prefix: Some("*001".to_string()),
-            optional_tech_prefixes: vec![],
-            rate_limit: Some(20), // 20 CPS
-            enabled: true,
-            priority: 3,
-        },
-    ])
-}
