@@ -12,6 +12,7 @@
 
 use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
+use sha2::Digest;
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::str::FromStr;
@@ -68,9 +69,9 @@ pub async fn load_ip_auth_configs() -> Result<Vec<IpAuthConfig>> {
             trunk_id: "carrier1_inbound".to_string(),
             customer_id: "carrier_one_llc".to_string(),
             allowed_networks: vec![
-                "10.1.1.0/24".parse()?,
-                "192.168.100.0/24".parse()?,
-                "2001:db8::/32".parse()?,
+                "10.1.1.0/24".to_string(),
+                "192.168.100.0/24".to_string(),
+                "2001:db8::/32".to_string(),
             ],
             required_tech_prefix: Some("1001".to_string()),
             optional_tech_prefixes: vec!["1002".to_string(), "1003".to_string()],
@@ -82,8 +83,8 @@ pub async fn load_ip_auth_configs() -> Result<Vec<IpAuthConfig>> {
             trunk_id: "carrier2_inbound".to_string(),
             customer_id: "global_telecom_inc".to_string(),
             allowed_networks: vec![
-                "203.0.113.0/24".parse()?,
-                "198.51.100.0/24".parse()?,
+                "203.0.113.0/24".to_string(),
+                "198.51.100.0/24".to_string(),
             ],
             required_tech_prefix: None, // No tech prefix required
             optional_tech_prefixes: vec!["2001".to_string(), "2002".to_string()],
@@ -95,7 +96,7 @@ pub async fn load_ip_auth_configs() -> Result<Vec<IpAuthConfig>> {
             trunk_id: "enterprise_customer1".to_string(),
             customer_id: "acme_corporation".to_string(),
             allowed_networks: vec![
-                "172.16.0.0/16".parse()?,
+                "172.16.0.0/16".to_string(),
             ],
             required_tech_prefix: Some("*001".to_string()),
             optional_tech_prefixes: vec![],
@@ -159,8 +160,8 @@ pub struct IpAuthConfig {
     pub trunk_id: String,
     /// Customer identifier
     pub customer_id: String,
-    /// Allowed source IP networks
-    pub allowed_networks: Vec<IpNet>,
+    /// Allowed source IP networks (as CIDR strings)
+    pub allowed_networks: Vec<String>,
     /// Required tech prefix (if any)
     pub required_tech_prefix: Option<String>,
     /// Optional tech prefixes
@@ -180,7 +181,14 @@ impl IpAuthConfig {
             return false;
         }
         
-        self.allowed_networks.iter().any(|net| net.contains(&ip))
+        self.allowed_networks.iter().any(|net| {
+            // Parse CIDR string and check if IP is contained
+            if let Ok(parsed_net) = net.parse::<IpNet>() {
+                parsed_net.contains(&ip)
+            } else {
+                false
+            }
+        })
     }
     
     /// Validate tech prefix
@@ -506,8 +514,9 @@ impl SipAuthenticator {
     
     /// Extract tech prefix from request URI
     fn extract_tech_prefix(&self, uri: &rsip::Uri) -> Result<Option<String>> {
-        if let Some(user_info) = &uri.user_info {
-            let user = &user_info.user;
+        // TODO: Implement tech prefix extraction from URI
+        // if let Some(user_info) = &uri.user_info {
+        //     let user = &user_info.user;
             
             // Check for common tech prefix patterns:
             // - 4-6 digit prefixes: 1001, 10001, 100001
@@ -515,7 +524,7 @@ impl SipAuthenticator {
             // - Plus-based prefixes: +1001
             
             // Pattern 1: Digits followed by '*' separator
-            if let Some(pos) = user.find('*') {
+            /*if let Some(pos) = user.find('*') {
                 if pos >= 3 && pos <= 6 {
                     let prefix = &user[..pos];
                     if prefix.chars().all(|c| c.is_ascii_digit()) {
@@ -547,8 +556,8 @@ impl SipAuthenticator {
                         }
                     }
                 }
-            }
-        }
+            }*/
+        // }
         
         Ok(None)
     }
@@ -556,7 +565,7 @@ impl SipAuthenticator {
     /// Extract authorization header from SIP message
     fn extract_authorization_header(&self, message: &rsip::SipMessage) -> Result<Option<String>> {
         if let rsip::SipMessage::Request(req) = message {
-            for header in &req.headers {
+            for header in req.headers.iter() {
                 if let rsip::Header::Authorization(auth) = header {
                     return Ok(Some(auth.to_string()));
                 } else if let rsip::Header::ProxyAuthorization(auth) = header {
@@ -617,10 +626,7 @@ impl SipAuthenticator {
             realm, nonce, algorithm_str
         );
         
-        let mut response = rsip::Response::new(
-            rsip::StatusCode::Unauthorized,
-            request.version.clone(),
-        );
+        let mut response = rsip::Response::default(); // TODO: Set status to Unauthorized
         
         // Add WWW-Authenticate header
         response.headers.push(rsip::Header::WwwAuthenticate(

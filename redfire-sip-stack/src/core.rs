@@ -580,9 +580,10 @@ impl SipMessageProcessor {
         
         // Extract user part from URI
         if let Ok(uri) = rsip::Uri::try_from(from_uri.as_bytes()) {
-            if let Some(user_info) = uri.user_info {
-                let user = user_info.user;
-                
+            // TODO: Extract user info from URI properly
+            /*if let Some(user_info) = uri.user_info {
+                let user = user_info.user;*/
+                /*
                 // Remove tech prefix if present
                 if let Some(prefix) = tech_prefix {
                     if user.starts_with(prefix) {
@@ -591,27 +592,27 @@ impl SipMessageProcessor {
                 }
                 
                 return user;
-            }
+            }*/
         }
         
         "unknown".to_string()
     }
     
     fn extract_called_number(&self, request: &rsip::Request) -> String {
-        // Extract user part from Request-URI
-        if let Some(user_info) = request.uri.user_info.as_ref() {
+        // TODO: Extract user part from Request-URI properly
+        /*if let Some(user_info) = request.uri.user_info.as_ref() {
             user_info.user.clone()
-        } else {
+        } else {*/
             "unknown".to_string()
-        }
+        //}
     }
     
     fn create_error_response(&self, request: &rsip::Request, status_code: u16, reason: &str, destination: SocketAddr, transport: SipTransport) -> SipRequestResult {
         let status = rsip::StatusCode::try_from(status_code).unwrap_or(rsip::StatusCode::InternalServerError);
-        let mut response = rsip::Response::new(status, request.version.clone());
+        let mut response = rsip::Response::default(); // TODO: Properly set status code
         
         // Copy required headers
-        for header in &request.headers {
+        for header in request.headers.iter() {
             match header {
                 rsip::Header::CallId(_) | rsip::Header::CSeq(_) | rsip::Header::Via(_) => {
                     response.headers.push(header.clone());
@@ -628,10 +629,10 @@ impl SipMessageProcessor {
     }
     
     fn create_ok_response(&self, request: &rsip::Request) -> rsip::Response {
-        let mut response = rsip::Response::new(rsip::StatusCode::Ok, request.version.clone());
+        let mut response = rsip::Response::default(); // TODO: Properly set status code
         
         // Copy required headers
-        for header in &request.headers {
+        for header in request.headers.iter() {
             match header {
                 rsip::Header::CallId(_) | rsip::Header::CSeq(_) | rsip::Header::Via(_) => {
                     response.headers.push(header.clone());

@@ -437,7 +437,7 @@ impl SipParser {
         }
 
         // Add Content-Length: 0 for responses without body
-        let content_length = ContentLength::new("0");
+        let content_length = ContentLength::default();
         response.headers.push(Header::ContentLength(content_length));
 
         Ok(response)
@@ -488,7 +488,7 @@ impl SipParser {
         ack.headers_mut().push(Header::MaxForwards(max_forwards));
 
         // Content-Length: 0
-        let content_length = ContentLength::new("0");
+        let content_length = ContentLength::default();
         ack.headers_mut().push(Header::ContentLength(content_length));
 
         Ok(ack)

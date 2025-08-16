@@ -136,8 +136,8 @@ pub struct StackSpecificConfig {
     pub user_agent_patterns: Vec<String>,
     /// Required quirks for this stack
     pub quirks: Vec<InteropQuirk>,
-    /// Supported SIP methods
-    pub supported_methods: Vec<Method>,
+    /// Supported SIP methods (as strings)
+    pub supported_methods: Vec<String>,
     /// Preferred transport order
     pub preferred_transports: Vec<String>,
     /// Custom header handling
