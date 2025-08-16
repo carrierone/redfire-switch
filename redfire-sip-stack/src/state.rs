@@ -156,7 +156,7 @@ impl SipStateManager {
             // Handle dialog creation/update for 2xx responses
             if crate::parser::utils::is_success_response(&message.message) {
                 if let Some(to_tag) = to_tag {
-                    let dialog_id = format!("{}:{}:{}", call_id, from_tag.unwrap_or_default(), to_tag);
+                    let dialog_id = format!("{}:{}:{}", call_id, from_tag.clone().unwrap_or_default(), to_tag);
                     self.create_or_update_dialog(&dialog_id, &call_id, from_tag, Some(to_tag), message).await?;
                 }
             }
@@ -374,8 +374,8 @@ impl SipStateManager {
                 call_id: call_id.to_string(),
                 local_tag: from_tag.unwrap_or_default(),
                 remote_tag: to_tag.unwrap_or_default(),
-                local_uri: "sip:unknown@unknown".parse().unwrap(), // TODO: Extract from message
-                remote_uri: "sip:unknown@unknown".parse().unwrap(), // TODO: Extract from message
+                local_uri: rsip::Uri::default(), // TODO: Extract from message
+                remote_uri: rsip::Uri::default(), // TODO: Extract from message
                 local_seq: 1,
                 remote_seq: 1,
                 route_set: Vec::new(),
