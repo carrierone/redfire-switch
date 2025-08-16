@@ -374,8 +374,8 @@ impl SipStateManager {
                 call_id: call_id.to_string(),
                 local_tag: from_tag.unwrap_or_default(),
                 remote_tag: to_tag.unwrap_or_default(),
-                local_uri: rsip::Uri::from_str("sip:unknown@unknown").unwrap(), // TODO: Extract from message
-                remote_uri: rsip::Uri::from_str("sip:unknown@unknown").unwrap(), // TODO: Extract from message
+                local_uri: "sip:unknown@unknown".parse().unwrap(), // TODO: Extract from message
+                remote_uri: "sip:unknown@unknown".parse().unwrap(), // TODO: Extract from message
                 local_seq: 1,
                 remote_seq: 1,
                 route_set: Vec::new(),

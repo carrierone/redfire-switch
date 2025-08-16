@@ -51,6 +51,8 @@ pub struct SipCoreConfig {
     pub dialog_timeout: u64,
     /// Enable authentication
     pub enable_authentication: bool,
+    /// User agent string
+    pub user_agent: String,
 }
 
 impl Default for SipCoreConfig {
@@ -83,6 +85,7 @@ impl Default for SipCoreConfig {
             transaction_timeout: 32, // RFC 3261 Timer B
             dialog_timeout: 3600,    // 1 hour
             enable_authentication: true,
+            user_agent: "Redfire-Switch/1.0".to_string(),
         }
     }
 }
@@ -180,10 +183,19 @@ impl SipCoreEngine {
         let transport_manager = Arc::new(SipTransportManager::new(config.transports.clone())?);
         
         // Create SIP parser
-        let parser = Arc::new(SipParser::new(config.strict_rfc_compliance));
+        let parser = Arc::new(SipParser::new(
+            config.transports.first()
+                .map(|t| t.bind_address.ip().to_string())
+                .unwrap_or_else(|| "127.0.0.1".to_string()),
+            config.transports.first()
+                .map(|t| t.bind_address.port())
+                .unwrap_or(5060),
+            config.user_agent.clone(),
+        ));
         
-        // Create state manager
-        let state_manager = Arc::new(SipStateManager::new());
+        // Create state manager with default config
+        let state_config = crate::state::SipStateConfig::default();
+        let state_manager = Arc::new(SipStateManager::new(state_config));
         
         // Create authenticator
         let mut authenticator = SipAuthenticator::new(config.auth_realm.clone());

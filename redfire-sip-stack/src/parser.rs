@@ -11,20 +11,18 @@
  */
 
 use anyhow::{Result, anyhow};
-use chrono::{DateTime, Utc};
 use rsip::{
-    message::SipMessage as RsipMessage, Request, Response, 
-    headers::{Header, Via, Contact, From, To, CallId, CSeq, ContentType, ContentLength},
+    message::{SipMessage as RsipMessage, HeadersExt}, Request, Response, 
+    headers::{Header, CSeq, ContentLength},
     method::Method,
     version::Version,
     uri::Uri,
     param::Param,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::str::FromStr;
-use tracing::{debug, info, warn, error};
+use tracing::{debug, warn};
 use uuid::Uuid;
 
 /// SIP message wrapper with additional metadata
@@ -228,7 +226,7 @@ impl SipParser {
         debug!("Parsing SIP message from {}: {}", source, message_str);
 
         // Parse using rsip library
-        let message = RsipMessage::from_str(&message_str)
+        let message = message_str.parse::<RsipMessage>()
             .map_err(|e| anyhow!("Failed to parse SIP message: {}", e))?;
 
         // Validate message structure

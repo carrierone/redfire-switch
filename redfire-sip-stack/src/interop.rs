@@ -52,10 +52,11 @@ use std::net::{IpAddr, SocketAddr};
 use std::time::{Duration, SystemTime};
 use tracing::{debug, info, warn, error};
 use rsip::{
-    message::SipMessage, Request, Response, Method, Version,
+    message::{SipMessage, HeadersExt}, Request, Response, Method, Version,
     headers::{Header, Via, Contact, From, To, CallId, CSeq, ContentType, ContentLength, MaxForwards, Route, RecordRoute},
     param::Param,
     uri::Uri,
+    StatusCode,
 };
 
 /// SIP interoperability configuration
@@ -919,7 +920,7 @@ impl RfcComplianceChecker {
         }
         
         // Status-specific validation
-        let status_code = response.status_code().as_u16();
+        let status_code = response.status_code().code();
         if status_code >= 200 && status_code < 300 {
             // 2xx responses to INVITE should have Contact header
             if let Ok(cseq) = response.cseq_header() {
