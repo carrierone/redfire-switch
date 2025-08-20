@@ -53,8 +53,11 @@ async fn main() -> Result<()> {
     // Initialize logging
     let log_level = if args.debug { "debug" } else { "info" };
     tracing_subscriber::fmt()
-        .with_env_filter(format!("redfire_mcp_server={},redfire_codec_engine={},redfire_sip_stack={}", 
-                                log_level, log_level, log_level))
+        .with_max_level(if args.debug { 
+            tracing::Level::DEBUG 
+        } else { 
+            tracing::Level::INFO 
+        })
         .init();
 
     info!("Starting Redfire MCP Server v{}", env!("CARGO_PKG_VERSION"));

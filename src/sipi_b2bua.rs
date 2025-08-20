@@ -12,10 +12,13 @@ use tokio::sync::RwLock;
 use tracing::{info, warn, error, debug};
 use chrono::{DateTime, Utc};
 
-use crate::sipt_sipi::{
+use redfire_sip_stack::sipt_sipi::{
     SipTSipIService, SipTSipIConfig, IsupMessage, IsupMessageType, 
     IsupParameterType, IsupParameter, utils
 };
+
+// Compliance framework integration
+use crate::compliance_framework::{ComplianceFramework, CallEvent, CallEventType};
 
 /// Enhanced call leg with SIP-I support
 #[derive(Debug, Clone)]
@@ -82,6 +85,8 @@ pub struct SipIB2BUA {
     // CIC management
     used_cics: Arc<RwLock<Vec<u16>>>,
     trunk_group_id: String,
+    // Compliance framework integration
+    compliance_framework: Arc<ComplianceFramework>,
 }
 
 impl SipIB2BUA {
@@ -91,6 +96,7 @@ impl SipIB2BUA {
         term_port: u16,
         sipi_config: SipTSipIConfig,
         trunk_group_id: String,
+        compliance_framework: Arc<ComplianceFramework>,
     ) -> Result<Self> {
         let socket = UdpSocket::bind(bind_addr).await?;
         info!("SIP-I B2BUA listening on {}", bind_addr);
@@ -110,6 +116,7 @@ impl SipIB2BUA {
             sipi_service,
             used_cics: Arc::new(RwLock::new(Vec::new())),
             trunk_group_id,
+            compliance_framework,
         })
     }
 
@@ -266,13 +273,47 @@ impl SipIB2BUA {
         // Store session
         {
             let mut calls = self.calls.write().await;
-            calls.insert(call_id.clone(), session);
+            calls.insert(call_id.clone(), session.clone());
         }
 
         // Map termination address to call ID for response routing
         {
             let mut addr_map = self.addr_to_call.write().await;
-            addr_map.insert(termination_socket, call_id);
+            addr_map.insert(termination_socket, call_id.clone());
+        }
+
+        // Submit compliance event for call initiation
+        let mut call_event = CallEvent {
+            call_id: call_id.clone(),
+            event_type: CallEventType::CallAttempt,
+            timestamp: Utc::now(),
+            calling_number: session.a_leg.from_number.clone().unwrap_or_default(),
+            called_number: session.a_leg.to_number.clone().unwrap_or_default(),
+            sip_method: Some("INVITE".to_string()),
+            sip_response_code: None,
+            source_ip: Some(session.a_leg.remote_addr.ip()),
+            dest_ip: Some(session.b_leg.remote_addr.ip()),
+            user_agent: None,
+            sip_headers: HashMap::new(),
+            rtp_stats: None,
+        };
+        
+        // Check for J-STD-025 (U.S.) or ETSI LI (international) lawful intercept requirements
+        if let Some(from_number) = &session.a_leg.from_number {
+            if let Some(to_number) = &session.a_leg.to_number {
+                // Add jurisdiction-specific intercept flags
+                call_event.sip_headers.insert(
+                    "X-Jurisdiction".to_string(), 
+                    "US-JSTD025".to_string()
+                );
+                
+                info!("J-STD-025 B2BUA Integration: Checking intercept requirements for call {} ({} -> {})", 
+                      call_id, from_number, to_number);
+            }
+        }
+        
+        if let Err(e) = self.compliance_framework.submit_call_event(call_event) {
+            warn!("Failed to submit call attempt event for {}: {}", call_id, e);
         }
 
         Ok(())
@@ -316,6 +357,26 @@ impl SipIB2BUA {
                             info!("Received ISUP ANM for call {}", call_id);
                         }
                     }
+                    
+                    // Submit compliance event for call establishment
+                    let call_event = CallEvent {
+                        call_id: call_id.clone(),
+                        event_type: CallEventType::CallAnswered,
+                        timestamp: Utc::now(),
+                        calling_number: session.a_leg.from_number.clone().unwrap_or_default(),
+                        called_number: session.a_leg.to_number.clone().unwrap_or_default(),
+                        sip_method: None,
+                        sip_response_code: Some(200),
+                        source_ip: Some(session.b_leg.remote_addr.ip()),
+                        dest_ip: Some(session.a_leg.remote_addr.ip()),
+                        user_agent: None,
+                        sip_headers: HashMap::new(),
+                        rtp_stats: None,
+                    };
+                    
+                    if let Err(e) = self.compliance_framework.submit_call_event(call_event) {
+                        warn!("Failed to submit call established event for {}: {}", call_id, e);
+                    }
                 } else if message.contains("SIP/2.0 4") || message.contains("SIP/2.0 5") || message.contains("SIP/2.0 6") {
                     session.state = CallState::Disconnected;
                     // Check for ISUP REL (Release)
@@ -324,6 +385,40 @@ impl SipIB2BUA {
                             session.isup_rel = response_isup.clone();
                             info!("Received ISUP REL for call {}", call_id);
                         }
+                    }
+                    
+                    // Calculate call duration
+                    let call_duration = Utc::now().signed_duration_since(session.created_at);
+                    let duration_seconds = if call_duration.num_seconds() >= 0 {
+                        call_duration.num_seconds() as u64
+                    } else {
+                        0
+                    };
+                    
+                    // Extract response code for termination cause
+                    let response_code = if message.contains("SIP/2.0 4") { 400 }
+                        else if message.contains("SIP/2.0 5") { 500 }
+                        else if message.contains("SIP/2.0 6") { 600 }
+                        else { 487 };
+                    
+                    // Submit compliance event for call termination
+                    let call_event = CallEvent {
+                        call_id: call_id.clone(),
+                        event_type: CallEventType::CallEnded,
+                        timestamp: Utc::now(),
+                        calling_number: session.a_leg.from_number.clone().unwrap_or_default(),
+                        called_number: session.a_leg.to_number.clone().unwrap_or_default(),
+                        sip_method: None,
+                        sip_response_code: Some(response_code),
+                        source_ip: Some(session.b_leg.remote_addr.ip()),
+                        dest_ip: Some(session.a_leg.remote_addr.ip()),
+                        user_agent: None,
+                        sip_headers: HashMap::new(),
+                        rtp_stats: None,
+                    };
+                    
+                    if let Err(e) = self.compliance_framework.submit_call_event(call_event) {
+                        warn!("Failed to submit call termination event for {}: {}", call_id, e);
                     }
                 }
 
@@ -419,6 +514,34 @@ impl SipIB2BUA {
             // Send 200 OK to sender
             let bye_response = self.create_bye_response(message)?;
             self.send_to(bye_response.as_bytes(), from).await?;
+            
+            // Calculate call duration for compliance
+            let call_duration = Utc::now().signed_duration_since(session.created_at);
+            let duration_seconds = if call_duration.num_seconds() >= 0 {
+                call_duration.num_seconds() as u64
+            } else {
+                0
+            };
+            
+            // Submit compliance event for call termination (BYE)
+            let call_event = CallEvent {
+                call_id: call_id.clone(),
+                event_type: CallEventType::CallEnded,
+                timestamp: Utc::now(),
+                calling_number: session.a_leg.from_number.clone().unwrap_or_default(),
+                called_number: session.a_leg.to_number.clone().unwrap_or_default(),
+                sip_method: Some("BYE".to_string()),
+                sip_response_code: None,
+                source_ip: Some(from.ip()),
+                dest_ip: Some(session.a_leg.local_addr.ip()),
+                user_agent: None,
+                sip_headers: HashMap::new(),
+                rtp_stats: None,
+            };
+            
+            if let Err(e) = self.compliance_framework.submit_call_event(call_event) {
+                warn!("Failed to submit call termination event for {}: {}", call_id, e);
+            }
             
             // Release CIC if allocated
             if let Some(cic) = session.b_leg.cic {

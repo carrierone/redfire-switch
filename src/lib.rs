@@ -47,6 +47,12 @@ pub mod sdp;
 pub mod security_utils;
 pub mod security_monitor;
 
+// Compliance and regulatory framework
+pub mod j_std_025;
+pub mod etsi_li;
+pub mod compliance_framework;
+pub mod calea_sip_bridge;
+
 // Enterprise features
 pub mod operational_dashboard;
 pub mod cluster_management;
@@ -55,18 +61,15 @@ pub mod secure_sipi_b2bua;
 pub mod enterprise_b2bua;
 pub mod ai_analytics_engine;
 
-// DTMF processing modules
+// DTMF and signaling modules
 pub mod dtmf_processor;
-pub mod dtmf_freeswitch_integration;
 pub mod rfc2833_events;
 pub mod sip_info_dtmf;
 pub mod sigtran_dtmf;
 pub mod stir_shaken_tdm;
-pub mod tdmoe_dtmf;
 
 // G.729 codec implementations
 pub mod g729_codec;
-// pub mod g729_asm; // Removed - replaced by g729_external_asm with external assembler
 pub mod g729_optimized;
 pub mod g729_external_asm;
 pub mod g729_simple_test;

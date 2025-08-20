@@ -33,6 +33,38 @@ use tracing::{debug, info, warn, error, instrument};
 use dashmap::DashMap;
 use uuid::Uuid;
 
+/// Trait for CALEA compliance notifications from SIP stack
+pub trait ComplianceNotifier {
+    /// Notify of call attempt (INVITE received)
+    fn notify_call_attempt(&self, context: &SipCallContext, source_ip: std::net::IpAddr);
+    
+    /// Notify of call establishment (200 OK sent/received)
+    fn notify_call_established(&self, context: &SipCallContext);
+    
+    /// Notify of call termination (BYE/error response)
+    fn notify_call_terminated(&self, context: &SipCallContext, termination_reason: &str);
+    
+    /// Notify of SIP method processing (for CDR generation)
+    fn notify_sip_method(&self, call_id: &str, method: &str, response_code: Option<u16>, source_ip: std::net::IpAddr);
+}
+
+/// CALEA compliance event types
+#[derive(Debug, Clone)]
+enum ComplianceEventType {
+    CallAttempt { source_ip: std::net::IpAddr },
+    CallEstablished,
+    CallTerminated { reason: String },
+    SipMethod { method: String, response_code: Option<u16>, source_ip: std::net::IpAddr },
+}
+
+/// Extra compliance data
+#[derive(Debug, Clone)]
+struct ComplianceExtraData {
+    pub method: Option<String>,
+    pub response_code: Option<u16>,
+    pub source_ip: Option<std::net::IpAddr>,
+}
+
 /// Core SIP engine configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SipCoreConfig {
@@ -62,7 +94,7 @@ impl Default for SipCoreConfig {
             transports: vec![
                 TransportConfig {
                     transport: SipTransport::Udp,
-                    bind_address: "0.0.0.0:5060".parse().unwrap(),
+                    bind_address: "0.0.0.0:5060".parse().expect("Default UDP bind address must be valid"),
                     max_message_size: 8192,
                     connection_timeout: 30,
                     keep_alive_interval: Some(60),
@@ -71,7 +103,7 @@ impl Default for SipCoreConfig {
                 },
                 TransportConfig {
                     transport: SipTransport::Tcp,
-                    bind_address: "0.0.0.0:5060".parse().unwrap(),
+                    bind_address: "0.0.0.0:5060".parse().expect("Default TCP bind address must be valid"),
                     max_message_size: 65536,
                     connection_timeout: 30,
                     keep_alive_interval: Some(300),
@@ -162,6 +194,8 @@ pub struct SipCoreEngine {
     active_calls: Arc<DashMap<String, SipCallContext>>,
     /// Message processor
     message_processor: mpsc::UnboundedSender<ProcessorMessage>,
+    /// CALEA compliance framework for U.S. lawful intercept
+    compliance_framework: Option<Arc<dyn ComplianceNotifier + Send + Sync>>,
 }
 
 /// Internal processor messages
@@ -222,6 +256,7 @@ impl SipCoreEngine {
             authenticator,
             active_calls: Arc::new(DashMap::new()),
             message_processor,
+            compliance_framework: None,
         };
         
         // Start message processor task
@@ -231,6 +266,7 @@ impl SipCoreEngine {
             engine.authenticator.clone(),
             engine.active_calls.clone(),
             engine.config.clone(),
+            engine.compliance_framework.clone(),
         );
         
         tokio::spawn(async move {
@@ -285,6 +321,32 @@ impl SipCoreEngine {
         self.active_calls.get(call_id).map(|ctx| ctx.clone())
     }
     
+    /// Set CALEA compliance framework for lawful intercept
+    pub fn set_compliance_framework(&mut self, framework: Arc<dyn ComplianceNotifier + Send + Sync>) {
+        self.compliance_framework = Some(framework);
+        info!("CALEA compliance framework integrated with SIP stack");
+    }
+    
+    /// Notify compliance framework of call events
+    fn notify_compliance(&self, event_type: ComplianceEventType, context: &SipCallContext, extra_data: Option<ComplianceExtraData>) {
+        if let Some(ref framework) = self.compliance_framework {
+            match event_type {
+                ComplianceEventType::CallAttempt { source_ip } => {
+                    framework.notify_call_attempt(context, source_ip);
+                }
+                ComplianceEventType::CallEstablished => {
+                    framework.notify_call_established(context);
+                }
+                ComplianceEventType::CallTerminated { reason } => {
+                    framework.notify_call_terminated(context, &reason);
+                }
+                ComplianceEventType::SipMethod { method, response_code, source_ip } => {
+                    framework.notify_sip_method(&context.call_id, &method, response_code, source_ip);
+                }
+            }
+        }
+    }
+    
     /// List active calls
     pub async fn list_active_calls(&self) -> Vec<SipCallContext> {
         self.active_calls.iter().map(|entry| entry.value().clone()).collect()
@@ -308,6 +370,7 @@ struct SipMessageProcessor {
     authenticator: Arc<RwLock<SipAuthenticator>>,
     active_calls: Arc<DashMap<String, SipCallContext>>,
     config: SipCoreConfig,
+    compliance_framework: Option<Arc<dyn ComplianceNotifier + Send + Sync>>,
 }
 
 impl SipMessageProcessor {
@@ -317,6 +380,7 @@ impl SipMessageProcessor {
         authenticator: Arc<RwLock<SipAuthenticator>>,
         active_calls: Arc<DashMap<String, SipCallContext>>,
         config: SipCoreConfig,
+        compliance_framework: Option<Arc<dyn ComplianceNotifier + Send + Sync>>,
     ) -> Self {
         Self {
             parser,
@@ -324,6 +388,7 @@ impl SipMessageProcessor {
             authenticator,
             active_calls,
             config,
+            compliance_framework,
         }
     }
     
@@ -360,6 +425,7 @@ impl SipMessageProcessor {
                     authenticator: self.authenticator.clone(),
                     active_calls: self.active_calls.clone(),
                     config: self.config.clone(),
+                    compliance_framework: self.compliance_framework.clone(),
                 };
                 
                 tokio::spawn(async move {
@@ -501,6 +567,12 @@ impl SipMessageProcessor {
             SipStateAction::ProcessNewInvite { transaction_id: _ } => {
                 info!("Processing new INVITE for call {}", call_id);
                 
+                // CALEA compliance: Report call attempt for U.S. lawful intercept
+                if let Some(ref framework) = self.compliance_framework {
+                    framework.notify_call_attempt(&context, message.source.ip());
+                    debug!("CALEA: Reported call attempt for {}", call_id);
+                }
+                
                 // Forward to routing engine
                 SipRequestResult::RouteCall {
                     context,
@@ -527,6 +599,12 @@ impl SipMessageProcessor {
             SipStateAction::ProcessBye { transaction_id: _, dialog_id: _ } => {
                 info!("Processing BYE for call {}", call_id);
                 
+                // CALEA compliance: Report call termination for U.S. lawful intercept
+                if let Some(ref framework) = self.compliance_framework {
+                    framework.notify_call_terminated(&context, "normal_hangup");
+                    debug!("CALEA: Reported call termination for {}", call_id);
+                }
+                
                 // Send 200 OK for BYE
                 let response = self.create_ok_response(request);
                 self.active_calls.remove(&call_id);
@@ -547,6 +625,12 @@ impl SipMessageProcessor {
             },
             SipStateAction::ProcessCancel { transaction_id: _, invite_transaction_id: _ } => {
                 info!("Processing CANCEL for call {}", call_id);
+                
+                // CALEA compliance: Report call cancellation for U.S. lawful intercept
+                if let Some(ref framework) = self.compliance_framework {
+                    framework.notify_call_terminated(&context, "call_cancelled");
+                    debug!("CALEA: Reported call cancellation for {}", call_id);
+                }
                 
                 // Send 200 OK for CANCEL and 487 Request Terminated for original request
                 let response = self.create_ok_response(request);

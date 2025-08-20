@@ -95,6 +95,7 @@ impl CodecTools {
             timestamp: 0,
             sample_rate,
             channels: 1,
+            sequence: 0,
         };
         
         // Transcode the frame
@@ -244,6 +245,7 @@ impl CodecTools {
                 timestamp: 0,
                 sample_rate: 8000,
                 channels: 1,
+                sequence: 0,
             };
             
             // Transcode
@@ -313,7 +315,7 @@ impl CodecTools {
                 // 1 second = sample_rate bytes for G.711
                 vec![0x7F; sample_rate as usize]
             }
-            AudioCodec::G729 => {
+            AudioCodec::G729 | AudioCodec::G729AnnexA | AudioCodec::G729AnnexB => {
                 // G.729 frame is 10 bytes for 10ms (80 samples)
                 vec![0x00; 100] // 1 second = 100 frames
             }

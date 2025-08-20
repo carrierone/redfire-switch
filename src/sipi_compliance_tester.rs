@@ -12,7 +12,7 @@ use tokio::sync::RwLock;
 use tracing::{info, debug};
 use chrono::{DateTime, Utc};
 
-use crate::sipt_sipi::{
+use redfire_sip_stack::sipt_sipi::{
     SipTSipIService, SipTSipIConfig, IsupMessage, IsupMessageType, 
     IsupParameterType, IsupVariant
 };

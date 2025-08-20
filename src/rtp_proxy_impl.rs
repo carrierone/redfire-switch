@@ -3,7 +3,7 @@
  * Handles RTP packet forwarding, codec translation, and media session management
  */
 
-use crate::codec::{CodecService, AudioCodec as CodecAudioCodec, AudioFrame, CodecConfig};
+use redfire_codec_engine::{CodecService, AudioCodec as CodecAudioCodec, AudioFrame, CodecConfig};
 use crate::rtp::{RtpPacket, RtpStats};
 use anyhow::{Result, anyhow};
 use dashmap::DashMap;
@@ -487,13 +487,13 @@ impl RtpProxyService {
         let (endpoint, target_socket) = match direction {
             MediaDirection::Ingress => {
                 session.stats.ingress_stats.update_received(&rtp_packet);
-                let packets = session.ingress_endpoint.jitter_buffer.add_packet(rtp_packet);
+                let packets = session.ingress_endpoint.jitter_buffer.add_packet(rtp_packet.clone());
                 let target_addr = session.egress_endpoint.remote_addr;
                 (target_addr, &session.egress_endpoint.local_addr)
             }
             MediaDirection::Egress => {
                 session.stats.egress_stats.update_received(&rtp_packet);
-                let packets = session.egress_endpoint.jitter_buffer.add_packet(rtp_packet);
+                let packets = session.egress_endpoint.jitter_buffer.add_packet(rtp_packet.clone());
                 let target_addr = session.ingress_endpoint.remote_addr;
                 (target_addr, &session.ingress_endpoint.local_addr)
             }

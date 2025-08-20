@@ -15,7 +15,6 @@ use warp::{Filter, Reply};
 use crate::codec_tools::CodecTools;
 use crate::sip_tools::SipTools;
 
-#[derive(Clone)]
 pub struct RedfireMcpServer {
     codec_tools: Arc<CodecTools>,
     sip_tools: Arc<SipTools>,
