@@ -1,5 +1,5 @@
 graph TD
-    %% Redfire Switch Architecture Overview - System Components
+    %% Redfire Switch Architecture Overview - System Components with Lawful Intercept
     
     %% Core Application
     main[Main Application]
@@ -16,12 +16,22 @@ graph TD
     security[Security & Auth]
     monitoring[Monitoring & CDR]
     
+    %% Lawful Intercept & Compliance
+    li_subsystem[Lawful Intercept System]
+    compliance[Compliance Framework]
+    etsi_li[ETSI LI Engine]
+    calea[CALEA/J-STD-025]
+    
+    %% External LEA Systems
+    lea_endpoints[LEA Delivery Endpoints]
+    
     %% Dependencies
     main --> config
     main --> sip_subsystem
     main --> routing_subsystem
     main --> security
     main --> monitoring
+    main --> compliance
     
     sip_subsystem --> media_subsystem
     routing_subsystem --> media_subsystem
@@ -32,18 +42,37 @@ graph TD
     cli_subsystem --> sip_subsystem
     cli_subsystem --> routing_subsystem
     cli_subsystem --> monitoring
+    cli_subsystem --> li_subsystem
     
     security -.-> sip_subsystem
     security -.-> api_subsystem
+    security -.-> li_subsystem
     
     monitoring -.-> sip_subsystem
     monitoring -.-> media_subsystem
+    
+    %% Lawful Intercept Integration
+    compliance --> li_subsystem
+    li_subsystem --> etsi_li
+    li_subsystem --> calea
+    
+    %% LI Data Flow
+    sip_subsystem --> compliance
+    routing_subsystem --> compliance
+    media_subsystem -.-> li_subsystem
+    
+    etsi_li --> lea_endpoints
+    calea --> lea_endpoints
     
     %% Styling
     classDef coreModule fill:#e1f5fe,stroke:#01579b,stroke-width:3px
     classDef subsystemModule fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
     classDef supportModule fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef complianceModule fill:#ffebee,stroke:#c62828,stroke-width:3px
+    classDef externalModule fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
     
     class main,config coreModule
     class sip_subsystem,routing_subsystem,media_subsystem,api_subsystem,cli_subsystem subsystemModule
     class security,monitoring supportModule
+    class li_subsystem,compliance,etsi_li,calea complianceModule
+    class lea_endpoints externalModule

@@ -1,0 +1,180 @@
+flowchart TD
+    %% Lawful Intercept Data Flow - From Call to LEA
+    
+    %% Call Origination
+    subgraph "Call Processing"
+        A[Incoming SIP INVITE]
+        B[Call Authentication]
+        C[Call Routing]
+        D[Media Establishment]
+        E[Call Progress Events]
+    end
+    
+    %% Warrant Checking
+    subgraph "Warrant Validation"
+        F[Target Identification]
+        G[Active Warrant Check]
+        H[LEA Authorization]
+        I[Intercept Scope Decision]
+    end
+    
+    %% Data Collection Points
+    subgraph "Data Collection"
+        J[SIP Message Capture]
+        K[Call Metadata Extract]
+        L[Media Content Capture]
+        M[Location Data]
+        N[QoS Metrics]
+    end
+    
+    %% Standards Processing
+    subgraph "ETSI LI Processing"
+        O[HI2 Message Creation]
+        P[HI3 Content Processing]
+        Q[ASN.1 BER Encoding]
+        R[Timestamp Synchronization]
+    end
+    
+    subgraph "CALEA Processing"
+        S[CDR Generation]
+        T[J-STD-025 Formatting]
+        U[Real-time Event Correlation]
+    end
+    
+    %% Security Processing
+    subgraph "Security Layer"
+        V[Data Classification]
+        W[Encryption Process]
+        X[Digital Signing]
+        Y[Audit Trail Creation]
+    end
+    
+    %% Delivery Preparation
+    subgraph "Delivery Processing"
+        Z[Delivery Queue Management]
+        AA[Batch Aggregation]
+        BB[Endpoint Selection]
+        CC[Retry Logic]
+    end
+    
+    %% LEA Delivery
+    subgraph "LEA Systems"
+        DD[HI2 Delivery HTTPS]
+        EE[HI3 Delivery HTTPS]  
+        FF[CDR Batch Delivery]
+        GG[Delivery Confirmation]
+    end
+    
+    %% Audit & Compliance
+    subgraph "Audit Trail"
+        HH[Access Logging]
+        II[Delivery Tracking]
+        JJ[Compliance Reporting]
+        KK[Integrity Verification]
+    end
+    
+    %% Main Data Flow
+    A --> B
+    B --> C
+    C --> D
+    D --> E
+    
+    %% Warrant Processing Branch
+    A --> F
+    F --> G
+    G --> H
+    H --> I
+    
+    %% Data Collection Branch
+    E --> J
+    J --> K
+    D --> L
+    C --> M
+    E --> N
+    
+    %% Conditional Processing
+    I -->|Intercept Authorized| O
+    I -->|Intercept Authorized| S
+    I -->|No Intercept| End[Call Processing Continues]
+    
+    %% ETSI Path
+    K --> O
+    M --> O
+    L --> P
+    O --> Q
+    P --> Q
+    Q --> R
+    
+    %% CALEA Path
+    K --> S
+    N --> S
+    S --> T
+    T --> U
+    
+    %% Security Processing
+    R --> V
+    U --> V
+    V --> W
+    W --> X
+    X --> Y
+    
+    %% Delivery Path
+    Y --> Z
+    Z --> AA
+    AA --> BB
+    BB --> CC
+    
+    %% LEA Delivery
+    CC -->|HI2 Data| DD
+    CC -->|HI3 Data| EE
+    CC -->|CDR Data| FF
+    
+    DD --> GG
+    EE --> GG
+    FF --> GG
+    
+    %% Audit Path
+    G --> HH
+    X --> HH
+    GG --> II
+    II --> JJ
+    JJ --> KK
+    
+    %% Error Handling
+    CC -->|Delivery Failed| Retry[Retry Queue]
+    Retry --> CC
+    
+    %% Data Retention
+    Y --> Retention[Data Retention System]
+    
+    %% Legal Process
+    Court[Court Order] --> G
+    LEA[LEA Request] --> H
+    
+    %% Performance Monitoring
+    R --> Monitor[Performance Monitor]
+    U --> Monitor
+    GG --> Monitor
+    
+    %% Styling
+    classDef callProcess fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef warrant fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef collect fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef etsi fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+    classDef calea fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef security fill:#fce4ec,stroke:#c2185b,stroke-width:3px
+    classDef delivery fill:#e0f2f1,stroke:#00796b,stroke-width:2px
+    classDef lea fill:#fff8e1,stroke:#fbc02d,stroke-width:2px
+    classDef audit fill:#efebe9,stroke:#5d4037,stroke-width:2px
+    classDef external fill:#e1f5fe,stroke:#0288d1,stroke-width:2px
+    
+    class A,B,C,D,E callProcess
+    class F,G,H,I warrant
+    class J,K,L,M,N collect
+    class O,P,Q,R etsi
+    class S,T,U calea
+    class V,W,X,Y security
+    class Z,AA,BB,CC delivery
+    class DD,EE,FF,GG lea
+    class HH,II,JJ,KK audit
+    class Court,LEA,Monitor,Retention,Retry,End external

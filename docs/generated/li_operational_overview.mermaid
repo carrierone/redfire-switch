@@ -1,0 +1,200 @@
+graph TB
+    %% Lawful Intercept Operational Overview
+    %% Shows operational workflows and stakeholder interactions
+    
+    %% Legal Authority Layer
+    subgraph "Legal Framework"
+        court[Court System]
+        judge[Issuing Judge]
+        warrant_doc[Court Order/Warrant]
+        legal_auth[Legal Authorization]
+    end
+    
+    %% Law Enforcement Layer  
+    subgraph "Law Enforcement Agency"
+        lea_operator[LEA Operator]
+        lea_systems[LEA Collection Systems]
+        lea_analyst[LEA Analyst]
+        case_mgmt[Case Management]
+        evidence_system[Evidence Management]
+    end
+    
+    %% Carrier Operations Layer
+    subgraph "Telecommunications Carrier"
+        carrier_legal[Legal Compliance Team]
+        li_operator[LI System Operator]
+        noc[Network Operations Center]
+        security_team[Security Team]
+        audit_team[Audit Team]
+    end
+    
+    %% Technical Systems Layer
+    subgraph "Redfire Switch LI System"
+        li_mgmt[LI Management Interface]
+        warrant_validator[Warrant Validator]
+        intercept_engine[Intercept Processing]
+        data_delivery[Data Delivery System]
+        audit_system[Audit & Monitoring]
+    end
+    
+    %% Network Infrastructure
+    subgraph "Network Layer"
+        sip_traffic[SIP Call Traffic]
+        media_streams[Media Streams]
+        network_elements[Network Elements]
+        monitoring_probes[Monitoring Probes]
+    end
+    
+    %% Data Processing Pipeline
+    subgraph "Data Processing"
+        call_processor[Call Processor]
+        content_analyzer[Content Analyzer]
+        metadata_extractor[Metadata Extractor]
+        format_converter[Format Converter]
+        encryptor[Encryption Engine]
+    end
+    
+    %% Delivery Infrastructure
+    subgraph "Secure Delivery"
+        delivery_queue[Secure Queue]
+        endpoint_mgr[Endpoint Manager]
+        transmission[Encrypted Transmission]
+        receipt_confirm[Delivery Confirmation]
+    end
+    
+    %% Operational Workflows
+    
+    %% Legal Process Flow
+    court --> judge
+    judge --> warrant_doc
+    warrant_doc --> legal_auth
+    legal_auth --> lea_operator
+    
+    %% LEA Request Flow
+    lea_operator --> carrier_legal
+    carrier_legal --> li_operator
+    li_operator --> li_mgmt
+    
+    %% Warrant Activation Flow
+    li_mgmt --> warrant_validator
+    warrant_validator --> intercept_engine
+    intercept_engine --> audit_system
+    
+    %% Technical Integration Flow
+    sip_traffic --> call_processor
+    media_streams --> content_analyzer
+    network_elements --> metadata_extractor
+    monitoring_probes --> intercept_engine
+    
+    %% Data Processing Flow
+    call_processor --> format_converter
+    content_analyzer --> format_converter
+    metadata_extractor --> format_converter
+    format_converter --> encryptor
+    encryptor --> delivery_queue
+    
+    %% Delivery Flow
+    delivery_queue --> endpoint_mgr
+    endpoint_mgr --> transmission
+    transmission --> lea_systems
+    lea_systems --> receipt_confirm
+    receipt_confirm --> data_delivery
+    
+    %% Analysis Flow
+    lea_systems --> lea_analyst
+    lea_analyst --> case_mgmt
+    case_mgmt --> evidence_system
+    
+    %% Monitoring & Oversight
+    audit_system --> noc
+    audit_system --> security_team  
+    audit_system --> audit_team
+    audit_team --> carrier_legal
+    
+    %% Compliance Reporting
+    noc -.-> lea_operator
+    security_team -.-> lea_operator
+    
+    %% Quality Assurance
+    data_delivery -.-> li_operator
+    li_operator -.-> carrier_legal
+    
+    %% Legal Oversight
+    carrier_legal -.-> court
+    evidence_system -.-> court
+    
+    %% Operational States
+    subgraph "System States"
+        standby[Standby Mode]
+        active[Active Intercept]
+        maintenance[Maintenance]
+        emergency[Emergency Override]
+    end
+    
+    %% State Transitions
+    li_mgmt --> standby
+    standby -->|Warrant Activated| active
+    active -->|Warrant Expired| standby
+    active -->|System Maintenance| maintenance
+    maintenance --> standby
+    emergency --> active
+    
+    %% Alerts & Notifications
+    subgraph "Alert System"
+        system_alerts[System Health Alerts]
+        compliance_alerts[Compliance Violations]
+        security_alerts[Security Incidents]
+        delivery_alerts[Delivery Failures]
+    end
+    
+    %% Alert Routing
+    audit_system --> system_alerts
+    audit_system --> compliance_alerts
+    audit_system --> security_alerts
+    audit_system --> delivery_alerts
+    
+    system_alerts --> noc
+    compliance_alerts --> carrier_legal
+    security_alerts --> security_team
+    delivery_alerts --> li_operator
+    
+    %% Performance Metrics
+    subgraph "KPIs & Metrics"
+        uptime[System Uptime]
+        delivery_rate[Delivery Success Rate]  
+        compliance_score[Compliance Score]
+        security_incidents[Security Metrics]
+    end
+    
+    %% Metrics Collection
+    intercept_engine -.-> uptime
+    data_delivery -.-> delivery_rate
+    audit_system -.-> compliance_score
+    security_team -.-> security_incidents
+    
+    %% Reporting
+    uptime --> noc
+    delivery_rate --> li_operator
+    compliance_score --> carrier_legal
+    security_incidents --> security_team
+    
+    %% Styling
+    classDef legal fill:#fff3e0,stroke:#e65100,stroke-width:3px
+    classDef lea fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef carrier fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef technical fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+    classDef network fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef processing fill:#e0f2f1,stroke:#00796b,stroke-width:2px
+    classDef delivery fill:#fff8e1,stroke:#f57c00,stroke-width:2px
+    classDef operational fill:#efebe9,stroke:#5d4037,stroke-width:2px
+    classDef monitoring fill:#e1f5fe,stroke:#0288d1,stroke-width:2px
+    
+    class court,judge,warrant_doc,legal_auth legal
+    class lea_operator,lea_systems,lea_analyst,case_mgmt,evidence_system lea
+    class carrier_legal,li_operator,noc,security_team,audit_team carrier
+    class li_mgmt,warrant_validator,intercept_engine,data_delivery,audit_system technical
+    class sip_traffic,media_streams,network_elements,monitoring_probes network
+    class call_processor,content_analyzer,metadata_extractor,format_converter,encryptor processing
+    class delivery_queue,endpoint_mgr,transmission,receipt_confirm delivery
+    class standby,active,maintenance,emergency operational
+    class system_alerts,compliance_alerts,security_alerts,delivery_alerts,uptime,delivery_rate,compliance_score,security_incidents monitoring

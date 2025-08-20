@@ -1,0 +1,159 @@
+graph TB
+    %% Lawful Intercept System Architecture - Detailed View
+    
+    %% Input Sources
+    subgraph "Call Processing Layer"
+        sip_stack[SIP Stack]
+        b2bua[B2BUA Engine]
+        media_processor[Media Processor]
+        rtp_proxy[RTP Proxy]
+    end
+    
+    %% Compliance Bridge
+    subgraph "Compliance Integration"
+        calea_bridge[CALEA SIP Bridge]
+        compliance_fw[Compliance Framework]
+        event_processor[Event Processor]
+    end
+    
+    %% LI Processing Core
+    subgraph "Lawful Intercept Engine"
+        warrant_mgr[Warrant Manager]
+        li_engine[LI Processing Engine]
+        data_classifier[Data Classifier]
+        encryption_engine[Encryption Engine]
+    end
+    
+    %% Standards Implementation  
+    subgraph "Standards Compliance"
+        etsi_li[ETSI LI Manager]
+        hi2_processor[HI2 Processor]
+        hi3_processor[HI3 Processor]
+        asn1_encoder[ASN.1 BER Encoder]
+        
+        j_std_025[J-STD-025 Manager]
+        cdr_generator[CDR Generator]
+        cdr_formatter[CDR Formatter]
+    end
+    
+    %% Security Layer
+    subgraph "Security & Encryption"
+        key_manager[Key Management]
+        hsm_interface[HSM Interface]
+        digital_signer[Digital Signatures]
+        access_control[Access Control]
+    end
+    
+    %% Delivery Systems
+    subgraph "LEA Delivery"
+        delivery_queue[Delivery Queue]
+        endpoint_manager[Endpoint Manager]
+        retry_handler[Retry Handler]
+        batch_processor[Batch Processor]
+    end
+    
+    %% External Systems
+    subgraph "External Endpoints"
+        lea_hi2[LEA HI2 Endpoint]
+        lea_hi3[LEA HI3 Endpoint]
+        lea_cdr[LEA CDR System]
+        court_system[Court Order System]
+    end
+    
+    %% Audit & Monitoring
+    subgraph "Audit & Compliance"
+        audit_logger[Audit Logger]
+        integrity_checker[Integrity Checker]
+        compliance_monitor[Compliance Monitor]
+        alert_system[Alert System]
+    end
+    
+    %% Data Flow - Call Processing to Compliance
+    sip_stack --> calea_bridge
+    b2bua --> calea_bridge
+    calea_bridge --> compliance_fw
+    compliance_fw --> event_processor
+    
+    %% Media Flow
+    media_processor -.-> li_engine
+    rtp_proxy -.-> li_engine
+    
+    %% Event Processing
+    event_processor --> warrant_mgr
+    event_processor --> data_classifier
+    
+    %% Warrant Management
+    court_system --> warrant_mgr
+    warrant_mgr --> li_engine
+    
+    %% LI Processing
+    li_engine --> etsi_li
+    li_engine --> j_std_025
+    
+    %% ETSI LI Path
+    etsi_li --> hi2_processor
+    etsi_li --> hi3_processor
+    hi2_processor --> asn1_encoder
+    hi3_processor --> encryption_engine
+    
+    %% J-STD-025 Path
+    j_std_025 --> cdr_generator
+    cdr_generator --> cdr_formatter
+    
+    %% Security Integration
+    encryption_engine --> key_manager
+    key_manager --> hsm_interface
+    asn1_encoder --> digital_signer
+    cdr_formatter --> digital_signer
+    
+    %% Delivery Pipeline
+    asn1_encoder --> delivery_queue
+    encryption_engine --> delivery_queue
+    cdr_formatter --> delivery_queue
+    
+    delivery_queue --> endpoint_manager
+    endpoint_manager --> retry_handler
+    endpoint_manager --> batch_processor
+    
+    %% External Delivery
+    endpoint_manager --> lea_hi2
+    endpoint_manager --> lea_hi3
+    batch_processor --> lea_cdr
+    
+    %% Audit Trail
+    warrant_mgr --> audit_logger
+    li_engine --> audit_logger
+    endpoint_manager --> audit_logger
+    access_control --> audit_logger
+    
+    audit_logger --> integrity_checker
+    compliance_monitor --> alert_system
+    
+    %% Access Control
+    access_control -.-> warrant_mgr
+    access_control -.-> li_engine
+    access_control -.-> delivery_queue
+    
+    %% Monitoring
+    compliance_monitor -.-> etsi_li
+    compliance_monitor -.-> j_std_025
+    compliance_monitor -.-> endpoint_manager
+    
+    %% Styling
+    classDef inputLayer fill:#e3f2fd,stroke:#0277bd,stroke-width:2px
+    classDef complianceLayer fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px
+    classDef liCore fill:#ffebee,stroke:#c62828,stroke-width:3px
+    classDef standards fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
+    classDef security fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef delivery fill:#e0f2f1,stroke:#00695c,stroke-width:2px
+    classDef external fill:#fce4ec,stroke:#ad1457,stroke-width:2px
+    classDef audit fill:#fff8e1,stroke:#f57c00,stroke-width:2px
+    
+    class sip_stack,b2bua,media_processor,rtp_proxy inputLayer
+    class calea_bridge,compliance_fw,event_processor complianceLayer
+    class warrant_mgr,li_engine,data_classifier,encryption_engine liCore
+    class etsi_li,hi2_processor,hi3_processor,asn1_encoder,j_std_025,cdr_generator,cdr_formatter standards
+    class key_manager,hsm_interface,digital_signer,access_control security
+    class delivery_queue,endpoint_manager,retry_handler,batch_processor delivery
+    class lea_hi2,lea_hi3,lea_cdr,court_system external
+    class audit_logger,integrity_checker,compliance_monitor,alert_system audit
