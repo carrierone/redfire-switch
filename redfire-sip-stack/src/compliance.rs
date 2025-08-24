@@ -1,17 +1,17 @@
 /*
  * Redfire Switch - RFC Compliance and SIP Stack Compatibility Guide
  * Copyright (C) 2025 Carrier One Inc and contributors
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Sponsored by Carrier One Inc (https://www.carrierone.com)
  */
 
 //! # SIP RFC Compliance and Compatibility Documentation
-//! 
+//!
 //! This module documents all RFC implementations and compatibility requirements
 //! for interoperating with major SIP stacks in Class 4 switching environments.
 //!
@@ -27,7 +27,7 @@
 //!   - Routing and record routing
 //!   - Authentication framework
 //!   - Registration procedures
-//! - **Interop Notes**: 
+//! - **Interop Notes**:
 //!   - SOFIA SIP: Strict header validation required
 //!   - PJSIP: Flexible Contact header handling
 //!   - Asterisk: Custom header support needed
@@ -211,7 +211,7 @@
 //! - IPv4 preference for media
 //! - Session timer support (RFC 4028)
 //! - PRACK support (RFC 3262)
-//! 
+//!
 //! Configuration:
 //! [sofia_compatibility]
 //! strict_rfc_compliance = true
@@ -230,7 +230,7 @@
 //! - Multiple transport support
 //! - UPDATE method support
 //! - Configurable PRACK
-//! 
+//!
 //! Configuration:
 //! [pjsip_compatibility]
 //! flexible_parsing = true
@@ -249,7 +249,7 @@
 //! - Custom authentication quirks
 //! - Limited PRACK support
 //! - X-Asterisk headers support
-//! 
+//!
 //! Configuration:
 //! [asterisk_compatibility]
 //! custom_session_timers = true
@@ -268,7 +268,7 @@
 //! - Full RFC compliance
 //! - Media optimization
 //! - Event framework support
-//! 
+//!
 //! Configuration:
 //! [freeswitch_compatibility]
 //! variable_headers = true
@@ -303,10 +303,9 @@
 //! - Number portability support
 //! - Fraud detection and prevention
 
-use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tracing::{debug, info, warn, error};
+use tracing::info;
 
 /// RFC compliance levels
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -365,11 +364,11 @@ impl SipComplianceChecker {
         let mut checker = Self {
             rfc_implementations: HashMap::new(),
         };
-        
+
         checker.initialize_rfc_database();
         checker
     }
-    
+
     /// Initialize RFC implementation database
     fn initialize_rfc_database(&mut self) {
         // Core SIP RFCs
@@ -386,17 +385,31 @@ impl SipComplianceChecker {
                 "Authentication framework".to_string(),
             ],
             interop_notes: [
-                ("SOFIA".to_string(), "Requires strict header validation".to_string()),
-                ("PJSIP".to_string(), "Flexible Contact header handling".to_string()),
-                ("Asterisk".to_string(), "Custom header support needed".to_string()),
-                ("FreeSWITCH".to_string(), "Symmetric RTP support required".to_string()),
-            ].into_iter().collect(),
+                (
+                    "SOFIA".to_string(),
+                    "Requires strict header validation".to_string(),
+                ),
+                (
+                    "PJSIP".to_string(),
+                    "Flexible Contact header handling".to_string(),
+                ),
+                (
+                    "Asterisk".to_string(),
+                    "Custom header support needed".to_string(),
+                ),
+                (
+                    "FreeSWITCH".to_string(),
+                    "Symmetric RTP support required".to_string(),
+                ),
+            ]
+            .into_iter()
+            .collect(),
             config_requirements: vec![
                 "strict_rfc_compliance = true".to_string(),
                 "validate_headers = true".to_string(),
             ],
         });
-        
+
         self.add_rfc(RfcImplementation {
             rfc_number: 3262,
             title: "Reliability of Provisional Responses in SIP (PRACK)".to_string(),
@@ -410,16 +423,24 @@ impl SipComplianceChecker {
             ],
             interop_notes: [
                 ("SOFIA".to_string(), "Full PRACK support".to_string()),
-                ("PJSIP".to_string(), "Configurable PRACK support".to_string()),
+                (
+                    "PJSIP".to_string(),
+                    "Configurable PRACK support".to_string(),
+                ),
                 ("Asterisk".to_string(), "Limited PRACK support".to_string()),
-                ("FreeSWITCH".to_string(), "Full PRACK via mod_sofia".to_string()),
-            ].into_iter().collect(),
+                (
+                    "FreeSWITCH".to_string(),
+                    "Full PRACK via mod_sofia".to_string(),
+                ),
+            ]
+            .into_iter()
+            .collect(),
             config_requirements: vec![
                 "prack_enabled = true".to_string(),
                 "require_100rel = false".to_string(),
             ],
         });
-        
+
         self.add_rfc(RfcImplementation {
             rfc_number: 3263,
             title: "SIP: Locating SIP Servers".to_string(),
@@ -431,15 +452,18 @@ impl SipComplianceChecker {
                 "Transport selection".to_string(),
                 "Failover mechanisms".to_string(),
             ],
-            interop_notes: [
-                ("All".to_string(), "Essential for proper routing".to_string()),
-            ].into_iter().collect(),
+            interop_notes: [(
+                "All".to_string(),
+                "Essential for proper routing".to_string(),
+            )]
+            .into_iter()
+            .collect(),
             config_requirements: vec![
                 "dns_srv_enabled = true".to_string(),
                 "naptr_enabled = true".to_string(),
             ],
         });
-        
+
         self.add_rfc(RfcImplementation {
             rfc_number: 4028,
             title: "Session Timers in SIP".to_string(),
@@ -452,16 +476,24 @@ impl SipComplianceChecker {
                 "Timer-based refresh".to_string(),
             ],
             interop_notes: [
-                ("Asterisk".to_string(), "Custom timer implementation".to_string()),
-                ("Others".to_string(), "Standard RFC 4028 implementation".to_string()),
-            ].into_iter().collect(),
+                (
+                    "Asterisk".to_string(),
+                    "Custom timer implementation".to_string(),
+                ),
+                (
+                    "Others".to_string(),
+                    "Standard RFC 4028 implementation".to_string(),
+                ),
+            ]
+            .into_iter()
+            .collect(),
             config_requirements: vec![
                 "session_timers = true".to_string(),
                 "session_expires = 1800".to_string(),
                 "min_se = 90".to_string(),
             ],
         });
-        
+
         self.add_rfc(RfcImplementation {
             rfc_number: 8224,
             title: "Authenticated Identity Management in SIP (STIR)".to_string(),
@@ -473,15 +505,18 @@ impl SipComplianceChecker {
                 "Certificate verification".to_string(),
                 "Authentication procedures".to_string(),
             ],
-            interop_notes: [
-                ("All".to_string(), "Critical for carrier interconnect".to_string()),
-            ].into_iter().collect(),
+            interop_notes: [(
+                "All".to_string(),
+                "Critical for carrier interconnect".to_string(),
+            )]
+            .into_iter()
+            .collect(),
             config_requirements: vec![
                 "stir_shaken_enabled = true".to_string(),
                 "certificate_path = /etc/certs/".to_string(),
             ],
         });
-        
+
         self.add_rfc(RfcImplementation {
             rfc_number: 8225,
             title: "PASSporT: Personal Assertion Token (SHAKEN)".to_string(),
@@ -493,34 +528,37 @@ impl SipComplianceChecker {
                 "Signature verification".to_string(),
                 "Anti-spoofing measures".to_string(),
             ],
-            interop_notes: [
-                ("All".to_string(), "Required for US carriers".to_string()),
-            ].into_iter().collect(),
+            interop_notes: [("All".to_string(), "Required for US carriers".to_string())]
+                .into_iter()
+                .collect(),
             config_requirements: vec![
                 "shaken_enabled = true".to_string(),
                 "attestation_level = A".to_string(),
             ],
         });
-        
+
         // Add more RFCs...
-        info!("Initialized RFC compliance database with {} RFCs", self.rfc_implementations.len());
+        info!(
+            "Initialized RFC compliance database with {} RFCs",
+            self.rfc_implementations.len()
+        );
     }
-    
+
     /// Add RFC implementation
     fn add_rfc(&mut self, rfc: RfcImplementation) {
         self.rfc_implementations.insert(rfc.rfc_number, rfc);
     }
-    
+
     /// Get RFC implementation details
     pub fn get_rfc(&self, rfc_number: u16) -> Option<&RfcImplementation> {
         self.rfc_implementations.get(&rfc_number)
     }
-    
+
     /// Get all implemented RFCs
     pub fn get_all_rfcs(&self) -> Vec<&RfcImplementation> {
         self.rfc_implementations.values().collect()
     }
-    
+
     /// Get RFCs by compliance level
     pub fn get_rfcs_by_level(&self, level: ComplianceLevel) -> Vec<&RfcImplementation> {
         self.rfc_implementations
@@ -528,7 +566,7 @@ impl SipComplianceChecker {
             .filter(|rfc| rfc.compliance_level == level)
             .collect()
     }
-    
+
     /// Check overall compliance status
     pub fn check_compliance(&self) -> ComplianceReport {
         let mut report = ComplianceReport {
@@ -541,7 +579,7 @@ impl SipComplianceChecker {
             optional_total: 0,
             incomplete_rfcs: Vec::new(),
         };
-        
+
         for rfc in self.rfc_implementations.values() {
             match rfc.compliance_level {
                 ComplianceLevel::Required => {
@@ -566,32 +604,35 @@ impl SipComplianceChecker {
                 }
             }
         }
-        
+
         report
     }
-    
+
     /// Generate interoperability configuration
     pub fn generate_interop_config(&self, stack_type: &str) -> String {
         let mut config = String::new();
-        config.push_str(&format!("# SIP Interoperability Configuration for {}\n", stack_type));
+        config.push_str(&format!(
+            "# SIP Interoperability Configuration for {}\n",
+            stack_type
+        ));
         config.push_str("# Generated by Redfire Switch RFC Compliance Checker\n\n");
-        
+
         for rfc in self.rfc_implementations.values() {
             if rfc.status == ImplementationStatus::Complete {
                 config.push_str(&format!("# RFC {} - {}\n", rfc.rfc_number, rfc.title));
-                
+
                 if let Some(note) = rfc.interop_notes.get(stack_type) {
                     config.push_str(&format!("# Interop Note: {}\n", note));
                 }
-                
+
                 for requirement in &rfc.config_requirements {
                     config.push_str(&format!("{}\n", requirement));
                 }
-                
+
                 config.push_str("\n");
             }
         }
-        
+
         config
     }
 }
@@ -618,7 +659,7 @@ impl ComplianceReport {
             (self.required_complete as f64 / self.required_total as f64) * 100.0
         }
     }
-    
+
     /// Check if fully compliant
     pub fn is_fully_compliant(&self) -> bool {
         self.required_complete == self.required_total
@@ -663,9 +704,10 @@ prefer_ipv4 = true
 route_header_strict = true
 record_route_enabled = true
 contact_header_required = true
-"#.to_string()
+"#
+        .to_string()
     }
-    
+
     /// Generate PJSIP configuration
     pub fn generate_pjsip_config() -> String {
         r#"
@@ -698,9 +740,10 @@ multiple_media_lines = true
 contact_header_flexible = true
 via_parsing_permissive = true
 header_validation_relaxed = true
-"#.to_string()
+"#
+        .to_string()
     }
-    
+
     /// Generate Asterisk configuration
     pub fn generate_asterisk_config() -> String {
         r#"
@@ -735,9 +778,10 @@ bandwidth_modifier_support = false
 chan_sip_compatibility = true
 chan_pjsip_compatibility = true
 compact_headers_support = true
-"#.to_string()
+"#
+        .to_string()
     }
-    
+
     /// Generate FreeSWITCH configuration
     pub fn generate_freeswitch_config() -> String {
         r#"
@@ -777,33 +821,34 @@ recording_support = true
 mod_sofia_compatibility = true
 profile_based_config = true
 gateway_support = true
-"#.to_string()
+"#
+        .to_string()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_compliance_checker() {
         let checker = SipComplianceChecker::new();
         let report = checker.check_compliance();
-        
+
         assert!(report.total_rfcs > 0);
         assert!(report.compliance_percentage() >= 0.0);
         assert!(report.compliance_percentage() <= 100.0);
     }
-    
+
     #[test]
     fn test_rfc_retrieval() {
         let checker = SipComplianceChecker::new();
         let rfc3261 = checker.get_rfc(3261);
-        
+
         assert!(rfc3261.is_some());
         assert_eq!(rfc3261.unwrap().compliance_level, ComplianceLevel::Required);
     }
-    
+
     #[test]
     fn test_config_generation() {
         let config = InteropConfigGenerator::generate_sofia_config();

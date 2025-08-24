@@ -4,13 +4,13 @@
  * 8kHz sampling, 8kbps bitrate, 10ms frame size
  */
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 // VecDeque import removed - not used
 
 /// G.729 frame size constants
-pub const G729_FRAME_SIZE: usize = 80;      // 80 samples per 10ms frame at 8kHz
-pub const G729_ENCODED_SIZE: usize = 10;    // 10 bytes per encoded frame
-pub const G729_SAMPLE_RATE: u32 = 8000;     // 8kHz sampling rate
+pub const G729_FRAME_SIZE: usize = 80; // 80 samples per 10ms frame at 8kHz
+pub const G729_ENCODED_SIZE: usize = 10; // 10 bytes per encoded frame
+pub const G729_SAMPLE_RATE: u32 = 8000; // 8kHz sampling rate
 
 /// G.729 encoder/decoder state
 #[derive(Debug, Clone)]
@@ -66,7 +66,7 @@ impl G729Codec {
 
         // Initialize analysis window (Hamming window)
         codec.initialize_analysis_window();
-        
+
         // Initialize LSP to stable values
         for i in 0..10 {
             codec.lsp_old[i] = (i + 1) as f32 * std::f32::consts::PI / 11.0;
@@ -87,7 +87,7 @@ impl G729Codec {
     fn initialize_lsf_quantization_table() -> Vec<Vec<f32>> {
         // Simplified quantization table - real G.729 has complex multi-stage tables
         let mut table = Vec::new();
-        
+
         // Stage 1: Coarse quantization
         for i in 0..256 {
             let mut entry = Vec::new();
@@ -96,15 +96,18 @@ impl G729Codec {
             }
             table.push(entry);
         }
-        
+
         table
     }
 
     /// Encode speech frame to G.729 bitstream
     pub fn encode(&mut self, speech: &[i16]) -> Result<Vec<u8>> {
         if speech.len() != G729_FRAME_SIZE {
-            return Err(anyhow!("Invalid frame size: expected {}, got {}", 
-                              G729_FRAME_SIZE, speech.len()));
+            return Err(anyhow!(
+                "Invalid frame size: expected {}, got {}",
+                G729_FRAME_SIZE,
+                speech.len()
+            ));
         }
 
         // Convert to floating point and normalize
@@ -126,10 +129,10 @@ impl G729Codec {
 
         // Linear Prediction Analysis
         let lp_coeffs = self.lp_analysis()?;
-        
+
         // Convert LP coefficients to Line Spectral Pairs
         let lsp = self.lp_to_lsp(&lp_coeffs)?;
-        
+
         // Quantize LSP parameters
         let lsp_index = self.quantize_lsp(&lsp)?;
 
@@ -140,7 +143,8 @@ impl G729Codec {
         let (pitch_lag, pitch_gain) = self.pitch_analysis(&weighted_speech)?;
 
         // Fixed codebook search
-        let (fixed_index, fixed_sign, fixed_gain) = self.fixed_codebook_search(&weighted_speech, &pitch_lag)?;
+        let (fixed_index, fixed_sign, fixed_gain) =
+            self.fixed_codebook_search(&weighted_speech, &pitch_lag)?;
 
         // Create G.729 frame
         let frame = G729Frame {
@@ -162,8 +166,11 @@ impl G729Codec {
     /// Decode G.729 bitstream to speech samples
     pub fn decode(&mut self, encoded: &[u8]) -> Result<Vec<i16>> {
         if encoded.len() != G729_ENCODED_SIZE {
-            return Err(anyhow!("Invalid encoded frame size: expected {}, got {}", 
-                              G729_ENCODED_SIZE, encoded.len()));
+            return Err(anyhow!(
+                "Invalid encoded frame size: expected {}, got {}",
+                G729_ENCODED_SIZE,
+                encoded.len()
+            ));
         }
 
         // Unpack bitstream to frame parameters
@@ -176,10 +183,12 @@ impl G729Codec {
         let lp_coeffs = self.lsp_to_lp(&lsp)?;
 
         // Decode adaptive codebook
-        let adaptive_excitation = self.decode_adaptive_codebook(&frame.pitch_lag, &frame.pitch_gain)?;
+        let adaptive_excitation =
+            self.decode_adaptive_codebook(&frame.pitch_lag, &frame.pitch_gain)?;
 
         // Decode fixed codebook
-        let fixed_excitation = self.decode_fixed_codebook(&frame.fixed_index, &frame.fixed_sign, &frame.fixed_gain)?;
+        let fixed_excitation =
+            self.decode_fixed_codebook(&frame.fixed_index, &frame.fixed_sign, &frame.fixed_gain)?;
 
         // Combine excitations
         let mut total_excitation = [0.0f32; G729_FRAME_SIZE];
@@ -209,7 +218,7 @@ impl G729Codec {
         // Simple 1st order high-pass filter
         let mut x1 = 0.0f32;
         let mut y1 = 0.0f32;
-        
+
         for sample in speech.iter_mut() {
             let x0 = *sample;
             let y0 = 0.93 * (x0 - x1) + 0.93 * y1;
@@ -274,10 +283,10 @@ impl G729Codec {
     fn lp_to_lsp(&self, lp_coeffs: &[f32; 11]) -> Result<[f32; 10]> {
         // Simplified LSP computation - real G.729 uses Chebyshev polynomials
         let mut lsp = [0.0f32; 10];
-        
+
         for i in 0..10 {
             lsp[i] = (i + 1) as f32 * std::f32::consts::PI / 11.0;
-            
+
             // Add small perturbation based on LP coefficients
             if i < 10 {
                 lsp[i] += lp_coeffs[i + 1] * 0.1;
@@ -337,7 +346,7 @@ impl G729Codec {
 
         let mut lsp = [0.0f32; 10];
         let entry = &self.lsf_q_table[index as usize];
-        
+
         for i in 0..10 {
             lsp[i] = entry[i];
         }
@@ -346,14 +355,18 @@ impl G729Codec {
     }
 
     /// Perceptual weighting filter
-    fn perceptual_weighting(&self, speech: &[f32], lp_coeffs: &[f32; 11]) -> Result<[f32; G729_FRAME_SIZE]> {
+    fn perceptual_weighting(
+        &self,
+        speech: &[f32],
+        lp_coeffs: &[f32; 11],
+    ) -> Result<[f32; G729_FRAME_SIZE]> {
         let mut weighted = [0.0f32; G729_FRAME_SIZE];
-        
+
         // Apply perceptual weighting W(z) = A(z/γ₁) / A(z/γ₂)
         // Simplified implementation
         for i in 0..G729_FRAME_SIZE {
             weighted[i] = speech[i];
-            
+
             // Apply weighting based on spectral properties
             for j in 1..11.min(i + 1) {
                 weighted[i] -= lp_coeffs[j] * 0.6_f32.powi(j as i32) * speech[i - j];
@@ -392,19 +405,19 @@ impl G729Codec {
             }
 
             pitch_lag[subframe] = best_lag;
-            
+
             // Compute gain (simplified)
             let mut energy = 0.0f32;
             for &sample in subframe_speech {
                 energy += sample * sample;
             }
-            
-            let gain = if energy > 0.0 { 
-                (best_correlation / energy.sqrt()).clamp(0.0, 1.2) 
-            } else { 
-                0.0 
+
+            let gain = if energy > 0.0 {
+                (best_correlation / energy.sqrt()).clamp(0.0, 1.2)
+            } else {
+                0.0
             };
-            
+
             pitch_gain[subframe] = (gain * 127.0) as u8;
         }
 
@@ -412,7 +425,11 @@ impl G729Codec {
     }
 
     /// Fixed codebook search (simplified ACELP)
-    fn fixed_codebook_search(&self, weighted_speech: &[f32], _pitch_lag: &[u8; 2]) -> Result<([u16; 2], [u8; 2], [u8; 2])> {
+    fn fixed_codebook_search(
+        &self,
+        weighted_speech: &[f32],
+        _pitch_lag: &[u8; 2],
+    ) -> Result<([u16; 2], [u8; 2], [u8; 2])> {
         let mut fixed_index = [0u16; 2];
         let mut fixed_sign = [0u8; 2];
         let mut fixed_gain = [0u8; 2];
@@ -429,12 +446,12 @@ impl G729Codec {
             // Search through possible pulse positions
             for index in 0..512 {
                 let mut correlation = 0.0f32;
-                
+
                 // Decode pulse positions from index (simplified)
                 for pulse in 0..4 {
                     let pos = (index >> (pulse * 3)) & 0x7;
                     let actual_pos = pos * 5 + pulse; // Simplified position mapping
-                    
+
                     if actual_pos < 40 {
                         correlation += subframe_speech[actual_pos].abs();
                     }
@@ -455,7 +472,11 @@ impl G729Codec {
     }
 
     /// Decode adaptive codebook contribution
-    fn decode_adaptive_codebook(&mut self, pitch_lag: &[u8; 2], pitch_gain: &[u8; 2]) -> Result<[f32; G729_FRAME_SIZE]> {
+    fn decode_adaptive_codebook(
+        &mut self,
+        pitch_lag: &[u8; 2],
+        pitch_gain: &[u8; 2],
+    ) -> Result<[f32; G729_FRAME_SIZE]> {
         let mut adaptive_exc = [0.0f32; G729_FRAME_SIZE];
 
         for subframe in 0..2 {
@@ -483,7 +504,12 @@ impl G729Codec {
     }
 
     /// Decode fixed codebook contribution
-    fn decode_fixed_codebook(&self, fixed_index: &[u16; 2], fixed_sign: &[u8; 2], fixed_gain: &[u8; 2]) -> Result<[f32; G729_FRAME_SIZE]> {
+    fn decode_fixed_codebook(
+        &self,
+        fixed_index: &[u16; 2],
+        fixed_sign: &[u8; 2],
+        fixed_gain: &[u8; 2],
+    ) -> Result<[f32; G729_FRAME_SIZE]> {
         let mut fixed_exc = [0.0f32; G729_FRAME_SIZE];
 
         for subframe in 0..2 {
@@ -496,7 +522,7 @@ impl G729Codec {
             for pulse in 0..4 {
                 let pos = ((index >> (pulse * 3)) & 0x7) as usize;
                 let actual_pos = pos * 5 + pulse;
-                
+
                 if actual_pos < 40 {
                     let sign = if (signs >> pulse) & 1 == 1 { 1.0 } else { -1.0 };
                     fixed_exc[start + actual_pos] = gain * sign;
@@ -508,13 +534,17 @@ impl G729Codec {
     }
 
     /// LP synthesis filter
-    fn lp_synthesis(&self, excitation: &[f32; G729_FRAME_SIZE], lp_coeffs: &[f32; 11]) -> Result<[f32; G729_FRAME_SIZE]> {
+    fn lp_synthesis(
+        &self,
+        excitation: &[f32; G729_FRAME_SIZE],
+        lp_coeffs: &[f32; 11],
+    ) -> Result<[f32; G729_FRAME_SIZE]> {
         let mut speech = [0.0f32; G729_FRAME_SIZE];
         let memory = [0.0f32; 10];
 
         for i in 0..G729_FRAME_SIZE {
             speech[i] = excitation[i];
-            
+
             for j in 1..11 {
                 if i >= j {
                     speech[i] -= lp_coeffs[j] * speech[i - j];
@@ -552,22 +582,22 @@ impl G729Codec {
             for i in 0..8 {
                 bits.push(((frame.pitch_lag[subframe] >> (7 - i)) & 1) as u8);
             }
-            
+
             // Pitch gain (5 bits)
             for i in 0..5 {
                 bits.push(((frame.pitch_gain[subframe] >> (4 - i)) & 1) as u8);
             }
-            
+
             // Fixed codebook index (13 bits)
             for i in 0..13 {
                 bits.push(((frame.fixed_index[subframe] >> (12 - i)) & 1) as u8);
             }
-            
+
             // Fixed codebook signs (4 bits)
             for i in 0..4 {
                 bits.push(((frame.fixed_sign[subframe] >> (3 - i)) & 1) as u8);
             }
-            
+
             // Fixed codebook gain (1 bit, simplified)
             bits.push((frame.fixed_gain[subframe] & 1) as u8);
         }
@@ -621,25 +651,25 @@ impl G729Codec {
                 pitch_lag[subframe] |= bits[bit_index] << (7 - i);
                 bit_index += 1;
             }
-            
+
             // Pitch gain (5 bits)
             for i in 0..5 {
                 pitch_gain[subframe] |= bits[bit_index] << (4 - i);
                 bit_index += 1;
             }
-            
+
             // Fixed codebook index (13 bits)
             for i in 0..13 {
                 fixed_index[subframe] |= (bits[bit_index] as u16) << (12 - i);
                 bit_index += 1;
             }
-            
+
             // Fixed codebook signs (4 bits)
             for i in 0..4 {
                 fixed_sign[subframe] |= bits[bit_index] << (3 - i);
                 bit_index += 1;
             }
-            
+
             // Fixed codebook gain (1 bit)
             fixed_gain[subframe] = bits[bit_index];
             bit_index += 1;
@@ -679,11 +709,12 @@ mod tests {
     #[test]
     fn test_g729_encode_decode() {
         let mut codec = G729Codec::new();
-        
+
         // Generate test signal (sine wave)
         let mut test_signal = Vec::with_capacity(G729_FRAME_SIZE);
         for i in 0..G729_FRAME_SIZE {
-            let sample = (2.0 * std::f32::consts::PI * 1000.0 * i as f32 / G729_SAMPLE_RATE as f32).sin();
+            let sample =
+                (2.0 * std::f32::consts::PI * 1000.0 * i as f32 / G729_SAMPLE_RATE as f32).sin();
             test_signal.push((sample * 16384.0) as i16);
         }
 
@@ -703,7 +734,7 @@ mod tests {
     #[test]
     fn test_g729_frame_packing() {
         let codec = G729Codec::new();
-        
+
         let frame = G729Frame {
             lsp_index: 12345,
             pitch_lag: [60, 65],
@@ -732,13 +763,14 @@ mod tests {
             let mut test_signal = Vec::with_capacity(G729_FRAME_SIZE);
             for i in 0..G729_FRAME_SIZE {
                 let freq = 800.0 + frame_num as f32 * 100.0; // Varying frequency
-                let sample = (2.0 * std::f32::consts::PI * freq * i as f32 / G729_SAMPLE_RATE as f32).sin();
+                let sample =
+                    (2.0 * std::f32::consts::PI * freq * i as f32 / G729_SAMPLE_RATE as f32).sin();
                 test_signal.push((sample * 12000.0) as i16);
             }
 
             let encoded = encoder.encode(&test_signal).unwrap();
             let decoded = decoder.decode(&encoded).unwrap();
-            
+
             assert_eq!(encoded.len(), G729_ENCODED_SIZE);
             assert_eq!(decoded.len(), G729_FRAME_SIZE);
         }

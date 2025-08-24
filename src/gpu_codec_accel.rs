@@ -3,12 +3,12 @@
  * CUDA and ROCm implementations for high-performance audio codec transcoding
  */
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{info, warn, debug, error};
+use tracing::{debug, error, info, warn};
 
 #[cfg(feature = "cuda")]
 use cudarc::driver::{CudaDevice, LaunchAsync, LaunchConfig};
@@ -16,7 +16,7 @@ use cudarc::driver::{CudaDevice, LaunchAsync, LaunchConfig};
 use cudarc::nvrtc::Ptx;
 
 #[cfg(feature = "rocm")]
-use hip_rs::{HipDevice, HipStream, HipMemory};
+use hip_rs::{HipDevice, HipMemory, HipStream};
 
 use crate::codec::{AudioCodec, AudioFrame, CodecConfig};
 
@@ -25,7 +25,7 @@ use crate::codec::{AudioCodec, AudioFrame, CodecConfig};
 pub enum GpuBackend {
     Cuda,
     Rocm,
-    OpenCL,  // Future support
+    OpenCL, // Future support
 }
 
 /// GPU codec acceleration configuration
@@ -98,14 +98,21 @@ impl GpuBuffer {
                     backend,
                 })
             }
-            _ => Err(anyhow!("GPU backend {:?} not supported or not compiled", backend)),
+            _ => Err(anyhow!(
+                "GPU backend {:?} not supported or not compiled",
+                backend
+            )),
         }
     }
 
     /// Copy data to GPU
     pub async fn copy_from_host(&mut self, data: &[u8]) -> Result<()> {
         if data.len() > self.size {
-            return Err(anyhow!("Data size {} exceeds buffer size {}", data.len(), self.size));
+            return Err(anyhow!(
+                "Data size {} exceeds buffer size {}",
+                data.len(),
+                self.size
+            ));
         }
 
         match self.backend {
@@ -130,7 +137,11 @@ impl GpuBuffer {
     /// Copy data from GPU
     pub async fn copy_to_host(&self, data: &mut [u8]) -> Result<()> {
         if data.len() > self.size {
-            return Err(anyhow!("Output buffer size {} exceeds GPU buffer size {}", data.len(), self.size));
+            return Err(anyhow!(
+                "Output buffer size {} exceeds GPU buffer size {}",
+                data.len(),
+                self.size
+            ));
         }
 
         match self.backend {
@@ -181,7 +192,12 @@ impl GpuMemoryPool {
         }
     }
 
-    async fn get_buffer(&mut self, size: usize, backend: GpuBackend, device_id: u32) -> Result<GpuBuffer> {
+    async fn get_buffer(
+        &mut self,
+        size: usize,
+        backend: GpuBackend,
+        device_id: u32,
+    ) -> Result<GpuBuffer> {
         if let Some(buffers) = self.buffers.get_mut(&size) {
             if let Some(buffer) = buffers.pop() {
                 return Ok(buffer);
@@ -201,7 +217,10 @@ impl GpuMemoryPool {
 
     fn return_buffer(&mut self, buffer: GpuBuffer) {
         let size = buffer.size;
-        self.buffers.entry(size).or_insert_with(Vec::new).push(buffer);
+        self.buffers
+            .entry(size)
+            .or_insert_with(Vec::new)
+            .push(buffer);
     }
 }
 
@@ -218,6 +237,8 @@ struct CompiledKernel {
 impl GpuCodecAccelerator {
     /// Create new GPU codec accelerator
     pub async fn new(config: GpuCodecConfig) -> Result<Self> {
+        let max_pool_size_mb = config.max_pool_size_mb;
+        
         if !config.enabled {
             return Ok(Self {
                 config,
@@ -225,28 +246,46 @@ impl GpuCodecAccelerator {
                 cuda_device: None,
                 #[cfg(feature = "rocm")]
                 rocm_device: None,
-                memory_pool: Arc::new(RwLock::new(GpuMemoryPool::new(config.max_pool_size_mb))),
+                memory_pool: Arc::new(RwLock::new(GpuMemoryPool::new(max_pool_size_mb))),
                 kernel_cache: Arc::new(RwLock::new(HashMap::new())),
             });
         }
 
-        let (cuda_device, rocm_device) = match config.backend {
+        #[cfg(feature = "cuda")]
+        let mut cuda_device = None;
+        #[cfg(not(feature = "cuda"))]
+        let cuda_device: Option<Arc<()>> = None;
+        
+        #[cfg(feature = "rocm")]
+        let mut rocm_device = None;
+        #[cfg(not(feature = "rocm"))]
+        let rocm_device: Option<Arc<()>> = None;
+        
+        match config.backend {
             #[cfg(feature = "cuda")]
             GpuBackend::Cuda => {
                 let device = Arc::new(CudaDevice::new(config.device_id as usize)?);
-                info!("Initialized CUDA device {} for codec acceleration", config.device_id);
-                (Some(device), None)
+                info!(
+                    "Initialized CUDA device {} for codec acceleration",
+                    config.device_id
+                );
+                cuda_device = Some(device);
+                rocm_device = None;
             }
             #[cfg(feature = "rocm")]
             GpuBackend::Rocm => {
                 let device = Arc::new(HipDevice::new(config.device_id)?);
-                info!("Initialized ROCm device {} for codec acceleration", config.device_id);
-                (None, Some(device))
+                info!(
+                    "Initialized ROCm device {} for codec acceleration",
+                    config.device_id
+                );
+                cuda_device = None;
+                rocm_device = Some(device);
             }
             _ => {
                 return Err(anyhow!("GPU backend {:?} not supported", config.backend));
             }
-        };
+        }
 
         let mut accelerator = Self {
             config,
@@ -254,7 +293,7 @@ impl GpuCodecAccelerator {
             cuda_device,
             #[cfg(feature = "rocm")]
             rocm_device,
-            memory_pool: Arc::new(RwLock::new(GpuMemoryPool::new(config.max_pool_size_mb))),
+            memory_pool: Arc::new(RwLock::new(GpuMemoryPool::new(max_pool_size_mb))),
             kernel_cache: Arc::new(RwLock::new(HashMap::new())),
         };
 
@@ -319,13 +358,18 @@ impl GpuCodecAccelerator {
 
             let ptx = cudarc::nvrtc::compile_ptx(ulaw_encode_src)?;
             device.load_ptx(ptx, "ulaw_encode", &["ulaw_encode_kernel"])?;
-            let function = device.get_func("ulaw_encode", "ulaw_encode_kernel").unwrap();
-            
-            kernel_cache.insert("ulaw_encode".to_string(), CompiledKernel {
-                cuda_function: Some(function),
-                rocm_kernel: None,
-                backend: GpuBackend::Cuda,
-            });
+            let function = device
+                .get_func("ulaw_encode", "ulaw_encode_kernel")
+                .unwrap();
+
+            kernel_cache.insert(
+                "ulaw_encode".to_string(),
+                CompiledKernel {
+                    cuda_function: Some(function),
+                    rocm_kernel: None,
+                    backend: GpuBackend::Cuda,
+                },
+            );
 
             // G.711 A-law encoding kernel
             let alaw_encode_src = r#"
@@ -358,13 +402,18 @@ impl GpuCodecAccelerator {
 
             let ptx = cudarc::nvrtc::compile_ptx(alaw_encode_src)?;
             device.load_ptx(ptx, "alaw_encode", &["alaw_encode_kernel"])?;
-            let function = device.get_func("alaw_encode", "alaw_encode_kernel").unwrap();
-            
-            kernel_cache.insert("alaw_encode".to_string(), CompiledKernel {
-                cuda_function: Some(function),
-                rocm_kernel: None,
-                backend: GpuBackend::Cuda,
-            });
+            let function = device
+                .get_func("alaw_encode", "alaw_encode_kernel")
+                .unwrap();
+
+            kernel_cache.insert(
+                "alaw_encode".to_string(),
+                CompiledKernel {
+                    cuda_function: Some(function),
+                    rocm_kernel: None,
+                    backend: GpuBackend::Cuda,
+                },
+            );
 
             // G.722 ADPCM encoding kernel (simplified)
             let g722_encode_src = r#"
@@ -386,15 +435,23 @@ impl GpuCodecAccelerator {
 
             let ptx = cudarc::nvrtc::compile_ptx(g722_encode_src)?;
             device.load_ptx(ptx, "g722_encode", &["g722_encode_kernel"])?;
-            let function = device.get_func("g722_encode", "g722_encode_kernel").unwrap();
-            
-            kernel_cache.insert("g722_encode".to_string(), CompiledKernel {
-                cuda_function: Some(function),
-                rocm_kernel: None,
-                backend: GpuBackend::Cuda,
-            });
+            let function = device
+                .get_func("g722_encode", "g722_encode_kernel")
+                .unwrap();
 
-            info!("Compiled {} CUDA kernels for codec acceleration", kernel_cache.len());
+            kernel_cache.insert(
+                "g722_encode".to_string(),
+                CompiledKernel {
+                    cuda_function: Some(function),
+                    rocm_kernel: None,
+                    backend: GpuBackend::Cuda,
+                },
+            );
+
+            info!(
+                "Compiled {} CUDA kernels for codec acceleration",
+                kernel_cache.len()
+            );
         }
 
         Ok(())
@@ -438,20 +495,30 @@ impl GpuCodecAccelerator {
             "#;
 
             let kernel = device.compile_kernel("ulaw_encode_kernel", ulaw_encode_src)?;
-            kernel_cache.insert("ulaw_encode".to_string(), CompiledKernel {
-                cuda_function: None,
-                rocm_kernel: Some(kernel),
-                backend: GpuBackend::Rocm,
-            });
+            kernel_cache.insert(
+                "ulaw_encode".to_string(),
+                CompiledKernel {
+                    cuda_function: None,
+                    rocm_kernel: Some(kernel),
+                    backend: GpuBackend::Rocm,
+                },
+            );
 
-            info!("Compiled {} ROCm kernels for codec acceleration", kernel_cache.len());
+            info!(
+                "Compiled {} ROCm kernels for codec acceleration",
+                kernel_cache.len()
+            );
         }
 
         Ok(())
     }
 
     /// Accelerated batch codec encoding
-    pub async fn batch_encode(&self, frames: &[AudioFrame], target_codec: AudioCodec) -> Result<Vec<AudioFrame>> {
+    pub async fn batch_encode(
+        &self,
+        frames: &[AudioFrame],
+        target_codec: AudioCodec,
+    ) -> Result<Vec<AudioFrame>> {
         if !self.config.enabled {
             return Err(anyhow!("GPU acceleration not enabled"));
         }
@@ -468,12 +535,19 @@ impl GpuCodecAccelerator {
     }
 
     /// Encode a chunk of frames on GPU
-    async fn encode_chunk(&self, frames: &[AudioFrame], target_codec: AudioCodec) -> Result<Vec<AudioFrame>> {
+    async fn encode_chunk(
+        &self,
+        frames: &[AudioFrame],
+        target_codec: AudioCodec,
+    ) -> Result<Vec<AudioFrame>> {
         match target_codec {
             AudioCodec::G711Ulaw => self.gpu_encode_ulaw(frames).await,
             AudioCodec::G711Alaw => self.gpu_encode_alaw(frames).await,
             AudioCodec::G722 => self.gpu_encode_g722(frames).await,
-            _ => Err(anyhow!("GPU acceleration not available for codec {:?}", target_codec)),
+            _ => Err(anyhow!(
+                "GPU acceleration not available for codec {:?}",
+                target_codec
+            )),
         }
     }
 
@@ -492,7 +566,8 @@ impl GpuCodecAccelerator {
     async fn cuda_encode_ulaw(&self, frames: &[AudioFrame]) -> Result<Vec<AudioFrame>> {
         if let Some(ref device) = self.cuda_device {
             let kernel_cache = self.kernel_cache.read().await;
-            let kernel = kernel_cache.get("ulaw_encode")
+            let kernel = kernel_cache
+                .get("ulaw_encode")
                 .ok_or_else(|| anyhow!("μ-law encoding kernel not found"))?;
 
             if let Some(ref function) = kernel.cuda_function {
@@ -502,34 +577,36 @@ impl GpuCodecAccelerator {
                 // Flatten input frames
                 for frame in frames {
                     // Convert bytes to i16 samples
-                    let samples = frame.data.chunks_exact(2)
+                    let samples = frame
+                        .data
+                        .chunks_exact(2)
                         .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]))
                         .collect::<Vec<i16>>();
-                    
+
                     input_data.extend_from_slice(&samples);
                     frame_sizes.push(samples.len());
                 }
 
                 let total_samples = input_data.len();
-                
+
                 // Allocate GPU buffers
                 let mut memory_pool = self.memory_pool.write().await;
-                let mut input_buffer = memory_pool.get_buffer(
-                    total_samples * std::mem::size_of::<i16>(),
-                    GpuBackend::Cuda,
-                    self.config.device_id
-                ).await?;
-                let mut output_buffer = memory_pool.get_buffer(
-                    total_samples,
-                    GpuBackend::Cuda,
-                    self.config.device_id
-                ).await?;
+                let mut input_buffer = memory_pool
+                    .get_buffer(
+                        total_samples * std::mem::size_of::<i16>(),
+                        GpuBackend::Cuda,
+                        self.config.device_id,
+                    )
+                    .await?;
+                let mut output_buffer = memory_pool
+                    .get_buffer(total_samples, GpuBackend::Cuda, self.config.device_id)
+                    .await?;
 
                 // Copy input data to GPU
                 let input_bytes: &[u8] = unsafe {
                     std::slice::from_raw_parts(
                         input_data.as_ptr() as *const u8,
-                        total_samples * std::mem::size_of::<i16>()
+                        total_samples * std::mem::size_of::<i16>(),
                     )
                 };
                 input_buffer.copy_from_host(input_bytes).await?;
@@ -537,7 +614,7 @@ impl GpuCodecAccelerator {
                 // Launch kernel
                 let threads_per_block = 256;
                 let blocks = (total_samples + threads_per_block - 1) / threads_per_block;
-                
+
                 let config = LaunchConfig {
                     grid_dim: (blocks as u32, 1, 1),
                     block_dim: (threads_per_block as u32, 1, 1),
@@ -546,10 +623,16 @@ impl GpuCodecAccelerator {
 
                 #[cfg(feature = "cuda")]
                 unsafe {
-                    function.launch(
-                        config,
-                        (&input_buffer.cuda_ptr, &output_buffer.cuda_ptr, total_samples as i32)
-                    ).await?;
+                    function
+                        .launch(
+                            config,
+                            (
+                                &input_buffer.cuda_ptr,
+                                &output_buffer.cuda_ptr,
+                                total_samples as i32,
+                            ),
+                        )
+                        .await?;
                 }
 
                 // Copy result back
@@ -563,7 +646,7 @@ impl GpuCodecAccelerator {
                 // Reconstruct frames
                 let mut results = Vec::new();
                 let mut offset = 0;
-                
+
                 for (i, &frame_size) in frame_sizes.iter().enumerate() {
                     let frame_data = output_data[offset..offset + frame_size].to_vec();
                     offset += frame_size;
@@ -593,43 +676,54 @@ impl GpuCodecAccelerator {
             GpuBackend::Cuda => {
                 // Implementation similar to cuda_encode_ulaw but using alaw_encode kernel
                 // ... (details omitted for brevity)
-                Ok(frames.iter().map(|f| AudioFrame {
-                    data: f.data.clone(), // Placeholder - would use actual GPU processing
-                    codec: AudioCodec::G711Alaw,
-                    sample_rate: f.sample_rate,
-                    channels: f.channels,
-                    timestamp: f.timestamp,
-                    sequence: f.sequence,
-                }).collect())
+                Ok(frames
+                    .iter()
+                    .map(|f| AudioFrame {
+                        data: f.data.clone(), // Placeholder - would use actual GPU processing
+                        codec: AudioCodec::G711Alaw,
+                        sample_rate: f.sample_rate,
+                        channels: f.channels,
+                        timestamp: f.timestamp,
+                        sequence: f.sequence,
+                    })
+                    .collect())
             }
-            _ => Err(anyhow!("A-law GPU encoding not implemented for this backend")),
+            _ => Err(anyhow!(
+                "A-law GPU encoding not implemented for this backend"
+            )),
         }
     }
 
     /// GPU-accelerated G.722 encoding
     async fn gpu_encode_g722(&self, frames: &[AudioFrame]) -> Result<Vec<AudioFrame>> {
         // Implementation for G.722 GPU encoding
-        Ok(frames.iter().map(|f| AudioFrame {
-            data: f.data.clone(), // Placeholder
-            codec: AudioCodec::G722,
-            sample_rate: f.sample_rate,
-            channels: f.channels,
-            timestamp: f.timestamp,
-            sequence: f.sequence,
-        }).collect())
+        Ok(frames
+            .iter()
+            .map(|f| AudioFrame {
+                data: f.data.clone(), // Placeholder
+                codec: AudioCodec::G722,
+                sample_rate: f.sample_rate,
+                channels: f.channels,
+                timestamp: f.timestamp,
+                sequence: f.sequence,
+            })
+            .collect())
     }
 
     #[cfg(feature = "rocm")]
     async fn rocm_encode_ulaw(&self, frames: &[AudioFrame]) -> Result<Vec<AudioFrame>> {
         // ROCm implementation similar to CUDA
-        Ok(frames.iter().map(|f| AudioFrame {
-            data: f.data.clone(), // Placeholder
-            codec: AudioCodec::G711Ulaw,
-            sample_rate: f.sample_rate,
-            channels: f.channels,
-            timestamp: f.timestamp,
-            sequence: f.sequence,
-        }).collect())
+        Ok(frames
+            .iter()
+            .map(|f| AudioFrame {
+                data: f.data.clone(), // Placeholder
+                codec: AudioCodec::G711Ulaw,
+                sample_rate: f.sample_rate,
+                channels: f.channels,
+                timestamp: f.timestamp,
+                sequence: f.sequence,
+            })
+            .collect())
     }
 
     /// Get GPU acceleration statistics

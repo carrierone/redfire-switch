@@ -1,19 +1,19 @@
 /*
  * Redfire Switch - SIP-T and SIP-I Protocol Support
  * Copyright (C) 2025 Carrier One Inc and contributors
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Sponsored by Carrier One Inc (https://www.carrierone.com)
  */
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use bitflags::bitflags;
 use nom::{
-    number::complete::{be_u8, be_u16},
+    number::complete::{be_u16, be_u8},
     sequence::tuple,
 };
 use serde::{Deserialize, Serialize};
@@ -21,10 +21,10 @@ use std::fmt;
 use tracing::{debug, info, warn};
 
 /// SIP-T (SIP for Telephones) and SIP-I (SIP with encapsulated ISUP) support
-/// 
-/// SIP-T: RFC 3372 - Session Initiation Protocol for Telephones (SIP-T): 
+///
+/// SIP-T: RFC 3372 - Session Initiation Protocol for Telephones (SIP-T):
 ///        Context and Architectures
-/// SIP-I: RFC 3398 - Integrated Services Digital Network (ISDN) User Part (ISUP) 
+/// SIP-I: RFC 3398 - Integrated Services Digital Network (ISDN) User Part (ISUP)
 ///        to Session Initiation Protocol (SIP) Interworking
 
 /// ISUP message types as defined in ITU-T Q.763
@@ -583,9 +583,11 @@ pub struct SipTSipIService {
 impl SipTSipIService {
     /// Create a new SIP-T/SIP-I service
     pub fn new(config: SipTSipIConfig) -> Self {
-        info!("Initializing SIP-T/SIP-I service - SIP-T: {}, SIP-I: {}, Variant: {}", 
-              config.sipt_enabled, config.sipi_enabled, config.isup_variant);
-        
+        info!(
+            "Initializing SIP-T/SIP-I service - SIP-T: {}, SIP-I: {}, Variant: {}",
+            config.sipt_enabled, config.sipi_enabled, config.isup_variant
+        );
+
         Self { config }
     }
 
@@ -595,19 +597,24 @@ impl SipTSipIService {
             return Err(anyhow!("ISUP message too short"));
         }
 
-        let (remaining, (cic, message_type_byte)) = tuple((be_u16, be_u8))(data)
-            .map_err(|e: nom::Err<nom::error::Error<_>>| anyhow!("Failed to parse ISUP header: {}", e))?;
+        let (remaining, (cic, message_type_byte)) =
+            tuple((be_u16, be_u8))(data).map_err(|e: nom::Err<nom::error::Error<_>>| {
+                anyhow!("Failed to parse ISUP header: {}", e)
+            })?;
 
         let message_type = IsupMessageType::from(message_type_byte);
 
-        debug!("Parsing ISUP message: CIC={}, Type={} (0x{:02X})", 
-               cic, message_type, message_type_byte);
+        debug!(
+            "Parsing ISUP message: CIC={}, Type={} (0x{:02X})",
+            cic, message_type, message_type_byte
+        );
 
         // Parse mandatory fixed parameters based on message type
         let (remaining, mandatory_fixed) = self.parse_mandatory_fixed(&message_type, remaining)?;
 
         // Parse mandatory variable parameters
-        let (remaining, mandatory_variable) = self.parse_mandatory_variable(&message_type, &remaining)?;
+        let (remaining, mandatory_variable) =
+            self.parse_mandatory_variable(&message_type, &remaining)?;
 
         // Parse optional parameters
         let optional = self.parse_optional_parameters(&remaining)?;
@@ -623,9 +630,13 @@ impl SipTSipIService {
     }
 
     /// Parse mandatory fixed parameters
-    fn parse_mandatory_fixed(&self, message_type: &IsupMessageType, data: &[u8]) -> Result<(Vec<u8>, Vec<u8>)> {
+    fn parse_mandatory_fixed(
+        &self,
+        message_type: &IsupMessageType,
+        data: &[u8],
+    ) -> Result<(Vec<u8>, Vec<u8>)> {
         let fixed_length = self.get_mandatory_fixed_length(message_type);
-        
+
         if data.len() < fixed_length {
             return Err(anyhow!("Not enough data for mandatory fixed parameters"));
         }
@@ -654,17 +665,21 @@ impl SipTSipIService {
             IsupMessageType::UBA => 0, // No mandatory fixed parameters
             IsupMessageType::GRS => 1, // Range and Status
             IsupMessageType::GRA => 1, // Range and Status
-            _ => 0, // Default to no fixed parameters
+            _ => 0,                    // Default to no fixed parameters
         }
     }
 
     /// Parse mandatory variable parameters
-    fn parse_mandatory_variable(&self, message_type: &IsupMessageType, data: &[u8]) -> Result<(Vec<u8>, Vec<IsupParameter>)> {
+    fn parse_mandatory_variable(
+        &self,
+        message_type: &IsupMessageType,
+        data: &[u8],
+    ) -> Result<(Vec<u8>, Vec<IsupParameter>)> {
         let mut parameters = Vec::new();
         let mut current_data = data;
 
         let variable_count = self.get_mandatory_variable_count(message_type);
-        
+
         if variable_count == 0 {
             return Ok((data.to_vec(), parameters));
         }
@@ -703,10 +718,10 @@ impl SipTSipIService {
             }
 
             let param_value = param_data[1..length + 1].to_vec();
-            
+
             // Determine parameter type based on message type and position
             let param_type = self.get_variable_parameter_type(message_type, parameters.len());
-            
+
             parameters.push(IsupParameter {
                 param_type,
                 length: length as u8,
@@ -728,12 +743,16 @@ impl SipTSipIService {
             IsupMessageType::CPG => 0, // No mandatory variable parameters
             IsupMessageType::GRS => 0, // No mandatory variable parameters (Range and Status is fixed)
             IsupMessageType::GRA => 0, // No mandatory variable parameters
-            _ => 0, // Default to no variable parameters
+            _ => 0,                    // Default to no variable parameters
         }
     }
 
     /// Get parameter type for mandatory variable parameter by position
-    fn get_variable_parameter_type(&self, message_type: &IsupMessageType, position: usize) -> IsupParameterType {
+    fn get_variable_parameter_type(
+        &self,
+        message_type: &IsupMessageType,
+        position: usize,
+    ) -> IsupParameterType {
         match (message_type, position) {
             (IsupMessageType::IAM, 0) => IsupParameterType::CalledPartyNumber,
             (IsupMessageType::SAM, 0) => IsupParameterType::SubsequentNumber,
@@ -748,7 +767,7 @@ impl SipTSipIService {
 
         while !current_data.is_empty() {
             let param_type_byte = current_data[0];
-            
+
             // End of optional parameters marker
             if param_type_byte == 0x00 {
                 break;
@@ -759,7 +778,7 @@ impl SipTSipIService {
             }
 
             let length = current_data[1] as usize;
-            
+
             if current_data.len() < length + 2 {
                 return Err(anyhow!("Invalid optional parameter length"));
             }
@@ -837,7 +856,9 @@ impl SipTSipIService {
         let mut body = String::new();
 
         // Create multipart header
-        body.push_str(&format!("Content-Type: multipart/mixed; boundary={boundary}\r\n\r\n"));
+        body.push_str(&format!(
+            "Content-Type: multipart/mixed; boundary={boundary}\r\n\r\n"
+        ));
 
         // Add ISUP part
         body.push_str(&format!("--{boundary}\r\n"));
@@ -867,9 +888,11 @@ impl SipTSipIService {
         }
 
         // Find boundary
-        let content_type_start = body.find("Content-Type:").ok_or_else(|| anyhow!("No Content-Type found"))?;
+        let content_type_start = body
+            .find("Content-Type:")
+            .ok_or_else(|| anyhow!("No Content-Type found"))?;
         let content_type_line = body[content_type_start..].lines().next().unwrap_or("");
-        
+
         let boundary = if let Some(boundary_start) = content_type_line.find("boundary=") {
             let boundary_value = &content_type_line[boundary_start + 9..];
             boundary_value.trim_matches(&['"', ' ', '\r', '\n'][..])
@@ -883,7 +906,8 @@ impl SipTSipIService {
         let mut isup_data = None;
         let mut sdp_data = None;
 
-        for part in parts.iter().skip(1) { // Skip everything before first boundary
+        for part in parts.iter().skip(1) {
+            // Skip everything before first boundary
             if part.trim().is_empty() || part.starts_with("--") {
                 continue;
             }
@@ -977,7 +1001,7 @@ impl SipTSipIService {
             if first_digit <= 9 {
                 number.push((b'0' + first_digit) as char);
             }
-            
+
             if second_digit <= 9 {
                 number.push((b'0' + second_digit) as char);
             } else if second_digit == 0x0F {
@@ -1029,8 +1053,10 @@ impl SipTSipIService {
 
     /// Encode phone number for ISUP parameter
     fn encode_phone_number(&self, number: &str) -> Result<Vec<u8>> {
-        let cleaned_number = number.trim_start_matches('+').replace(&[' ', '-', '(', ')'][..], "");
-        
+        let cleaned_number = number
+            .trim_start_matches('+')
+            .replace(&[' ', '-', '(', ')'][..], "");
+
         if cleaned_number.is_empty() {
             return Err(anyhow!("Empty phone number"));
         }
@@ -1040,7 +1066,8 @@ impl SipTSipIService {
             0x10, // Numbering Plan: ISDN/telephony numbering plan
         ];
 
-        let digits: Vec<u8> = cleaned_number.chars()
+        let digits: Vec<u8> = cleaned_number
+            .chars()
             .filter_map(|c| c.to_digit(10).map(|d| d as u8))
             .collect();
 
@@ -1082,7 +1109,7 @@ pub mod utils {
             IsupMessageType::ACM => "183", // Session Progress
             IsupMessageType::ANM => "200", // OK
             IsupMessageType::CPG => "183", // Session Progress
-            _ => "INFO", // Default to INFO for other messages
+            _ => "INFO",                   // Default to INFO for other messages
         }
     }
 
@@ -1136,16 +1163,30 @@ pub mod utils {
     /// Format ISUP message for debugging
     pub fn format_isup_debug(message: &IsupMessage) -> String {
         let mut output = String::new();
-        output.push_str(&format!("ISUP Message: {} (CIC: {})\n", message.message_type, message.cic));
-        output.push_str(&format!("  Mandatory Fixed: {} bytes\n", message.mandatory_fixed.len()));
-        output.push_str(&format!("  Mandatory Variable: {} parameters\n", message.mandatory_variable.len()));
-        output.push_str(&format!("  Optional: {} parameters\n", message.optional.len()));
-        
+        output.push_str(&format!(
+            "ISUP Message: {} (CIC: {})\n",
+            message.message_type, message.cic
+        ));
+        output.push_str(&format!(
+            "  Mandatory Fixed: {} bytes\n",
+            message.mandatory_fixed.len()
+        ));
+        output.push_str(&format!(
+            "  Mandatory Variable: {} parameters\n",
+            message.mandatory_variable.len()
+        ));
+        output.push_str(&format!(
+            "  Optional: {} parameters\n",
+            message.optional.len()
+        ));
+
         for (i, param) in message.optional.iter().enumerate() {
-            output.push_str(&format!("    Param {}: {:?} ({} bytes)\n", 
-                                    i, param.param_type, param.length));
+            output.push_str(&format!(
+                "    Param {}: {:?} ({} bytes)\n",
+                i, param.param_type, param.length
+            ));
         }
-        
+
         output
     }
 }
@@ -1166,7 +1207,7 @@ mod tests {
     fn test_phone_number_encoding() {
         let config = SipTSipIConfig::default();
         let service = SipTSipIService::new(config);
-        
+
         let encoded = service.encode_phone_number("+15551234567").unwrap();
         assert_eq!(encoded[0], 0x03); // Nature of address
         assert_eq!(encoded[1], 0x10); // Numbering plan
@@ -1175,7 +1216,10 @@ mod tests {
 
     #[test]
     fn test_sip_to_isup_conversion() {
-        assert_eq!(utils::sip_to_isup_type("INVITE"), Some(IsupMessageType::IAM));
+        assert_eq!(
+            utils::sip_to_isup_type("INVITE"),
+            Some(IsupMessageType::IAM)
+        );
         assert_eq!(utils::sip_to_isup_type("BYE"), Some(IsupMessageType::REL));
         assert_eq!(utils::sip_to_isup_type("OPTIONS"), None);
     }
@@ -1195,10 +1239,12 @@ mod tests {
             ..Default::default()
         };
         let service = SipTSipIService::new(config);
-        
+
         let isup_data = vec![0x01, 0x02, 0x03, 0x04];
-        let body = service.create_sipt_body(&isup_data, Some("v=0\r\n")).unwrap();
-        
+        let body = service
+            .create_sipt_body(&isup_data, Some("v=0\r\n"))
+            .unwrap();
+
         assert!(body.contains("multipart/mixed"));
         assert!(body.contains("application/ISUP"));
         assert!(body.contains("application/sdp"));
@@ -1212,7 +1258,7 @@ mod tests {
             cic_range_end: 10,
             ..Default::default()
         };
-        
+
         let used_cics = vec![1, 3, 5];
         let next_cic = utils::get_next_cic(&config, &used_cics);
         assert_eq!(next_cic, Some(2));

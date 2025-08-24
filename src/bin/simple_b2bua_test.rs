@@ -3,16 +3,16 @@
  * Minimal SIP forwarding B2BUA for testing
  */
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::net::UdpSocket;
-use tokio::sync::RwLock;
 use tokio::signal;
-use tracing::{info, warn, error};
+use tokio::sync::RwLock;
+use tracing::{error, info, warn};
 
 // Security constants (embedded to avoid import issues)
 const MAX_SIP_MESSAGE_SIZE: usize = 65536;
@@ -55,7 +55,7 @@ impl SimpleB2BUA {
         let socket = UdpSocket::bind(bind_addr).await?;
         info!("✅ Simple B2BUA listening on {}", bind_addr);
         info!("📞 Termination target: {}:{}", term_host, term_port);
-        
+
         Ok(Self {
             socket: Arc::new(socket),
             calls: Arc::new(RwLock::new(HashMap::new())),
@@ -69,32 +69,35 @@ impl SimpleB2BUA {
     pub async fn start(&self) -> Result<()> {
         // FIXED: Start call cleanup task to prevent memory leaks
         self.start_call_cleanup_task().await;
-        
+
         // FIXED: Setup graceful shutdown handler
         self.setup_shutdown_handler().await;
-        
+
         let mut buffer = vec![0u8; 4096];
-        
+
         // FIXED: Check shutdown flag in loop
         while !self.shutdown.load(Ordering::Relaxed) {
             match self.socket.recv_from(&mut buffer).await {
                 Ok((len, from)) => {
                     // Basic input validation
                     if len > MAX_SIP_MESSAGE_SIZE {
-                        warn!("⚠️ Oversized message from {}: {} bytes, dropping", from, len);
+                        warn!(
+                            "⚠️ Oversized message from {}: {} bytes, dropping",
+                            from, len
+                        );
                         continue;
                     }
-                    
+
                     let message = String::from_utf8_lossy(&buffer[..len]);
-                    
-                    // FIXED: Improved input validation 
+
+                    // FIXED: Improved input validation
                     if let Err(e) = self.validate_sip_message(&message, from) {
                         warn!("⚠️ Invalid SIP message from {}: {}, dropping", from, e);
                         continue;
                     }
-                    
+
                     info!("📨 Received {} bytes from {}", len, from);
-                    
+
                     // Simple forwarding logic
                     if let Err(e) = self.forward_message(&message, from).await {
                         error!("❌ Failed to forward message: {}", e);
@@ -105,7 +108,7 @@ impl SimpleB2BUA {
                 }
             }
         }
-        
+
         info!("🛑 Simple B2BUA shutting down gracefully");
         Ok(())
     }
@@ -113,16 +116,19 @@ impl SimpleB2BUA {
     async fn forward_message(&self, message: &str, from: SocketAddr) -> Result<()> {
         // Extract Call-ID for session tracking
         let call_id = self.extract_call_id(message)?;
-        
+
         // Determine forwarding target
         let target_addr = format!("{}:{}", self.termination_host, self.termination_port);
         let target: SocketAddr = target_addr.parse()?;
-        
+
         // Forward the message
         let message_bytes = message.as_bytes();
         match self.socket.send_to(message_bytes, target).await {
             Ok(sent) => {
-                info!("📤 Forwarded {} bytes to {} for call {}", sent, target, call_id);
+                info!(
+                    "📤 Forwarded {} bytes to {} for call {}",
+                    sent, target, call_id
+                );
                 Ok(())
             }
             Err(e) => {
@@ -185,11 +191,12 @@ impl SimpleB2BUA {
         }
 
         // Basic header validation for potential injection
-        for line in lines.iter().skip(1) { // Skip first line (request/status line)
+        for line in lines.iter().skip(1) {
+            // Skip first line (request/status line)
             if line.is_empty() {
                 break; // End of headers
             }
-            
+
             if !line.contains(':') && !line.starts_with(' ') && !line.starts_with('\t') {
                 return Err(anyhow!("Invalid header format"));
             }
@@ -202,28 +209,31 @@ impl SimpleB2BUA {
     async fn start_call_cleanup_task(&self) {
         let calls = Arc::clone(&self.calls);
         let shutdown = Arc::clone(&self.shutdown);
-        
+
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(300)); // Every 5 minutes
-            
+
             while !shutdown.load(Ordering::Relaxed) {
                 interval.tick().await;
-                
+
                 let now = Instant::now();
                 let mut calls_guard = calls.write().await;
                 let initial_count = calls_guard.len();
-                
+
                 // Remove calls that have timed out
                 calls_guard.retain(|_call_id, (a_leg, b_leg)| {
                     let a_active = now.duration_since(a_leg.last_activity) < CALL_TIMEOUT;
                     let b_active = now.duration_since(b_leg.last_activity) < CALL_TIMEOUT;
                     a_active && b_active
                 });
-                
+
                 let cleaned_count = initial_count - calls_guard.len();
                 if cleaned_count > 0 {
-                    info!("🧹 Cleaned up {} timed-out calls, {} active calls remaining", 
-                          cleaned_count, calls_guard.len());
+                    info!(
+                        "🧹 Cleaned up {} timed-out calls, {} active calls remaining",
+                        cleaned_count,
+                        calls_guard.len()
+                    );
                 }
             }
         });
@@ -232,7 +242,7 @@ impl SimpleB2BUA {
     // FIXED: Add graceful shutdown handler
     async fn setup_shutdown_handler(&self) {
         let shutdown = Arc::clone(&self.shutdown);
-        
+
         tokio::spawn(async move {
             // Wait for SIGINT (Ctrl+C) or SIGTERM
             let _ = signal::ctrl_c().await;
@@ -259,7 +269,7 @@ async fn main() -> Result<()> {
 
     // Create and start B2BUA
     let b2bua = SimpleB2BUA::new(bind_addr, term_host, term_port).await?;
-    
+
     info!("🚀 Starting Simple B2BUA...");
     b2bua.start().await?;
 

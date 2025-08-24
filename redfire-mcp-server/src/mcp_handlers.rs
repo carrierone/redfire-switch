@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{info, warn, error, debug};
+use tracing::{debug, error, info, warn};
 use warp::{Filter, Reply};
 
 use crate::codec_tools::CodecTools;
@@ -24,36 +24,34 @@ pub struct RedfireMcpServer {
 impl RedfireMcpServer {
     pub async fn new(gpu_enabled: bool, gpu_device: u32) -> Result<Self> {
         info!("Initializing Redfire MCP Server");
-        
+
         let codec_tools = Arc::new(CodecTools::new(gpu_enabled, gpu_device).await?);
         let sip_tools = Arc::new(SipTools::new().await?);
-        
+
         Ok(Self {
             codec_tools,
             sip_tools,
             session_data: Arc::new(RwLock::new(HashMap::new())),
         })
     }
-    
+
     pub async fn run(&self, addr: &str) -> Result<()> {
         let server = Arc::new(self.clone());
-        
+
         // List tools endpoint
-        let list_tools = warp::path("list_tools")
-            .and(warp::get())
-            .map(|| {
-                warp::reply::json(&json!({
-                    "tools": [
-                        "transcode_audio",
-                        "get_codec_info", 
-                        "benchmark_transcoding",
-                        "parse_sip_message", 
-                        "generate_sip_message"
-                    ],
-                    "description": "Redfire Switch CLI-accessible Tools"
-                }))
-            });
-        
+        let list_tools = warp::path("list_tools").and(warp::get()).map(|| {
+            warp::reply::json(&json!({
+                "tools": [
+                    "transcode_audio",
+                    "get_codec_info",
+                    "benchmark_transcoding",
+                    "parse_sip_message",
+                    "generate_sip_message"
+                ],
+                "description": "Redfire Switch CLI-accessible Tools"
+            }))
+        });
+
         // Transcode audio endpoint
         let server_clone = server.clone();
         let transcode_audio = warp::path("transcode_audio")
@@ -61,7 +59,7 @@ impl RedfireMcpServer {
             .and(warp::body::json())
             .and_then(move |args: Value| {
                 let server = server_clone.clone();
-                async move {
+                async move -> Result<impl Reply, Infallible> {
                     match server.codec_tools.transcode_audio(args).await {
                         Ok(result) => Ok(warp::reply::json(&result)),
                         Err(e) => {
@@ -74,7 +72,7 @@ impl RedfireMcpServer {
                     }
                 }
             });
-        
+
         // Get codec info endpoint
         let server_clone = server.clone();
         let get_codec_info = warp::path("get_codec_info")
@@ -82,7 +80,7 @@ impl RedfireMcpServer {
             .and(warp::body::json())
             .and_then(move |args: Value| {
                 let server = server_clone.clone();
-                async move {
+                async move -> Result<impl Reply, Infallible> {
                     match server.codec_tools.get_codec_info(args).await {
                         Ok(result) => Ok(warp::reply::json(&result)),
                         Err(e) => {
@@ -95,7 +93,7 @@ impl RedfireMcpServer {
                     }
                 }
             });
-        
+
         // Benchmark transcoding endpoint
         let server_clone = server.clone();
         let benchmark_transcoding = warp::path("benchmark_transcoding")
@@ -103,7 +101,7 @@ impl RedfireMcpServer {
             .and(warp::body::json())
             .and_then(move |args: Value| {
                 let server = server_clone.clone();
-                async move {
+                async move -> Result<impl Reply, Infallible> {
                     match server.codec_tools.benchmark_transcoding(args).await {
                         Ok(result) => Ok(warp::reply::json(&result)),
                         Err(e) => {
@@ -116,7 +114,7 @@ impl RedfireMcpServer {
                     }
                 }
             });
-        
+
         // Parse SIP message endpoint
         let server_clone = server.clone();
         let parse_sip_message = warp::path("parse_sip_message")
@@ -124,7 +122,7 @@ impl RedfireMcpServer {
             .and(warp::body::json())
             .and_then(move |args: Value| {
                 let server = server_clone.clone();
-                async move {
+                async move -> Result<impl Reply, Infallible> {
                     match server.sip_tools.parse_sip_message(args).await {
                         Ok(result) => Ok(warp::reply::json(&result)),
                         Err(e) => {
@@ -137,7 +135,7 @@ impl RedfireMcpServer {
                     }
                 }
             });
-        
+
         // Generate SIP message endpoint
         let server_clone = server.clone();
         let generate_sip_message = warp::path("generate_sip_message")
@@ -145,7 +143,7 @@ impl RedfireMcpServer {
             .and(warp::body::json())
             .and_then(move |args: Value| {
                 let server = server_clone.clone();
-                async move {
+                async move -> Result<impl Reply, Infallible> {
                     match server.sip_tools.generate_sip_message(args).await {
                         Ok(result) => Ok(warp::reply::json(&result)),
                         Err(e) => {
@@ -158,7 +156,7 @@ impl RedfireMcpServer {
                     }
                 }
             });
-        
+
         // Combine all routes
         let routes = list_tools
             .or(transcode_audio)
@@ -167,14 +165,15 @@ impl RedfireMcpServer {
             .or(parse_sip_message)
             .or(generate_sip_message)
             .with(warp::cors().allow_any_origin());
-        
+
         // Parse address
-        let socket_addr: std::net::SocketAddr = addr.parse()
+        let socket_addr: std::net::SocketAddr = addr
+            .parse()
             .map_err(|e| anyhow::anyhow!("Invalid address {}: {}", addr, e))?;
-        
+
         info!("HTTP MCP Server starting on {}", addr);
         warp::serve(routes).run(socket_addr).await;
-        
+
         Ok(())
     }
 }

@@ -1,19 +1,19 @@
 /*
  * TDMoE (Time Division Multiplexing over Ethernet) with NI-2 Signaling
- * 
+ *
  * This module implements TDM over Ethernet with National ISDN-2 (NI-2) signaling
  * for integration with SIP endpoints in a complete call flow test.
  */
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::net::UdpSocket;
-use tokio::sync::{RwLock, mpsc, Mutex};
-use tracing::{debug, info, warn, error};
-use serde::{Serialize, Deserialize};
+use tokio::sync::{mpsc, Mutex, RwLock};
+use tracing::{debug, error, info, warn};
 
 /// TDMoE frame structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -270,8 +270,8 @@ impl Default for Ni2Config {
     fn default() -> Self {
         Self {
             point_code: 1,
-            network_indicator: 2, // National network
-            service_indicator: 3, // SCCP
+            network_indicator: 2,  // National network
+            service_indicator: 3,  // SCCP
             subsystem_number: 254, // ISUP
             enable_continuity_test: true,
             answer_supervision_timeout: 60,
@@ -283,22 +283,27 @@ impl TdmoeService {
     /// Create new TDMoE service
     pub async fn new(config: TdmoeConfig) -> Result<Self> {
         info!("Creating TDMoE service with config: {:?}", config);
-        
+
         // Bind UDP socket
-        let socket = UdpSocket::bind(config.local_address).await
-            .map_err(|e| anyhow!("Failed to bind TDMoE socket to {}: {}", config.local_address, e))?;
-        
+        let socket = UdpSocket::bind(config.local_address).await.map_err(|e| {
+            anyhow!(
+                "Failed to bind TDMoE socket to {}: {}",
+                config.local_address,
+                e
+            )
+        })?;
+
         info!("TDMoE service bound to {}", config.local_address);
-        
+
         // Initialize channel states
         let mut channel_states = Vec::new();
         for _ in 0..config.channel_count {
             channel_states.push(TdmoeCallState::Idle);
         }
-        
+
         // Create signaling message queue
         let (signaling_tx, _signaling_rx) = mpsc::unbounded_channel();
-        
+
         let service = Self {
             config,
             socket: Arc::new(socket),
@@ -308,27 +313,27 @@ impl TdmoeService {
             sequence_counter: Arc::new(Mutex::new(0)),
             stats: Arc::new(RwLock::new(TdmoeServiceStats::default())),
         };
-        
+
         Ok(service)
     }
-    
+
     /// Start the TDMoE service
     pub async fn start(&self) -> Result<()> {
         info!("Starting TDMoE service");
-        
+
         // Start frame receiver
         let socket = Arc::clone(&self.socket);
         let active_calls = Arc::clone(&self.active_calls);
         let stats = Arc::clone(&self.stats);
-        
+
         tokio::spawn(async move {
             let mut buffer = vec![0u8; 1500]; // MTU size
-            
+
             loop {
                 match socket.recv_from(&mut buffer).await {
                     Ok((size, addr)) => {
                         debug!("Received {} bytes from {}", size, addr);
-                        
+
                         // Parse TDMoE frame
                         match Self::parse_tdmoe_frame(&buffer[..size]) {
                             Ok(frame) => {
@@ -346,14 +351,14 @@ impl TdmoeService {
                 }
             }
         });
-        
+
         // Start keepalive sender
         self.start_keepalive_sender().await;
-        
+
         info!("TDMoE service started successfully");
         Ok(())
     }
-    
+
     /// Originate a call (send IAM)
     pub async fn originate_call(
         &self,
@@ -361,19 +366,28 @@ impl TdmoeService {
         called_number: &str,
         cic: u16,
     ) -> Result<String> {
-        info!("Originating call from {} to {} on CIC {}", calling_number, called_number, cic);
-        
+        info!(
+            "Originating call from {} to {} on CIC {}",
+            calling_number, called_number, cic
+        );
+
         // Check if CIC is available
         let active_calls = self.active_calls.read().await;
         if active_calls.contains_key(&cic) {
             return Err(anyhow!("CIC {} is already in use", cic));
         }
         drop(active_calls);
-        
+
         // Generate call ID
-        let call_id = format!("TDMOE-{}-{}", cic, 
-                              SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis());
-        
+        let call_id = format!(
+            "TDMOE-{}-{}",
+            cic,
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_millis()
+        );
+
         // Create IAM message
         let iam = Ni2Message {
             message_type: Ni2MessageType::IAM,
@@ -385,12 +399,15 @@ impl TdmoeService {
             lrn: None,
             jip: None,
             parameters: HashMap::new(),
-            timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+            timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
         };
-        
+
         // Send IAM
         self.send_signaling_message(iam).await?;
-        
+
         // Create call record
         let call = TdmoeCall {
             call_id: call_id.clone(),
@@ -404,38 +421,42 @@ impl TdmoeService {
             codec: self.config.voice_codec,
             stats: TdmoeCallStats::default(),
         };
-        
+
         // Store call
         let mut active_calls = self.active_calls.write().await;
         active_calls.insert(cic, call);
-        
+
         // Update channel state
         let mut channel_states = self.channel_states.write().await;
         if (cic as usize) < channel_states.len() {
             channel_states[cic as usize] = TdmoeCallState::OutgoingSetup;
         }
-        
+
         info!("Call {} originated successfully", call_id);
         Ok(call_id)
     }
-    
+
     /// Send answer (ANM) for incoming call
     pub async fn answer_call(&self, cic: u16) -> Result<()> {
         info!("Answering call on CIC {}", cic);
-        
+
         // Find the call
         let mut active_calls = self.active_calls.write().await;
-        let call = active_calls.get_mut(&cic)
+        let call = active_calls
+            .get_mut(&cic)
             .ok_or_else(|| anyhow!("No call found on CIC {}", cic))?;
-        
+
         if call.state != TdmoeCallState::IncomingSetup && call.state != TdmoeCallState::Alerting {
-            return Err(anyhow!("Call on CIC {} is not in a state to be answered", cic));
+            return Err(anyhow!(
+                "Call on CIC {} is not in a state to be answered",
+                cic
+            ));
         }
-        
+
         // Update call state
         call.state = TdmoeCallState::Connected;
         call.last_activity = Instant::now();
-        
+
         // Create ANM message
         let anm = Ni2Message {
             message_type: Ni2MessageType::ANM,
@@ -447,39 +468,43 @@ impl TdmoeService {
             lrn: None,
             jip: None,
             parameters: HashMap::new(),
-            timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+            timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
         };
-        
+
         // Send ANM
         self.send_signaling_message(anm).await?;
-        
+
         // Update channel state
         let mut channel_states = self.channel_states.write().await;
         if (cic as usize) < channel_states.len() {
             channel_states[cic as usize] = TdmoeCallState::Connected;
         }
-        
+
         info!("Call on CIC {} answered successfully", cic);
         Ok(())
     }
-    
+
     /// Release call (send REL)
     pub async fn release_call(&self, cic: u16, cause: u8) -> Result<()> {
         info!("Releasing call on CIC {} with cause {}", cic, cause);
-        
+
         // Find the call
         let mut active_calls = self.active_calls.write().await;
-        let call = active_calls.get_mut(&cic)
+        let call = active_calls
+            .get_mut(&cic)
             .ok_or_else(|| anyhow!("No call found on CIC {}", cic))?;
-        
+
         // Update call state
         call.state = TdmoeCallState::Disconnecting;
         call.last_activity = Instant::now();
-        
+
         // Create REL message
         let mut parameters = HashMap::new();
         parameters.insert("cause".to_string(), cause.to_string());
-        
+
         let rel = Ni2Message {
             message_type: Ni2MessageType::REL,
             cic,
@@ -490,47 +515,54 @@ impl TdmoeService {
             lrn: None,
             jip: None,
             parameters,
-            timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+            timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
         };
-        
+
         // Send REL
         self.send_signaling_message(rel).await?;
-        
+
         info!("Release message sent for CIC {}", cic);
         Ok(())
     }
-    
+
     /// Send voice data on a channel
     pub async fn send_voice_data(&self, cic: u16, data: &[u8]) -> Result<()> {
         // Check if call is active
         let active_calls = self.active_calls.read().await;
-        let call = active_calls.get(&cic)
+        let call = active_calls
+            .get(&cic)
             .ok_or_else(|| anyhow!("No active call on CIC {}", cic))?;
-        
+
         if call.state != TdmoeCallState::Connected {
             return Err(anyhow!("Call on CIC {} is not in connected state", cic));
         }
         drop(active_calls);
-        
+
         // Create voice frame
         let sequence = {
             let mut seq = self.sequence_counter.lock().await;
             *seq += 1;
             *seq
         };
-        
+
         let frame = TdmoeFrame {
             sequence,
-            timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64,
+            timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as u64,
             channel: cic,
             data: data.to_vec(),
             d_channel_data: None,
             frame_type: TdmoeFrameType::Voice,
         };
-        
+
         // Send frame
         self.send_frame(frame).await?;
-        
+
         // Update statistics
         let mut active_calls = self.active_calls.write().await;
         if let Some(call) = active_calls.get_mut(&cic) {
@@ -538,72 +570,77 @@ impl TdmoeService {
             call.stats.bytes_sent += data.len() as u64;
             call.last_activity = Instant::now();
         }
-        
+
         Ok(())
     }
-    
+
     /// Get call status
     pub async fn get_call_status(&self, cic: u16) -> Option<TdmoeCall> {
         let active_calls = self.active_calls.read().await;
         active_calls.get(&cic).cloned()
     }
-    
+
     /// List all active calls
     pub async fn list_active_calls(&self) -> Vec<TdmoeCall> {
         let active_calls = self.active_calls.read().await;
         active_calls.values().cloned().collect()
     }
-    
+
     /// Get service statistics
     pub async fn get_statistics(&self) -> TdmoeServiceStats {
         let stats = self.stats.read().await;
         let mut stats_copy = (*stats).clone();
-        
+
         // Update active calls count
         let active_calls = self.active_calls.read().await;
         stats_copy.active_calls = active_calls.len() as u32;
-        
+
         stats_copy
     }
-    
+
     // Private methods
-    
+
     async fn send_signaling_message(&self, message: Ni2Message) -> Result<()> {
         debug!("Sending NI-2 message: {:?}", message);
-        
+
         // Create signaling frame
         let signaling_data = self.serialize_ni2_message(&message)?;
-        
+
         let sequence = {
             let mut seq = self.sequence_counter.lock().await;
             *seq += 1;
             *seq
         };
-        
+
         let frame = TdmoeFrame {
             sequence,
-            timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64,
+            timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as u64,
             channel: 0, // D-channel
             data: vec![],
             d_channel_data: Some(signaling_data),
             frame_type: TdmoeFrameType::Signaling,
         };
-        
+
         self.send_frame(frame).await?;
-        
+
         // Update statistics
         let mut stats = self.stats.write().await;
         stats.signaling_messages += 1;
-        
+
         Ok(())
     }
-    
+
     async fn send_frame(&self, frame: TdmoeFrame) -> Result<()> {
         let frame_data = self.serialize_frame(&frame)?;
-        
-        self.socket.send_to(&frame_data, self.config.remote_address).await
+
+        self.socket
+            .send_to(&frame_data, self.config.remote_address)
+            .await
             .map_err(|e| anyhow!("Failed to send TDMoE frame: {}", e))?;
-        
+
         // Update statistics
         let mut stats = self.stats.write().await;
         stats.total_frames += 1;
@@ -611,33 +648,35 @@ impl TdmoeService {
             stats.voice_frames += 1;
         }
         stats.last_activity = Some(Instant::now());
-        
-        debug!("Sent TDMoE frame: seq={}, type={:?}, channel={}", 
-               frame.sequence, frame.frame_type, frame.channel);
-        
+
+        debug!(
+            "Sent TDMoE frame: seq={}, type={:?}, channel={}",
+            frame.sequence, frame.frame_type, frame.channel
+        );
+
         Ok(())
     }
-    
+
     fn serialize_frame(&self, frame: &TdmoeFrame) -> Result<Vec<u8>> {
         // Simple binary serialization
         // In production, this would use a proper protocol like RTP or custom framing
-        bincode::serialize(frame)
-            .map_err(|e| anyhow!("Failed to serialize TDMoE frame: {}", e))
+        bincode::serialize(frame).map_err(|e| anyhow!("Failed to serialize TDMoE frame: {}", e))
     }
-    
+
     fn parse_tdmoe_frame(data: &[u8]) -> Result<TdmoeFrame> {
-        bincode::deserialize(data)
-            .map_err(|e| anyhow!("Failed to deserialize TDMoE frame: {}", e))
+        bincode::deserialize(data).map_err(|e| anyhow!("Failed to deserialize TDMoE frame: {}", e))
     }
-    
+
     async fn process_frame(
         frame: TdmoeFrame,
         active_calls: &Arc<RwLock<HashMap<u16, TdmoeCall>>>,
         stats: &Arc<RwLock<TdmoeServiceStats>>,
     ) {
-        debug!("Processing TDMoE frame: seq={}, type={:?}, channel={}", 
-               frame.sequence, frame.frame_type, frame.channel);
-        
+        debug!(
+            "Processing TDMoE frame: seq={}, type={:?}, channel={}",
+            frame.sequence, frame.frame_type, frame.channel
+        );
+
         match frame.frame_type {
             TdmoeFrameType::Voice => {
                 // Update call statistics
@@ -662,7 +701,7 @@ impl TdmoeService {
                 debug!("Received sync frame");
             }
         }
-        
+
         // Update global statistics
         let mut stats_guard = stats.write().await;
         stats_guard.total_frames += 1;
@@ -671,15 +710,15 @@ impl TdmoeService {
         }
         stats_guard.last_activity = Some(Instant::now());
     }
-    
+
     async fn process_signaling_message(
         message: Ni2Message,
         active_calls: &Arc<RwLock<HashMap<u16, TdmoeCall>>>,
     ) {
         info!("Processing NI-2 message: {:?}", message);
-        
+
         let mut calls = active_calls.write().await;
-        
+
         match message.message_type {
             Ni2MessageType::IAM => {
                 // Incoming call
@@ -695,7 +734,7 @@ impl TdmoeService {
                     codec: TdmoeCodec::ULaw, // Default
                     stats: TdmoeCallStats::default(),
                 };
-                
+
                 calls.insert(message.cic, call);
                 info!("Incoming call setup on CIC {}", message.cic);
             }
@@ -729,43 +768,44 @@ impl TdmoeService {
             }
         }
     }
-    
+
     fn serialize_ni2_message(&self, message: &Ni2Message) -> Result<Vec<u8>> {
-        bincode::serialize(message)
-            .map_err(|e| anyhow!("Failed to serialize NI-2 message: {}", e))
+        bincode::serialize(message).map_err(|e| anyhow!("Failed to serialize NI-2 message: {}", e))
     }
-    
+
     fn deserialize_ni2_message(data: &[u8]) -> Result<Ni2Message> {
-        bincode::deserialize(data)
-            .map_err(|e| anyhow!("Failed to deserialize NI-2 message: {}", e))
+        bincode::deserialize(data).map_err(|e| anyhow!("Failed to deserialize NI-2 message: {}", e))
     }
-    
+
     async fn start_keepalive_sender(&self) {
         let socket = Arc::clone(&self.socket);
         let remote_addr = self.config.remote_address;
         let sequence_counter = Arc::clone(&self.sequence_counter);
-        
+
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(10));
-            
+
             loop {
                 interval.tick().await;
-                
+
                 let sequence = {
                     let mut seq = sequence_counter.lock().await;
                     *seq += 1;
                     *seq
                 };
-                
+
                 let keepalive_frame = TdmoeFrame {
                     sequence,
-                    timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64,
+                    timestamp: SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_millis() as u64,
                     channel: 0,
                     data: vec![],
                     d_channel_data: None,
                     frame_type: TdmoeFrameType::Keepalive,
                 };
-                
+
                 if let Ok(frame_data) = bincode::serialize(&keepalive_frame) {
                     if let Err(e) = socket.send_to(&frame_data, remote_addr).await {
                         warn!("Failed to send keepalive: {}", e);
@@ -794,27 +834,27 @@ impl TdmoeTrunkPair {
             remote_address: "127.0.0.1:9001".parse().unwrap(),
             ..TdmoeConfig::default()
         };
-        
+
         let egress_config = TdmoeConfig {
             local_address: "127.0.0.1:9001".parse().unwrap(),
             remote_address: "127.0.0.1:9000".parse().unwrap(),
             ..TdmoeConfig::default()
         };
-        
+
         let ingress = Arc::new(TdmoeService::new(ingress_config).await?);
         let egress = Arc::new(TdmoeService::new(egress_config).await?);
-        
+
         Ok(Self { ingress, egress })
     }
-    
+
     /// Start both trunks
     pub async fn start(&self) -> Result<()> {
         self.ingress.start().await?;
         self.egress.start().await?;
-        
+
         // Allow time for services to start
         tokio::time::sleep(Duration::from_millis(100)).await;
-        
+
         Ok(())
     }
 }
@@ -835,7 +875,7 @@ pub enum Ni2CallState {
     Null = 0,
     /// Call initiated (U1/N1)
     CallInitiated = 1,
-    /// Overlap sending (U2/N2) 
+    /// Overlap sending (U2/N2)
     OverlapSending = 2,
     /// Outgoing call proceeding (U3/N3)
     OutgoingCallProceeding = 3,
@@ -851,7 +891,7 @@ pub enum Ni2CallState {
     IncomingCallProceeding = 9,
     /// Active (U10/N10)
     Active = 10,
-    /// Disconnect request (U11/N11) 
+    /// Disconnect request (U11/N11)
     DisconnectRequest = 11,
     /// Disconnect indication (U12/N12)
     DisconnectIndication = 12,
@@ -914,7 +954,7 @@ impl TdmoeNi2Signaling {
     /// Create new NI-2 signaling processor with specific side
     pub fn new_with_side(side_type: Ni2SideType) -> Result<Self> {
         let (event_sender, _) = tokio::sync::broadcast::channel(1000);
-        
+
         Ok(Self {
             side_type,
             active_calls: Arc::new(RwLock::new(HashMap::new())),
@@ -934,7 +974,12 @@ impl TdmoeNi2Signaling {
     }
 
     /// Initiate outgoing call (User side sends SETUP)
-    pub async fn initiate_call(&self, channel_id: &str, calling_number: &str, called_number: &str) -> Result<u16> {
+    pub async fn initiate_call(
+        &self,
+        channel_id: &str,
+        calling_number: &str,
+        called_number: &str,
+    ) -> Result<u16> {
         if self.side_type != Ni2SideType::User {
             return Err(anyhow!("Only User side can initiate calls"));
         }
@@ -956,10 +1001,15 @@ impl TdmoeNi2Signaling {
             call_start_time: Some(std::time::Instant::now()),
         };
 
-        self.active_calls.write().await.insert(channel_id.to_string(), call_context.clone());
+        self.active_calls
+            .write()
+            .await
+            .insert(channel_id.to_string(), call_context.clone());
 
-        info!("User side initiated call {} -> {} on {} (CRV: {})", 
-              calling_number, called_number, channel_id, call_reference);
+        info!(
+            "User side initiated call {} -> {} on {} (CRV: {})",
+            calling_number, called_number, channel_id, call_reference
+        );
 
         let event = Ni2Event::CallInitiated {
             channel_id: channel_id.to_string(),
@@ -973,7 +1023,13 @@ impl TdmoeNi2Signaling {
     }
 
     /// Process incoming SETUP message (Network side)
-    pub async fn process_incoming_setup(&self, channel_id: &str, call_reference: u16, calling_number: &str, called_number: &str) -> Result<()> {
+    pub async fn process_incoming_setup(
+        &self,
+        channel_id: &str,
+        call_reference: u16,
+        calling_number: &str,
+        called_number: &str,
+    ) -> Result<()> {
         if self.side_type != Ni2SideType::Network {
             return Err(anyhow!("Only Network side can process incoming SETUP"));
         }
@@ -990,10 +1046,15 @@ impl TdmoeNi2Signaling {
             call_start_time: Some(std::time::Instant::now()),
         };
 
-        self.active_calls.write().await.insert(channel_id.to_string(), call_context);
+        self.active_calls
+            .write()
+            .await
+            .insert(channel_id.to_string(), call_context);
 
-        info!("Network side received SETUP {} -> {} on {} (CRV: {})", 
-              calling_number, called_number, channel_id, call_reference);
+        info!(
+            "Network side received SETUP {} -> {} on {} (CRV: {})",
+            calling_number, called_number, channel_id, call_reference
+        );
 
         let event = Ni2Event::CallPresent {
             channel_id: channel_id.to_string(),
@@ -1014,13 +1075,19 @@ impl TdmoeNi2Signaling {
 
         if let Some(mut call_context) = self.active_calls.write().await.get_mut(channel_id) {
             if call_context.state != Ni2CallState::CallPresent {
-                return Err(anyhow!("Invalid state for CALL PROCEEDING: {:?}", call_context.state));
+                return Err(anyhow!(
+                    "Invalid state for CALL PROCEEDING: {:?}",
+                    call_context.state
+                ));
             }
 
             call_context.state = Ni2CallState::IncomingCallProceeding;
             call_context.last_state_change = std::time::Instant::now();
 
-            info!("Network side sent CALL PROCEEDING on {} (CRV: {})", channel_id, call_context.call_reference);
+            info!(
+                "Network side sent CALL PROCEEDING on {} (CRV: {})",
+                channel_id, call_context.call_reference
+            );
 
             let event = Ni2Event::CallProceeding {
                 channel_id: channel_id.to_string(),
@@ -1042,13 +1109,19 @@ impl TdmoeNi2Signaling {
 
         if let Some(mut call_context) = self.active_calls.write().await.get_mut(channel_id) {
             if call_context.state != Ni2CallState::IncomingCallProceeding {
-                return Err(anyhow!("Invalid state for ALERTING: {:?}", call_context.state));
+                return Err(anyhow!(
+                    "Invalid state for ALERTING: {:?}",
+                    call_context.state
+                ));
             }
 
             call_context.state = Ni2CallState::CallDelivered;
             call_context.last_state_change = std::time::Instant::now();
 
-            info!("Network side sent ALERTING on {} (CRV: {})", channel_id, call_context.call_reference);
+            info!(
+                "Network side sent ALERTING on {} (CRV: {})",
+                channel_id, call_context.call_reference
+            );
 
             let event = Ni2Event::CallAlerting {
                 channel_id: channel_id.to_string(),
@@ -1070,13 +1143,19 @@ impl TdmoeNi2Signaling {
 
         if let Some(mut call_context) = self.active_calls.write().await.get_mut(channel_id) {
             if call_context.state != Ni2CallState::CallDelivered {
-                return Err(anyhow!("Invalid state for CONNECT: {:?}", call_context.state));
+                return Err(anyhow!(
+                    "Invalid state for CONNECT: {:?}",
+                    call_context.state
+                ));
             }
 
             call_context.state = Ni2CallState::Active;
             call_context.last_state_change = std::time::Instant::now();
 
-            info!("Network side sent CONNECT on {} (CRV: {}) - Call Active", channel_id, call_context.call_reference);
+            info!(
+                "Network side sent CONNECT on {} (CRV: {}) - Call Active",
+                channel_id, call_context.call_reference
+            );
 
             let event = Ni2Event::CallConnected {
                 channel_id: channel_id.to_string(),
@@ -1100,8 +1179,10 @@ impl TdmoeNi2Signaling {
             call_context.state = Ni2CallState::DisconnectRequest;
             call_context.last_state_change = std::time::Instant::now();
 
-            info!("{:?} side sent DISCONNECT on {} (CRV: {}, cause: {})", 
-                  self.side_type, channel_id, call_context.call_reference, cause);
+            info!(
+                "{:?} side sent DISCONNECT on {} (CRV: {}, cause: {})",
+                self.side_type, channel_id, call_context.call_reference, cause
+            );
 
             let event = Ni2Event::CallDisconnected {
                 channel_id: channel_id.to_string(),
@@ -1118,7 +1199,11 @@ impl TdmoeNi2Signaling {
 
     /// Get call state
     pub async fn get_call_state(&self, channel_id: &str) -> Option<Ni2CallState> {
-        self.active_calls.read().await.get(channel_id).map(|ctx| ctx.state)
+        self.active_calls
+            .read()
+            .await
+            .get(channel_id)
+            .map(|ctx| ctx.state)
     }
 
     /// Get all active calls
@@ -1127,31 +1212,41 @@ impl TdmoeNi2Signaling {
     }
 
     /// Send information element
-    pub async fn send_information_element(&self, channel_id: &str, ie: InformationElement) -> Result<()> {
+    pub async fn send_information_element(
+        &self,
+        channel_id: &str,
+        ie: InformationElement,
+    ) -> Result<()> {
         info!("Sending IE to {}: {:?}", channel_id, ie);
-        
+
         let event = Ni2Event::InformationElementSent {
             channel_id: channel_id.to_string(),
             element: ie,
         };
-        
+
         let _ = self.event_sender.send(event);
         Ok(())
     }
-    
+
     /// Process D-channel message data
     pub async fn process_d_channel_message(&self, channel_id: &str, data: &[u8]) -> Result<()> {
         // Simplified D-channel processing - in real implementation this would
         // need HDLC framing and Q.921 LAPD protocol handling
         if data.len() >= 4 {
-            debug!("Processing D-channel data on {}: {} bytes", channel_id, data.len());
+            debug!(
+                "Processing D-channel data on {}: {} bytes",
+                channel_id,
+                data.len()
+            );
             // For now, just log the data - full NI-2 processing would happen here
-            debug!("D-channel data: {:02X?}", &data[..std::cmp::min(data.len(), 8)]);
+            debug!(
+                "D-channel data: {:02X?}",
+                &data[..std::cmp::min(data.len(), 8)]
+            );
         }
         Ok(())
     }
 }
-
 
 /// NI-2 events
 #[derive(Debug, Clone)]

@@ -3,20 +3,20 @@
  * Integrates all advanced features: ML threat detection, clustering, monitoring, security
  */
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, Instant};
-use tokio::sync::RwLock;
+use std::time::{Duration, Instant, SystemTime};
 use tokio::net::UdpSocket;
-use tracing::{info, warn, error, debug};
-use serde::{Deserialize, Serialize};
+use tokio::sync::RwLock;
+use tracing::{debug, error, info, warn};
 
-use crate::security_monitor::{SecurityMonitor, SecurityEventType};
-use crate::operational_dashboard::{OperationalDashboard, DashboardConfig};
-use crate::cluster_management::{ClusterManager, ClusterConfig, CallSessionData};
-use crate::ml_threat_detection::{MLThreatDetector, MLThreatConfig, ThreatAssessment};
+use crate::cluster_management::{CallSessionData, ClusterConfig, ClusterManager};
+use crate::ml_threat_detection::{MLThreatConfig, MLThreatDetector, ThreatAssessment};
+use crate::operational_dashboard::{DashboardConfig, OperationalDashboard};
+use crate::security_monitor::{SecurityEventType, SecurityMonitor};
 use crate::security_utils::validate_header;
 
 /// Enterprise B2BUA configuration
@@ -107,13 +107,13 @@ pub struct EnterpriseB2BUA {
     config: EnterpriseB2BUAConfig,
     socket: Arc<UdpSocket>,
     active_sessions: Arc<RwLock<HashMap<String, EnterpriseCallSession>>>,
-    
+
     // Integrated enterprise components
     security_monitor: Arc<SecurityMonitor>,
     dashboard: Arc<OperationalDashboard>,
     cluster_manager: Option<Arc<ClusterManager>>,
     ml_detector: Arc<MLThreatDetector>,
-    
+
     // Performance tracking
     start_time: Instant,
     stats: Arc<RwLock<EnterpriseStats>>,
@@ -138,36 +138,41 @@ pub struct EnterpriseStats {
 impl EnterpriseB2BUA {
     pub async fn new(config: EnterpriseB2BUAConfig) -> Result<Self> {
         info!("🏢 Initializing Enterprise B2BUA System with advanced capabilities");
-        
+
         // Setup network socket
-        let socket = UdpSocket::bind(format!("{}:{}", config.bind_address, config.bind_port)).await?;
-        info!("🌐 Enterprise B2BUA listening on {}:{}", config.bind_address, config.bind_port);
+        let socket =
+            UdpSocket::bind(format!("{}:{}", config.bind_address, config.bind_port)).await?;
+        info!(
+            "🌐 Enterprise B2BUA listening on {}:{}",
+            config.bind_address, config.bind_port
+        );
 
         // Initialize security monitor
         let security_monitor = Arc::new(SecurityMonitor::new(config.security_config.clone()));
-        
+
         // Initialize ML threat detector
         let ml_detector = Arc::new(MLThreatDetector::new(
             config.ml_threat_config.clone(),
-            Some(Arc::clone(&security_monitor))
+            Some(Arc::clone(&security_monitor)),
         ));
-        
+
         // Initialize operational dashboard
         let dashboard = Arc::new(OperationalDashboard::new(
             config.dashboard_config.clone(),
-            Some(Arc::clone(&security_monitor))
+            Some(Arc::clone(&security_monitor)),
         ));
-        
+
         // Initialize cluster manager if enabled
         let cluster_manager = if config.cluster_config.enabled {
-            let local_ip: IpAddr = config.bind_address.parse()
+            let local_ip: IpAddr = config
+                .bind_address
+                .parse()
                 .map_err(|_| anyhow!("Invalid bind address: {}", config.bind_address))?;
-            
-            Some(Arc::new(ClusterManager::new(
-                config.cluster_config.clone(),
-                local_ip,
-                config.bind_port,
-            ).await?))
+
+            Some(Arc::new(
+                ClusterManager::new(config.cluster_config.clone(), local_ip, config.bind_port)
+                    .await?,
+            ))
         } else {
             None
         };
@@ -234,29 +239,37 @@ impl EnterpriseB2BUA {
     /// Process incoming SIP messages with enterprise security and intelligence
     pub async fn process_sip_message(&self, message: &str, source_addr: SocketAddr) -> Result<()> {
         let start_time = Instant::now();
-        
+
         // Extract source IP for security analysis
         let source_ip = source_addr.ip();
-        
+
         // Step 1: ML Threat Analysis
-        let threat_assessment = self.ml_detector.analyze_traffic(
-            source_ip,
-            "SIP", // Message type
-            message.len(),
-            false, // Will be updated if parsing fails
-            0.0,   // Response time will be calculated
-        ).await?;
+        let threat_assessment = self
+            .ml_detector
+            .analyze_traffic(
+                source_ip,
+                "SIP", // Message type
+                message.len(),
+                false, // Will be updated if parsing fails
+                0.0,   // Response time will be calculated
+            )
+            .await?;
 
         // Step 2: Security validation and monitoring
-        let security_check = self.security_monitor.analyze_message(source_ip, message).await?;
-        
+        let security_check = self
+            .security_monitor
+            .analyze_message(source_ip, message)
+            .await?;
+
         // Block if high threat or security issues detected
-        if threat_assessment.threat_level == crate::ml_threat_detection::ThreatLabel::Malicious ||
-           !security_check.is_empty() {
-            
-            warn!("🚫 Blocking malicious traffic from {}: ML={:?}, Security={:?}", 
-                  source_ip, threat_assessment.threat_level, security_check);
-            
+        if threat_assessment.threat_level == crate::ml_threat_detection::ThreatLabel::Malicious
+            || !security_check.is_empty()
+        {
+            warn!(
+                "🚫 Blocking malicious traffic from {}: ML={:?}, Security={:?}",
+                source_ip, threat_assessment.threat_level, security_check
+            );
+
             // Record blocked call
             {
                 let mut stats = self.stats.write().await;
@@ -271,25 +284,30 @@ impl EnterpriseB2BUA {
         match validate_header(message, "SIP") {
             Ok(_) => {
                 // Step 4: Process valid SIP message
-                self.handle_valid_sip_message(message, source_addr, threat_assessment).await?;
+                self.handle_valid_sip_message(message, source_addr, threat_assessment)
+                    .await?;
             }
             Err(e) => {
                 // Record security event for invalid message
-                self.security_monitor.record_security_event(
-                    SecurityEventType::MalformedMessage,
-                    source_ip,
-                    format!("Invalid SIP message: {}", e),
-                    Some(message.to_string()),
-                ).await?;
-                
+                self.security_monitor
+                    .record_security_event(
+                        SecurityEventType::MalformedMessage,
+                        source_ip,
+                        format!("Invalid SIP message: {}", e),
+                        Some(message.to_string()),
+                    )
+                    .await?;
+
                 // Update ML detector with error information
-                self.ml_detector.analyze_traffic(
-                    source_ip,
-                    "SIP_ERROR",
-                    message.len(),
-                    true, // Mark as error
-                    start_time.elapsed().as_millis() as f64,
-                ).await?;
+                self.ml_detector
+                    .analyze_traffic(
+                        source_ip,
+                        "SIP_ERROR",
+                        message.len(),
+                        true, // Mark as error
+                        start_time.elapsed().as_millis() as f64,
+                    )
+                    .await?;
             }
         }
 
@@ -309,12 +327,15 @@ impl EnterpriseB2BUA {
     ) -> Result<()> {
         // Extract call-ID for session tracking
         let call_id = self.extract_call_id(message)?;
-        
+
         // Determine message type
         let message_type = self.determine_message_type(message);
-        
+
         match message_type.as_str() {
-            "INVITE" => self.handle_invite(message, source_addr, call_id, threat_assessment).await?,
+            "INVITE" => {
+                self.handle_invite(message, source_addr, call_id, threat_assessment)
+                    .await?
+            }
             "ACK" => self.handle_ack(message, call_id).await?,
             "BYE" => self.handle_bye(message, call_id).await?,
             "CANCEL" => self.handle_cancel(message, call_id).await?,
@@ -336,7 +357,10 @@ impl EnterpriseB2BUA {
         call_id: String,
         threat_assessment: ThreatAssessment,
     ) -> Result<()> {
-        info!("📞 Processing INVITE for call {} from {}", call_id, source_addr);
+        info!(
+            "📞 Processing INVITE for call {} from {}",
+            call_id, source_addr
+        );
 
         // Extract call details
         let from_number = self.extract_from_number(message)?;
@@ -399,7 +423,7 @@ impl EnterpriseB2BUA {
                 sipi_cic: None,
                 custom_headers: HashMap::new(),
             };
-            
+
             cluster.sync_call_state(&call_id, call_session_data).await?;
         }
 
@@ -429,7 +453,7 @@ impl EnterpriseB2BUA {
             if let Some(session) = sessions.get_mut(&call_id) {
                 session.state = CallState::Terminated;
                 session.last_activity = SystemTime::now();
-                
+
                 // Calculate call duration
                 if let Ok(duration) = session.last_activity.duration_since(session.created_at) {
                     session.quality_metrics.duration_seconds = duration.as_secs_f64();
@@ -478,13 +502,13 @@ impl EnterpriseB2BUA {
                 session.last_activity = SystemTime::now();
             }
         }
-        
+
         {
             let mut stats = self.stats.write().await;
             stats.active_calls = stats.active_calls.saturating_sub(1);
             stats.failed_calls += 1;
         }
-        
+
         Ok(())
     }
 
@@ -504,10 +528,10 @@ impl EnterpriseB2BUA {
     async fn start_message_processing(&self) {
         let socket = Arc::clone(&self.socket);
         let b2bua = Arc::new(self.clone_for_processing());
-        
+
         tokio::spawn(async move {
             let mut buffer = vec![0u8; 65536];
-            
+
             loop {
                 match socket.recv_from(&mut buffer).await {
                     Ok((len, addr)) => {
@@ -529,18 +553,18 @@ impl EnterpriseB2BUA {
     async fn start_health_monitoring(&self) {
         let stats = Arc::clone(&self.stats);
         let start_time = self.start_time;
-        
+
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(30));
-            
+
             loop {
                 interval.tick().await;
-                
+
                 {
                     let mut stats = stats.write().await;
                     stats.uptime_seconds = start_time.elapsed().as_secs();
                 }
-                
+
                 debug!("System health check completed");
             }
         });
@@ -550,30 +574,33 @@ impl EnterpriseB2BUA {
     async fn start_metrics_collection(&self) {
         let dashboard = Arc::clone(&self.dashboard);
         let stats = Arc::clone(&self.stats);
-        
+
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(5));
-            
+
             loop {
                 interval.tick().await;
-                
+
                 let stats_snapshot = {
                     let stats = stats.read().await;
                     stats.clone()
                 };
-                
+
                 // Collect system metrics
                 if let Err(e) = dashboard.collect_system_metrics().await {
                     error!("Error collecting system metrics: {}", e);
                 }
-                
+
                 // Collect call quality metrics
-                if let Err(e) = dashboard.collect_call_quality_metrics(
-                    stats_snapshot.total_calls,
-                    stats_snapshot.active_calls,
-                    stats_snapshot.completed_calls,
-                    stats_snapshot.failed_calls,
-                ).await {
+                if let Err(e) = dashboard
+                    .collect_call_quality_metrics(
+                        stats_snapshot.total_calls,
+                        stats_snapshot.active_calls,
+                        stats_snapshot.completed_calls,
+                        stats_snapshot.failed_calls,
+                    )
+                    .await
+                {
                     error!("Error collecting call quality metrics: {}", e);
                 }
             }
@@ -586,7 +613,7 @@ impl EnterpriseB2BUA {
         let dashboard_summary = self.dashboard.get_dashboard_summary().await?;
         let security_stats = self.security_monitor.get_security_stats().await?;
         let ml_stats = self.ml_detector.get_ml_stats().await?;
-        
+
         let cluster_status = if let Some(ref cluster) = self.cluster_manager {
             Some(cluster.get_cluster_status().await?)
         } else {
@@ -607,7 +634,12 @@ impl EnterpriseB2BUA {
     fn extract_call_id(&self, message: &str) -> Result<String> {
         for line in message.lines() {
             if line.to_lowercase().starts_with("call-id:") {
-                return Ok(line.split(':').nth(1).unwrap_or("unknown").trim().to_string());
+                return Ok(line
+                    .split(':')
+                    .nth(1)
+                    .unwrap_or("unknown")
+                    .trim()
+                    .to_string());
             }
         }
         Ok(format!("generated-{}", uuid::Uuid::new_v4()))
@@ -683,19 +715,19 @@ impl EnterpriseB2BUA {
     async fn calculate_system_health(&self) -> Result<f64> {
         // Calculate overall system health score
         let stats = self.stats.read().await;
-        
+
         let call_success_rate = if stats.total_calls > 0 {
             (stats.completed_calls as f64 / stats.total_calls as f64) * 100.0
         } else {
             100.0
         };
-        
+
         let threat_rate = if stats.total_calls > 0 {
             (stats.threats_detected as f64 / stats.total_calls as f64) * 100.0
         } else {
             0.0
         };
-        
+
         // Health score based on success rate and low threat rate
         let health_score = (call_success_rate * 0.7) + ((100.0 - threat_rate) * 0.3);
         Ok(health_score.min(100.0).max(0.0))
@@ -729,21 +761,22 @@ impl EnterpriseB2BUAProcessing {
     async fn process_sip_message(&self, message: &str, source_addr: SocketAddr) -> Result<()> {
         // This mirrors the main processing logic but is owned by the processing task
         let source_ip = source_addr.ip();
-        
+
         // ML Threat Analysis
-        let threat_assessment = self.ml_detector.analyze_traffic(
-            source_ip,
-            "SIP",
-            message.len(),
-            false,
-            0.0,
-        ).await?;
+        let threat_assessment = self
+            .ml_detector
+            .analyze_traffic(source_ip, "SIP", message.len(), false, 0.0)
+            .await?;
 
         // Security check
-        let security_check = self.security_monitor.analyze_message(source_ip, message).await?;
-        
-        if threat_assessment.threat_level == crate::ml_threat_detection::ThreatLabel::Malicious ||
-           !security_check.is_empty() {
+        let security_check = self
+            .security_monitor
+            .analyze_message(source_ip, message)
+            .await?;
+
+        if threat_assessment.threat_level == crate::ml_threat_detection::ThreatLabel::Malicious
+            || !security_check.is_empty()
+        {
             {
                 let mut stats = self.stats.write().await;
                 stats.blocked_calls += 1;
@@ -759,12 +792,14 @@ impl EnterpriseB2BUAProcessing {
                 debug!("Processing valid SIP message from {}", source_addr);
             }
             Err(e) => {
-                self.security_monitor.record_security_event(
-                    SecurityEventType::MalformedMessage,
-                    source_ip,
-                    format!("Invalid SIP message: {}", e),
-                    Some(message.to_string()),
-                ).await?;
+                self.security_monitor
+                    .record_security_event(
+                        SecurityEventType::MalformedMessage,
+                        source_ip,
+                        format!("Invalid SIP message: {}", e),
+                        Some(message.to_string()),
+                    )
+                    .await?;
             }
         }
 
@@ -792,7 +827,7 @@ mod tests {
         crate::security_utils::init_security();
         let config = EnterpriseB2BUAConfig::default();
         let b2bua = EnterpriseB2BUA::new(config).await.unwrap();
-        
+
         assert!(b2bua.config.enabled);
         assert_eq!(b2bua.config.bind_port, 5060);
     }
@@ -802,7 +837,7 @@ mod tests {
         crate::security_utils::init_security();
         let config = EnterpriseB2BUAConfig::default();
         let b2bua = EnterpriseB2BUA::new(config).await.unwrap();
-        
+
         let message = "INVITE sip:+15551234567@example.com SIP/2.0\r\nCall-ID: test-call-123\r\n";
         let call_id = b2bua.extract_call_id(message).unwrap();
         assert_eq!(call_id, "test-call-123");
@@ -813,10 +848,10 @@ mod tests {
         crate::security_utils::init_security();
         let config = EnterpriseB2BUAConfig::default();
         let b2bua = EnterpriseB2BUA::new(config).await.unwrap();
-        
+
         let invite_msg = "INVITE sip:+15551234567@example.com SIP/2.0\r\n";
         assert_eq!(b2bua.determine_message_type(invite_msg), "INVITE");
-        
+
         let response_msg = "SIP/2.0 200 OK\r\n";
         assert_eq!(b2bua.determine_message_type(response_msg), "RESPONSE_200");
     }

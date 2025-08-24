@@ -3,15 +3,15 @@
  * Advanced pattern recognition and predictive security analytics
  */
 
+use crate::security_monitor::{SecurityEventType, SecurityMonitor};
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::RwLock;
-use tracing::{info, debug};
-use serde::{Deserialize, Serialize};
-use crate::security_monitor::{SecurityEventType, SecurityMonitor};
+use tracing::{debug, info};
 
 /// Machine learning model types for threat detection
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -108,10 +108,11 @@ impl AnomalyDetectionModel {
         for (i, &feature) in features.iter().enumerate() {
             let old_mean = self.feature_means[i];
             self.feature_means[i] += alpha * (feature - old_mean);
-            
+
             // Simplified standard deviation update
             let variance = (feature - self.feature_means[i]).powi(2);
-            self.feature_stddevs[i] = (self.feature_stddevs[i].powi(2) * (1.0 - alpha) + variance * alpha).sqrt();
+            self.feature_stddevs[i] =
+                (self.feature_stddevs[i].powi(2) * (1.0 - alpha) + variance * alpha).sqrt();
         }
     }
 
@@ -173,34 +174,43 @@ impl PatternRecognitionModel {
 
     fn add_default_patterns(&mut self) {
         // DoS attack pattern
-        self.attack_patterns.insert("dos_flood".to_string(), AttackPattern {
-            pattern_id: "dos_flood".to_string(),
-            description: "Message flooding DoS attack".to_string(),
-            feature_signature: vec![10.0, 0.9, 0.1, 1.0], // [msg_rate, repeat_ratio, variety_ratio, error_rate]
-            confidence: 0.95,
-            attack_type: SecurityEventType::MessageFlood,
-            severity: ThreatSeverity::High,
-        });
+        self.attack_patterns.insert(
+            "dos_flood".to_string(),
+            AttackPattern {
+                pattern_id: "dos_flood".to_string(),
+                description: "Message flooding DoS attack".to_string(),
+                feature_signature: vec![10.0, 0.9, 0.1, 1.0], // [msg_rate, repeat_ratio, variety_ratio, error_rate]
+                confidence: 0.95,
+                attack_type: SecurityEventType::MessageFlood,
+                severity: ThreatSeverity::High,
+            },
+        );
 
         // Port scanning pattern
-        self.attack_patterns.insert("port_scan".to_string(), AttackPattern {
-            pattern_id: "port_scan".to_string(),
-            description: "Port scanning reconnaissance".to_string(),
-            feature_signature: vec![5.0, 0.1, 0.9, 0.8], // [msg_rate, repeat_ratio, variety_ratio, error_rate]
-            confidence: 0.9,
-            attack_type: SecurityEventType::PortScanning,
-            severity: ThreatSeverity::Medium,
-        });
+        self.attack_patterns.insert(
+            "port_scan".to_string(),
+            AttackPattern {
+                pattern_id: "port_scan".to_string(),
+                description: "Port scanning reconnaissance".to_string(),
+                feature_signature: vec![5.0, 0.1, 0.9, 0.8], // [msg_rate, repeat_ratio, variety_ratio, error_rate]
+                confidence: 0.9,
+                attack_type: SecurityEventType::PortScanning,
+                severity: ThreatSeverity::Medium,
+            },
+        );
 
         // Injection attack pattern
-        self.attack_patterns.insert("injection_attack".to_string(), AttackPattern {
-            pattern_id: "injection_attack".to_string(),
-            description: "Header/log injection attack".to_string(),
-            feature_signature: vec![2.0, 0.3, 0.7, 0.5], // [msg_rate, repeat_ratio, variety_ratio, error_rate]
-            confidence: 0.85,
-            attack_type: SecurityEventType::HeaderInjection,
-            severity: ThreatSeverity::High,
-        });
+        self.attack_patterns.insert(
+            "injection_attack".to_string(),
+            AttackPattern {
+                pattern_id: "injection_attack".to_string(),
+                description: "Header/log injection attack".to_string(),
+                feature_signature: vec![2.0, 0.3, 0.7, 0.5], // [msg_rate, repeat_ratio, variety_ratio, error_rate]
+                confidence: 0.85,
+                attack_type: SecurityEventType::HeaderInjection,
+                severity: ThreatSeverity::High,
+            },
+        );
     }
 
     pub fn recognize_pattern(&self, features: &[f64]) -> Option<(AttackPattern, f64)> {
@@ -270,7 +280,7 @@ impl BehavioralProfile {
             peak_message_rate: 0.0,
             error_count: 0,
             suspicious_activity_count: 0,
-            reputation_score: 0.5, // Neutral starting score
+            reputation_score: 0.5,              // Neutral starting score
             behavioral_features: vec![0.0; 10], // Feature vector for this IP
         }
     }
@@ -278,47 +288,51 @@ impl BehavioralProfile {
     pub fn update_activity(&mut self, message_type: &str, is_error: bool, is_suspicious: bool) {
         self.last_activity = SystemTime::now();
         self.total_messages += 1;
-        
-        *self.message_types.entry(message_type.to_string()).or_insert(0) += 1;
-        
+
+        *self
+            .message_types
+            .entry(message_type.to_string())
+            .or_insert(0) += 1;
+
         if is_error {
             self.error_count += 1;
         }
-        
+
         if is_suspicious {
             self.suspicious_activity_count += 1;
         }
 
         // Update behavioral features
         self.update_behavioral_features();
-        
+
         // Update reputation score
         self.update_reputation_score();
     }
 
     fn update_behavioral_features(&mut self) {
-        let activity_duration = self.last_activity
+        let activity_duration = self
+            .last_activity
             .duration_since(self.first_seen)
             .unwrap_or(Duration::from_secs(1))
             .as_secs() as f64;
 
         // Feature 0: Message rate
         self.behavioral_features[0] = self.total_messages as f64 / activity_duration.max(1.0);
-        
+
         // Feature 1: Error rate
         self.behavioral_features[1] = if self.total_messages > 0 {
             self.error_count as f64 / self.total_messages as f64
         } else {
             0.0
         };
-        
+
         // Feature 2: Suspicious activity rate
         self.behavioral_features[2] = if self.total_messages > 0 {
             self.suspicious_activity_count as f64 / self.total_messages as f64
         } else {
             0.0
         };
-        
+
         // Feature 3: Message type diversity (entropy-like measure)
         let total = self.total_messages as f64;
         let mut diversity = 0.0;
@@ -329,10 +343,10 @@ impl BehavioralProfile {
             }
         }
         self.behavioral_features[3] = diversity;
-        
+
         // Feature 4: Activity consistency (coefficient of variation)
         self.behavioral_features[4] = 0.0; // Placeholder for more complex temporal analysis
-        
+
         // Features 5-9: Reserved for additional behavioral metrics
         for i in 5..10 {
             self.behavioral_features[i] = 0.0;
@@ -342,10 +356,13 @@ impl BehavioralProfile {
     fn update_reputation_score(&mut self) {
         // Simple reputation scoring based on behavior
         let error_penalty = (self.error_count as f64 / self.total_messages.max(1) as f64) * 0.3;
-        let suspicious_penalty = (self.suspicious_activity_count as f64 / self.total_messages.max(1) as f64) * 0.5;
-        
+        let suspicious_penalty =
+            (self.suspicious_activity_count as f64 / self.total_messages.max(1) as f64) * 0.5;
+
         let base_score = 0.5;
-        self.reputation_score = (base_score - error_penalty - suspicious_penalty).max(0.0).min(1.0);
+        self.reputation_score = (base_score - error_penalty - suspicious_penalty)
+            .max(0.0)
+            .min(1.0);
     }
 
     pub fn is_trustworthy(&self) -> bool {
@@ -390,7 +407,7 @@ pub enum RecommendedAction {
 impl MLThreatDetector {
     pub fn new(config: MLThreatConfig, security_monitor: Option<Arc<SecurityMonitor>>) -> Self {
         info!("🤖 Initializing ML Threat Detection System");
-        
+
         Self {
             config: config.clone(),
             anomaly_model: Arc::new(RwLock::new(AnomalyDetectionModel::new(10))),
@@ -448,10 +465,19 @@ impl MLThreatDetector {
         }
 
         // Extract features
-        let features = self.extract_features(source_ip, message_type, message_size, is_error, response_time_ms).await?;
+        let features = self
+            .extract_features(
+                source_ip,
+                message_type,
+                message_size,
+                is_error,
+                response_time_ms,
+            )
+            .await?;
 
         // Update behavioral profile
-        self.update_behavioral_profile(source_ip, message_type, is_error, false).await?;
+        self.update_behavioral_profile(source_ip, message_type, is_error, false)
+            .await?;
 
         // Run anomaly detection
         let (is_anomaly, anomaly_score) = {
@@ -468,7 +494,8 @@ impl MLThreatDetector {
         // Get behavioral score
         let behavioral_score = {
             let profiles = self.behavioral_profiles.read().await;
-            profiles.get(&source_ip)
+            profiles
+                .get(&source_ip)
                 .map(|p| p.reputation_score)
                 .unwrap_or(0.5)
         };
@@ -485,7 +512,7 @@ impl MLThreatDetector {
         {
             let mut history = self.feature_history.write().await;
             history.push_back(features);
-            
+
             // Keep only recent features
             while history.len() > self.config.feature_window_size {
                 history.pop_front();
@@ -494,7 +521,8 @@ impl MLThreatDetector {
 
         // Generate threat prediction if enabled
         if self.config.predictive_blocking_enabled {
-            self.generate_threat_prediction(source_ip, &threat_assessment).await?;
+            self.generate_threat_prediction(source_ip, &threat_assessment)
+                .await?;
         }
 
         Ok(threat_assessment)
@@ -536,7 +564,8 @@ impl MLThreatDetector {
             features[3] = response_time_ms.log10(); // log-scaled response time
             features[4] = profile.behavioral_features[3]; // message_type_variety
             features[5] = profile.reputation_score; // reputation_score
-            features[6] = profile.last_activity
+            features[6] = profile
+                .last_activity
                 .duration_since(profile.first_seen)
                 .unwrap_or(Duration::from_secs(1))
                 .as_secs() as f64; // activity_duration
@@ -579,8 +608,10 @@ impl MLThreatDetector {
         is_suspicious: bool,
     ) -> Result<()> {
         let mut profiles = self.behavioral_profiles.write().await;
-        
-        let profile = profiles.entry(ip).or_insert_with(|| BehavioralProfile::new(ip));
+
+        let profile = profiles
+            .entry(ip)
+            .or_insert_with(|| BehavioralProfile::new(ip));
         profile.update_activity(message_type, is_error, is_suspicious);
 
         Ok(())
@@ -649,7 +680,11 @@ impl MLThreatDetector {
     }
 
     /// Generate threat prediction for an IP
-    async fn generate_threat_prediction(&self, ip: IpAddr, assessment: &ThreatAssessment) -> Result<()> {
+    async fn generate_threat_prediction(
+        &self,
+        ip: IpAddr,
+        assessment: &ThreatAssessment,
+    ) -> Result<()> {
         let threat_probability = match assessment.threat_level {
             ThreatLabel::Malicious => 0.9,
             ThreatLabel::Attack => 0.7,
@@ -661,7 +696,10 @@ impl MLThreatDetector {
         let prediction = ThreatPrediction {
             ip_address: ip,
             threat_probability,
-            predicted_attack_type: assessment.pattern_match.as_ref().map(|(p, _)| p.attack_type.clone()),
+            predicted_attack_type: assessment
+                .pattern_match
+                .as_ref()
+                .map(|(p, _)| p.attack_type.clone()),
             confidence: assessment.confidence,
             prediction_time: SystemTime::now(),
             recommended_action: assessment.recommendation.clone(),
@@ -675,12 +713,17 @@ impl MLThreatDetector {
         // If high threat probability, alert security monitor
         if threat_probability > 0.7 {
             if let Some(ref monitor) = self.security_monitor {
-                monitor.record_security_event(
-                    SecurityEventType::MethodEnumeration, // Generic high-threat event
-                    ip,
-                    format!("ML Threat Detection: High threat probability {:.2}", threat_probability),
-                    None,
-                ).await?;
+                monitor
+                    .record_security_event(
+                        SecurityEventType::MethodEnumeration, // Generic high-threat event
+                        ip,
+                        format!(
+                            "ML Threat Detection: High threat probability {:.2}",
+                            threat_probability
+                        ),
+                        None,
+                    )
+                    .await?;
             }
         }
 
@@ -718,13 +761,17 @@ impl MLThreatDetector {
 
                     if !features.is_empty() {
                         let mut model = anomaly_model.write().await;
-                        
+
                         // Update model with recent data
-                        for feature_vector in features.iter().take(50) { // Train on recent 50 samples
+                        for feature_vector in features.iter().take(50) {
+                            // Train on recent 50 samples
                             model.update(&feature_vector.features);
                         }
 
-                        debug!("🤖 Anomaly detection model updated with {} samples", features.len().min(50));
+                        debug!(
+                            "🤖 Anomaly detection model updated with {} samples",
+                            features.len().min(50)
+                        );
                     }
                 }
             }
@@ -750,7 +797,10 @@ impl MLThreatDetector {
                         < Duration::from_secs(3600) // Keep predictions for 1 hour
                 });
 
-                debug!("🤖 ML threat predictions updated: {} active predictions", predictions.len());
+                debug!(
+                    "🤖 ML threat predictions updated: {} active predictions",
+                    predictions.len()
+                );
             }
         });
     }
@@ -761,7 +811,9 @@ impl MLThreatDetector {
         let config = self.config.clone();
 
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(config.model_update_interval_minutes * 60));
+            let mut interval = tokio::time::interval(Duration::from_secs(
+                config.model_update_interval_minutes * 60,
+            ));
 
             loop {
                 interval.tick().await;
@@ -789,9 +841,18 @@ impl MLThreatDetector {
             false_positive_rate: 0.05,
             detection_rate: 0.92,
             models_enabled: vec![
-                ("AnomalyDetection".to_string(), self.config.anomaly_detection_enabled),
-                ("PatternRecognition".to_string(), self.config.pattern_recognition_enabled),
-                ("BehavioralAnalysis".to_string(), self.config.behavioral_analysis_enabled),
+                (
+                    "AnomalyDetection".to_string(),
+                    self.config.anomaly_detection_enabled,
+                ),
+                (
+                    "PatternRecognition".to_string(),
+                    self.config.pattern_recognition_enabled,
+                ),
+                (
+                    "BehavioralAnalysis".to_string(),
+                    self.config.behavioral_analysis_enabled,
+                ),
             ],
         })
     }
@@ -829,7 +890,7 @@ mod tests {
     async fn test_ml_threat_detector_creation() {
         let config = MLThreatConfig::default();
         let detector = MLThreatDetector::new(config, None);
-        
+
         assert!(detector.config.enabled);
         assert!(detector.config.anomaly_detection_enabled);
     }
@@ -838,36 +899,36 @@ mod tests {
     async fn test_behavioral_profile() {
         let ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100));
         let mut profile = BehavioralProfile::new(ip);
-        
+
         // Simulate normal activity
         for _ in 0..10 {
             profile.update_activity("INVITE", false, false);
         }
-        
+
         assert!(profile.is_trustworthy());
         assert_eq!(profile.total_messages, 10);
-        
+
         // Simulate suspicious activity
         for _ in 0..20 {
             profile.update_activity("MALFORMED", true, true);
         }
-        
+
         assert!(profile.is_suspicious());
     }
 
     #[tokio::test]
     async fn test_anomaly_detection() {
         let mut model = AnomalyDetectionModel::new(3);
-        
+
         // Train with normal data
         for _ in 0..100 {
             model.update(&[1.0, 2.0, 3.0]);
         }
-        
+
         // Test normal data
         let (is_anomaly, _) = model.predict_anomaly(&[1.1, 2.1, 2.9]);
         assert!(!is_anomaly);
-        
+
         // Test anomalous data
         let (is_anomaly, _) = model.predict_anomaly(&[10.0, 20.0, 30.0]);
         assert!(is_anomaly);
@@ -876,11 +937,11 @@ mod tests {
     #[tokio::test]
     async fn test_pattern_recognition() {
         let model = PatternRecognitionModel::new();
-        
+
         // Test DoS pattern recognition
         let dos_features = vec![10.0, 0.9, 0.1, 1.0];
         let result = model.recognize_pattern(&dos_features);
-        
+
         assert!(result.is_some());
         let (pattern, similarity) = result.unwrap();
         assert_eq!(pattern.pattern_id, "dos_flood");

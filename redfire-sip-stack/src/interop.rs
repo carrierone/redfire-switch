@@ -1,17 +1,17 @@
 /*
  * Redfire Switch - SIP Interoperability Layer for Major SIP Stacks
  * Copyright (C) 2025 Carrier One Inc and contributors
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Sponsored by Carrier One Inc (https://www.carrierone.com)
  */
 
 //! # SIP Interoperability Layer
-//! 
+//!
 //! Implements RFC requirements and compatibility features for interoperating with:
 //! - SOFIA SIP (Nokia/FreeSWITCH)
 //! - PJSIP (PJSUA2/Asterisk chan_pjsip)
@@ -45,19 +45,22 @@
 //! - RFC 8224: Authenticated Identity Management (STIR)
 //! - RFC 8225: PASSporT (SHAKEN)
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
+use rsip::{
+    headers::{
+        CSeq, CallId, Contact, ContentLength, ContentType, From, Header, MaxForwards, RecordRoute,
+        Route, To, Via,
+    },
+    message::{HeadersExt, SipMessage},
+    param::Param,
+    uri::Uri,
+    Method, Request, Response, StatusCode, Version,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::time::{Duration, SystemTime};
-use tracing::{debug, info, warn, error};
-use rsip::{
-    message::{SipMessage, HeadersExt}, Request, Response, Method, Version,
-    headers::{Header, Via, Contact, From, To, CallId, CSeq, ContentType, ContentLength, MaxForwards, Route, RecordRoute},
-    param::Param,
-    uri::Uri,
-    StatusCode,
-};
+use tracing::{debug, error, info, warn};
 
 /// SIP interoperability configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,9 +88,15 @@ impl Default for SipInteropConfig {
         let mut stack_configs = HashMap::new();
         stack_configs.insert(SipStackType::Sofia, StackSpecificConfig::sofia_default());
         stack_configs.insert(SipStackType::Pjsip, StackSpecificConfig::pjsip_default());
-        stack_configs.insert(SipStackType::Asterisk, StackSpecificConfig::asterisk_default());
-        stack_configs.insert(SipStackType::FreeSWITCH, StackSpecificConfig::freeswitch_default());
-        
+        stack_configs.insert(
+            SipStackType::Asterisk,
+            StackSpecificConfig::asterisk_default(),
+        );
+        stack_configs.insert(
+            SipStackType::FreeSWITCH,
+            StackSpecificConfig::freeswitch_default(),
+        );
+
         Self {
             strict_rfc_compliance: true,
             enable_compatibility_quirks: true,
@@ -156,17 +165,27 @@ impl StackSpecificConfig {
                 InteropQuirk::PreferIpv4,
             ],
             supported_methods: vec![
-                Method::Invite.to_string(), Method::Ack.to_string(), Method::Cancel.to_string(), Method::Bye.to_string(),
-                Method::Register.to_string(), Method::Options.to_string(), Method::Info.to_string(), Method::Update.to_string(),
-                Method::Refer.to_string(), Method::Message.to_string(), Method::Subscribe.to_string(), Method::Notify.to_string(),
-                Method::Publish.to_string(), Method::PRack.to_string(),
+                Method::Invite.to_string(),
+                Method::Ack.to_string(),
+                Method::Cancel.to_string(),
+                Method::Bye.to_string(),
+                Method::Register.to_string(),
+                Method::Options.to_string(),
+                Method::Info.to_string(),
+                Method::Update.to_string(),
+                Method::Refer.to_string(),
+                Method::Message.to_string(),
+                Method::Subscribe.to_string(),
+                Method::Notify.to_string(),
+                Method::Publish.to_string(),
+                Method::PRack.to_string(),
             ],
             preferred_transports: vec!["UDP".to_string(), "TCP".to_string(), "TLS".to_string()],
             custom_headers: HashMap::new(),
             sdp_preferences: SdpPreferences::sofia_default(),
         }
     }
-    
+
     fn pjsip_default() -> Self {
         Self {
             user_agent_patterns: vec!["PJSUA".to_string(), "pjsip".to_string()],
@@ -176,9 +195,18 @@ impl StackSpecificConfig {
                 InteropQuirk::SupportCompactHeaders,
             ],
             supported_methods: vec![
-                Method::Invite.to_string(), Method::Ack.to_string(), Method::Cancel.to_string(), Method::Bye.to_string(),
-                Method::Register.to_string(), Method::Options.to_string(), Method::Info.to_string(), Method::Update.to_string(),
-                Method::Refer.to_string(), Method::Message.to_string(), Method::Subscribe.to_string(), Method::Notify.to_string(),
+                Method::Invite.to_string(),
+                Method::Ack.to_string(),
+                Method::Cancel.to_string(),
+                Method::Bye.to_string(),
+                Method::Register.to_string(),
+                Method::Options.to_string(),
+                Method::Info.to_string(),
+                Method::Update.to_string(),
+                Method::Refer.to_string(),
+                Method::Message.to_string(),
+                Method::Subscribe.to_string(),
+                Method::Notify.to_string(),
                 Method::PRack.to_string(),
             ],
             preferred_transports: vec!["UDP".to_string(), "TCP".to_string(), "TLS".to_string()],
@@ -186,7 +214,7 @@ impl StackSpecificConfig {
             sdp_preferences: SdpPreferences::pjsip_default(),
         }
     }
-    
+
     fn asterisk_default() -> Self {
         Self {
             user_agent_patterns: vec!["Asterisk".to_string()],
@@ -197,19 +225,30 @@ impl StackSpecificConfig {
                 InteropQuirk::SupportCompactHeaders,
             ],
             supported_methods: vec![
-                Method::Invite.to_string(), Method::Ack.to_string(), Method::Cancel.to_string(), Method::Bye.to_string(),
-                Method::Register.to_string(), Method::Options.to_string(), Method::Info.to_string(), Method::Update.to_string(),
-                Method::Refer.to_string(), Method::Message.to_string(), Method::Subscribe.to_string(), Method::Notify.to_string(),
+                Method::Invite.to_string(),
+                Method::Ack.to_string(),
+                Method::Cancel.to_string(),
+                Method::Bye.to_string(),
+                Method::Register.to_string(),
+                Method::Options.to_string(),
+                Method::Info.to_string(),
+                Method::Update.to_string(),
+                Method::Refer.to_string(),
+                Method::Message.to_string(),
+                Method::Subscribe.to_string(),
+                Method::Notify.to_string(),
             ],
             preferred_transports: vec!["UDP".to_string(), "TCP".to_string(), "TLS".to_string()],
             custom_headers: [
                 ("X-Asterisk-HangupCause".to_string(), "normal".to_string()),
                 ("X-Asterisk-HangupCauseCode".to_string(), "16".to_string()),
-            ].into_iter().collect(),
+            ]
+            .into_iter()
+            .collect(),
             sdp_preferences: SdpPreferences::asterisk_default(),
         }
     }
-    
+
     fn freeswitch_default() -> Self {
         Self {
             user_agent_patterns: vec!["FreeSWITCH".to_string(), "mod_sofia".to_string()],
@@ -219,15 +258,28 @@ impl StackSpecificConfig {
                 InteropQuirk::RequireContactInRegister,
             ],
             supported_methods: vec![
-                Method::Invite.to_string(), Method::Ack.to_string(), Method::Cancel.to_string(), Method::Bye.to_string(),
-                Method::Register.to_string(), Method::Options.to_string(), Method::Info.to_string(), Method::Update.to_string(),
-                Method::Refer.to_string(), Method::Message.to_string(), Method::Subscribe.to_string(), Method::Notify.to_string(),
-                Method::Publish.to_string(), Method::PRack.to_string(),
+                Method::Invite.to_string(),
+                Method::Ack.to_string(),
+                Method::Cancel.to_string(),
+                Method::Bye.to_string(),
+                Method::Register.to_string(),
+                Method::Options.to_string(),
+                Method::Info.to_string(),
+                Method::Update.to_string(),
+                Method::Refer.to_string(),
+                Method::Message.to_string(),
+                Method::Subscribe.to_string(),
+                Method::Notify.to_string(),
+                Method::Publish.to_string(),
+                Method::PRack.to_string(),
             ],
             preferred_transports: vec!["UDP".to_string(), "TCP".to_string(), "TLS".to_string()],
-            custom_headers: [
-                ("X-FS-Support".to_string(), "update_display,send_info".to_string()),
-            ].into_iter().collect(),
+            custom_headers: [(
+                "X-FS-Support".to_string(),
+                "update_display,send_info".to_string(),
+            )]
+            .into_iter()
+            .collect(),
             sdp_preferences: SdpPreferences::freeswitch_default(),
         }
     }
@@ -313,7 +365,7 @@ impl Default for SessionTimerConfig {
         Self {
             enabled: true,
             session_expires: 1800, // 30 minutes
-            min_se: 90,             // 90 seconds minimum
+            min_se: 90,            // 90 seconds minimum
             refresher: "uas".to_string(),
             add_timer_headers: true,
         }
@@ -414,7 +466,7 @@ impl SdpPreferences {
             multi_media_lines: true,
         }
     }
-    
+
     fn pjsip_default() -> Self {
         Self {
             codec_priority: vec!["PCMU".to_string(), "PCMA".to_string(), "G722".to_string()],
@@ -424,7 +476,7 @@ impl SdpPreferences {
             multi_media_lines: true,
         }
     }
-    
+
     fn asterisk_default() -> Self {
         Self {
             codec_priority: vec!["PCMU".to_string(), "PCMA".to_string(), "GSM".to_string()],
@@ -434,10 +486,15 @@ impl SdpPreferences {
             multi_media_lines: false,
         }
     }
-    
+
     fn freeswitch_default() -> Self {
         Self {
-            codec_priority: vec!["PCMU".to_string(), "PCMA".to_string(), "G729".to_string(), "G722".to_string()],
+            codec_priority: vec![
+                "PCMU".to_string(),
+                "PCMA".to_string(),
+                "G729".to_string(),
+                "G722".to_string(),
+            ],
             force_codec_order: true,
             enable_bandwidth: true,
             preferred_ptime: vec![20, 30, 40],
@@ -464,17 +521,17 @@ impl SipInteropManager {
             active_quirks: HashMap::new(),
         }
     }
-    
+
     /// Detect SIP stack from User-Agent header
     pub fn detect_stack(&mut self, user_agent: &str, endpoint: SocketAddr) -> SipStackType {
         // Check cache first
         if let Some(stack_type) = self.detected_stacks.get(user_agent) {
             return stack_type.clone();
         }
-        
+
         let ua_lower = user_agent.to_lowercase();
         let mut detected_stack = SipStackType::Generic;
-        
+
         // Pattern matching for stack detection
         for (stack_type, config) in &self.config.stack_configs {
             for pattern in &config.user_agent_patterns {
@@ -487,65 +544,82 @@ impl SipInteropManager {
                 break;
             }
         }
-        
+
         // Cache the detection
-        self.detected_stacks.insert(user_agent.to_string(), detected_stack.clone());
-        
+        self.detected_stacks
+            .insert(user_agent.to_string(), detected_stack.clone());
+
         // Apply stack-specific quirks
         if let Some(stack_config) = self.config.stack_configs.get(&detected_stack) {
-            self.active_quirks.insert(endpoint, stack_config.quirks.clone());
+            self.active_quirks
+                .insert(endpoint, stack_config.quirks.clone());
         }
-        
-        info!("Detected SIP stack: {:?} for User-Agent: {} from {}", detected_stack, user_agent, endpoint);
+
+        info!(
+            "Detected SIP stack: {:?} for User-Agent: {} from {}",
+            detected_stack, user_agent, endpoint
+        );
         detected_stack
     }
-    
+
     /// Apply interoperability fixes to outgoing request
-    pub fn apply_outgoing_fixes(&self, request: &mut Request, destination: SocketAddr) -> Result<()> {
+    pub fn apply_outgoing_fixes(
+        &self,
+        request: &mut Request,
+        destination: SocketAddr,
+    ) -> Result<()> {
         if let Some(quirks) = self.active_quirks.get(&destination) {
             for quirk in quirks {
                 self.apply_outgoing_quirk(request, quirk)?;
             }
         }
-        
+
         // Apply RFC compliance fixes
         self.ensure_rfc_compliance(request)?;
-        
+
         Ok(())
     }
-    
+
     /// Apply interoperability fixes to outgoing response
-    pub fn apply_outgoing_response_fixes(&self, response: &mut Response, destination: SocketAddr) -> Result<()> {
+    pub fn apply_outgoing_response_fixes(
+        &self,
+        response: &mut Response,
+        destination: SocketAddr,
+    ) -> Result<()> {
         if let Some(quirks) = self.active_quirks.get(&destination) {
             for quirk in quirks {
                 self.apply_outgoing_response_quirk(response, quirk)?;
             }
         }
-        
+
         // Add session timer headers if enabled
         if self.config.session_timers.enabled && self.config.session_timers.add_timer_headers {
             self.add_session_timer_headers(response)?;
         }
-        
+
         Ok(())
     }
-    
+
     /// Process incoming request with stack-specific handling
-    pub fn process_incoming_request(&self, request: &mut Request, source: SocketAddr) -> Result<()> {
+    pub fn process_incoming_request(
+        &self,
+        request: &mut Request,
+        source: SocketAddr,
+    ) -> Result<()> {
         if let Some(quirks) = self.active_quirks.get(&source) {
             for quirk in quirks {
                 self.apply_incoming_quirk(request, quirk)?;
             }
         }
-        
+
         // Validate RFC compliance
         if self.config.strict_rfc_compliance {
             self.validate_rfc_compliance(request)?;
         }
-        
+
         Ok(())
     }
-    
+
     /// Apply outgoing quirk to request
     fn apply_outgoing_quirk(&self, request: &mut Request, quirk: &InteropQuirk) -> Result<()> {
         match quirk {
@@ -577,9 +651,13 @@ impl SipInteropManager {
         }
         Ok(())
     }
-    
+
     /// Apply outgoing quirk to response
-    fn apply_outgoing_response_quirk(&self, response: &mut Response, quirk: &InteropQuirk) -> Result<()> {
+    fn apply_outgoing_response_quirk(
+        &self,
+        response: &mut Response,
+        quirk: &InteropQuirk,
+    ) -> Result<()> {
         match quirk {
             InteropQuirk::SupportCompactHeaders => {
                 self.convert_response_to_compact_headers(response)?;
@@ -594,7 +672,7 @@ impl SipInteropManager {
         }
         Ok(())
     }
-    
+
     /// Apply incoming quirk to request
     fn apply_incoming_quirk(&self, request: &mut Request, quirk: &InteropQuirk) -> Result<()> {
         match quirk {
@@ -616,7 +694,7 @@ impl SipInteropManager {
         }
         Ok(())
     }
-    
+
     /// Ensure RFC 3261 compliance
     fn ensure_rfc_compliance(&self, request: &mut Request) -> Result<()> {
         // RFC 3261 Section 8.1.1: Required headers
@@ -638,7 +716,7 @@ impl SipInteropManager {
         if request.max_forwards_header().is_err() {
             return Err(anyhow!("Missing required Max-Forwards header"));
         }
-        
+
         // Method-specific requirements
         match request.method() {
             Method::Invite => {
@@ -655,143 +733,160 @@ impl SipInteropManager {
             }
             _ => {}
         }
-        
+
         Ok(())
     }
-    
+
     /// Validate RFC compliance
     fn validate_rfc_compliance(&self, request: &Request) -> Result<()> {
         // Validate SIP version
         if request.version() != &Version::V2 {
             return Err(anyhow!("Invalid SIP version: {:?}", request.version()));
         }
-        
+
         // Validate Max-Forwards value
         if let Ok(max_forwards) = request.max_forwards_header() {
-            if max_forwards.to_string().parse::<u8>().unwrap_or(0) == 0 && request.method() != &Method::Options {
+            if max_forwards.to_string().parse::<u8>().unwrap_or(0) == 0
+                && request.method() != &Method::Options
+            {
                 return Err(anyhow!("Max-Forwards is 0 for non-OPTIONS request"));
             }
         }
-        
+
         // Validate Content-Length consistency
         if let Some(content_length_header) = request.headers.iter().find_map(|h| {
-            if let Header::ContentLength(cl) = h { Some(cl) } else { None }
+            if let Header::ContentLength(cl) = h {
+                Some(cl)
+            } else {
+                None
+            }
         }) {
             let body_length = request.body().len();
             if let Ok(header_length) = content_length_header.length() {
                 if body_length != header_length as usize {
-                    warn!("Content-Length mismatch: header={}, body={}", header_length, body_length);
+                    warn!(
+                        "Content-Length mismatch: header={}, body={}",
+                        header_length, body_length
+                    );
                 }
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Convert headers to compact form
     fn convert_to_compact_headers(&self, request: &mut Request) -> Result<()> {
         // SIP compact header mappings per RFC 3261
         // Via -> v, From -> f, To -> t, Call-ID -> i, CSeq -> (no compact form)
         // Contact -> m, Content-Type -> c, Content-Length -> l
-        
+
         debug!("Converting to compact headers for bandwidth optimization");
-        
+
         // Note: Actual implementation would need to modify headers
         // This is a placeholder for the compact header conversion logic
-        
+
         Ok(())
     }
-    
+
     /// Convert response headers to compact form
     fn convert_response_to_compact_headers(&self, response: &mut Response) -> Result<()> {
         debug!("Converting response to compact headers");
         // Implementation would convert response headers to compact form
         Ok(())
     }
-    
+
     /// Ensure IPv4 is used in headers
     fn ensure_ipv4_headers(&self, request: &mut Request) -> Result<()> {
         debug!("Ensuring IPv4 usage in SIP headers");
         // Implementation would modify Via and Contact headers to use IPv4
         Ok(())
     }
-    
+
     /// Add symmetric RTP headers
     fn add_symmetric_rtp_headers(&self, request: &mut Request) -> Result<()> {
         debug!("Adding symmetric RTP indicators");
         // Implementation would add headers to indicate symmetric RTP support
         Ok(())
     }
-    
+
     /// Fix Via header issues
     fn fix_via_header_issues(&self, request: &mut Request) -> Result<()> {
         debug!("Fixing Via header parsing issues");
         // Implementation would fix common Via header problems
         Ok(())
     }
-    
+
     /// Fix Content-Length issues
     fn fix_content_length(&self, response: &mut Response) -> Result<()> {
         debug!("Fixing Content-Length header");
         // Implementation would correct Content-Length to match body
         Ok(())
     }
-    
+
     /// Fix request Content-Length
     fn fix_request_content_length(&self, request: &mut Request) -> Result<()> {
         debug!("Fixing request Content-Length header");
         // Implementation would correct Content-Length to match body
         Ok(())
     }
-    
+
     /// Normalize Contact header
     fn normalize_contact_header(&self, request: &mut Request) -> Result<()> {
         debug!("Normalizing Contact header");
         // Implementation would fix Contact header format issues
         Ok(())
     }
-    
+
     /// Add session timer headers (RFC 4028)
     fn add_session_timer_headers(&self, response: &mut Response) -> Result<()> {
         if response.status_code().code() == 200 {
             // Add Session-Expires and Min-SE headers for 200 OK responses
             debug!("Adding session timer headers to 200 OK response");
-            
+
             // Implementation would add:
             // Session-Expires: 1800;refresher=uas
             // Min-SE: 90
         }
         Ok(())
     }
-    
+
     /// Get supported methods for a detected stack
     pub fn get_supported_methods(&self, stack_type: &SipStackType) -> Vec<String> {
-        self.config.stack_configs
+        self.config
+            .stack_configs
             .get(stack_type)
             .map(|config| config.supported_methods.clone())
-            .unwrap_or_else(|| vec![
-                Method::Invite.to_string(), Method::Ack.to_string(), Method::Cancel.to_string(), Method::Bye.to_string(),
-                Method::Register.to_string(), Method::Options.to_string()
-            ])
+            .unwrap_or_else(|| {
+                vec![
+                    Method::Invite.to_string(),
+                    Method::Ack.to_string(),
+                    Method::Cancel.to_string(),
+                    Method::Bye.to_string(),
+                    Method::Register.to_string(),
+                    Method::Options.to_string(),
+                ]
+            })
     }
-    
+
     /// Get SDP preferences for a detected stack
     pub fn get_sdp_preferences(&self, stack_type: &SipStackType) -> SdpPreferences {
-        self.config.stack_configs
+        self.config
+            .stack_configs
             .get(stack_type)
             .map(|config| config.sdp_preferences.clone())
             .unwrap_or_else(SdpPreferences::sofia_default)
     }
-    
+
     /// Check if extension is supported
     pub fn is_extension_supported(&self, extension: &SipExtension) -> bool {
         self.config.supported_extensions.contains(extension)
     }
-    
+
     /// Generate Supported header
     pub fn generate_supported_header(&self) -> String {
         let mut supported = Vec::new();
-        
+
         for extension in &self.config.supported_extensions {
             let tag = match extension {
                 SipExtension::SessionTimers => "timer",
@@ -807,17 +902,17 @@ impl SipInteropManager {
             };
             supported.push(tag);
         }
-        
+
         supported.join(", ")
     }
-    
+
     /// Get interoperability statistics
     pub fn get_statistics(&self) -> SipInteropStats {
         let mut stack_counts = HashMap::new();
         for stack_type in self.detected_stacks.values() {
             *stack_counts.entry(stack_type.clone()).or_insert(0) += 1;
         }
-        
+
         SipInteropStats {
             detected_stacks: self.detected_stacks.len(),
             stack_distribution: stack_counts,
@@ -847,11 +942,11 @@ impl RfcComplianceChecker {
     pub fn new(config: SipInteropConfig) -> Self {
         Self { config }
     }
-    
+
     /// Validate request against RFC 3261
     pub fn validate_request(&self, request: &Request) -> Result<Vec<ComplianceIssue>> {
         let mut issues = Vec::new();
-        
+
         // Check required headers (RFC 3261 Section 8.1.1)
         if request.via_header().is_err() {
             issues.push(ComplianceIssue::MissingHeader("Via".to_string()));
@@ -871,7 +966,7 @@ impl RfcComplianceChecker {
         if request.max_forwards_header().is_err() {
             issues.push(ComplianceIssue::MissingHeader("Max-Forwards".to_string()));
         }
-        
+
         // Method-specific validation
         match request.method() {
             Method::Invite => {
@@ -886,26 +981,26 @@ impl RfcComplianceChecker {
             }
             _ => {}
         }
-        
+
         // Validate Max-Forwards
         if let Ok(max_forwards) = request.max_forwards_header() {
             if let Ok(value) = max_forwards.to_string().parse::<u8>() {
                 if value > 70 {
                     issues.push(ComplianceIssue::InvalidHeaderValue(
                         "Max-Forwards".to_string(),
-                        "Value exceeds RFC recommendation of 70".to_string()
+                        "Value exceeds RFC recommendation of 70".to_string(),
                     ));
                 }
             }
         }
-        
+
         Ok(issues)
     }
-    
+
     /// Validate response against RFC 3261
     pub fn validate_response(&self, response: &Response) -> Result<Vec<ComplianceIssue>> {
         let mut issues = Vec::new();
-        
+
         // Check required headers for responses
         if response.via_header().is_err() {
             issues.push(ComplianceIssue::MissingHeader("Via".to_string()));
@@ -922,18 +1017,20 @@ impl RfcComplianceChecker {
         if response.cseq_header().is_err() {
             issues.push(ComplianceIssue::MissingHeader("CSeq".to_string()));
         }
-        
+
         // Status-specific validation
         let status_code = response.status_code().code();
         if status_code >= 200 && status_code < 300 {
             // 2xx responses to INVITE should have Contact header
             if let Ok(cseq) = response.cseq_header() {
-                if cseq.method().map_or(false, |m| m == Method::Invite) && response.contact_header().is_err() {
+                if cseq.method().map_or(false, |m| m == Method::Invite)
+                    && response.contact_header().is_err()
+                {
                     issues.push(ComplianceIssue::MissingHeader("Contact".to_string()));
                 }
             }
         }
-        
+
         Ok(issues)
     }
 }
@@ -951,11 +1048,11 @@ pub enum ComplianceIssue {
 /// Utility functions for SIP interoperability
 pub mod utils {
     use super::*;
-    
+
     /// Detect SIP stack from User-Agent string
     pub fn detect_stack_from_user_agent(user_agent: &str) -> SipStackType {
         let ua_lower = user_agent.to_lowercase();
-        
+
         if ua_lower.contains("sofia") || ua_lower.contains("freeswitch") {
             SipStackType::Sofia
         } else if ua_lower.contains("pjsua") || ua_lower.contains("pjsip") {
@@ -968,42 +1065,78 @@ pub mod utils {
             SipStackType::Generic
         }
     }
-    
+
     /// Check if method is supported by stack
     pub fn is_method_supported(stack_type: &SipStackType, method: &Method) -> bool {
         match stack_type {
             SipStackType::Sofia | SipStackType::FreeSWITCH => {
-                matches!(method, 
-                    Method::Invite | Method::Ack | Method::Cancel | Method::Bye |
-                    Method::Register | Method::Options | Method::Info | Method::Update |
-                    Method::Refer | Method::Message | Method::Subscribe | Method::Notify |
-                    Method::Publish | Method::PRack
+                matches!(
+                    method,
+                    Method::Invite
+                        | Method::Ack
+                        | Method::Cancel
+                        | Method::Bye
+                        | Method::Register
+                        | Method::Options
+                        | Method::Info
+                        | Method::Update
+                        | Method::Refer
+                        | Method::Message
+                        | Method::Subscribe
+                        | Method::Notify
+                        | Method::Publish
+                        | Method::PRack
                 )
             }
             SipStackType::Pjsip => {
-                matches!(method,
-                    Method::Invite | Method::Ack | Method::Cancel | Method::Bye |
-                    Method::Register | Method::Options | Method::Info | Method::Update |
-                    Method::Refer | Method::Message | Method::Subscribe | Method::Notify |
-                    Method::PRack
+                matches!(
+                    method,
+                    Method::Invite
+                        | Method::Ack
+                        | Method::Cancel
+                        | Method::Bye
+                        | Method::Register
+                        | Method::Options
+                        | Method::Info
+                        | Method::Update
+                        | Method::Refer
+                        | Method::Message
+                        | Method::Subscribe
+                        | Method::Notify
+                        | Method::PRack
                 )
             }
             SipStackType::Asterisk => {
-                matches!(method,
-                    Method::Invite | Method::Ack | Method::Cancel | Method::Bye |
-                    Method::Register | Method::Options | Method::Info | Method::Update |
-                    Method::Refer | Method::Message | Method::Subscribe | Method::Notify
+                matches!(
+                    method,
+                    Method::Invite
+                        | Method::Ack
+                        | Method::Cancel
+                        | Method::Bye
+                        | Method::Register
+                        | Method::Options
+                        | Method::Info
+                        | Method::Update
+                        | Method::Refer
+                        | Method::Message
+                        | Method::Subscribe
+                        | Method::Notify
                 )
             }
             SipStackType::Generic => {
-                matches!(method,
-                    Method::Invite | Method::Ack | Method::Cancel | Method::Bye |
-                    Method::Register | Method::Options
+                matches!(
+                    method,
+                    Method::Invite
+                        | Method::Ack
+                        | Method::Cancel
+                        | Method::Bye
+                        | Method::Register
+                        | Method::Options
                 )
             }
         }
     }
-    
+
     /// Generate appropriate User-Agent string
     pub fn generate_user_agent(include_extensions: bool) -> String {
         let base = "Redfire-Switch/1.0";
@@ -1018,7 +1151,7 @@ pub mod utils {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_stack_detection() {
         assert_eq!(
@@ -1034,14 +1167,23 @@ mod tests {
             SipStackType::Asterisk
         );
     }
-    
+
     #[test]
     fn test_method_support() {
-        assert!(utils::is_method_supported(&SipStackType::Sofia, &Method::PRack));
-        assert!(!utils::is_method_supported(&SipStackType::Asterisk, &Method::Publish));
-        assert!(utils::is_method_supported(&SipStackType::Pjsip, &Method::Update));
+        assert!(utils::is_method_supported(
+            &SipStackType::Sofia,
+            &Method::PRack
+        ));
+        assert!(!utils::is_method_supported(
+            &SipStackType::Asterisk,
+            &Method::Publish
+        ));
+        assert!(utils::is_method_supported(
+            &SipStackType::Pjsip,
+            &Method::Update
+        ));
     }
-    
+
     #[test]
     fn test_user_agent_generation() {
         let ua = utils::generate_user_agent(true);

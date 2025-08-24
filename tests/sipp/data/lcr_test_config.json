@@ -1,0 +1,41 @@
+{
+  "test_scenario": "LCR Toll-Free Call Test",
+  "description": "Test call from Las Vegas (702) to toll-free (800) number via LCR routing",
+  "call_details": {
+    "ani": "17028880001",
+    "dnis": "18002255288",
+    "ani_description": "Las Vegas, NV landline",
+    "dnis_description": "Toll-free number",
+    "expected_jurisdiction": "IndeterminateJurisdiction",
+    "expected_routing": "Should route via egress trunk to 173.193.144.207:5060"
+  },
+  "test_parameters": {
+    "calls_per_second": 1,
+    "max_concurrent_calls": 1,
+    "total_calls": 5,
+    "call_duration_seconds": 8,
+    "timeout_seconds": 30
+  },
+  "sipp_configuration": {
+    "scenario_file": "lcr_toll_free_test.xml",
+    "target_ip": "173.193.144.207",
+    "target_port": 5060,
+    "local_port": 5061,
+    "transport": "UDP",
+    "log_level": "INFO"
+  },
+  "expected_results": {
+    "lcr_behavior": [
+      "Should identify ANI 17028880001 as Las Vegas, NV (Interstate jurisdiction)",
+      "Should identify DNIS 18002255288 as toll-free (Indeterminate jurisdiction)",
+      "Overall call jurisdiction should be Indeterminate due to toll-free DNIS",
+      "Should route to egress trunk configured for toll-free traffic",
+      "Should apply appropriate rates for toll-free calls"
+    ],
+    "sip_flow": [
+      "INVITE → 100 Trying → [180 Ringing] → [183 Progress] → 200 OK",
+      "ACK → [Call Active] → BYE → 200 OK",
+      "Call duration: 8 seconds for billing test"
+    ]
+  }
+}

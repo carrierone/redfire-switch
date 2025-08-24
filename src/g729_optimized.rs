@@ -1,17 +1,17 @@
 /*
  * G.729 Optimized Implementation with x86-64 Assembly Integration
- * 
+ *
  * Integrates high-performance SIMD-optimized functions with Rust G.729 codec
  * Provides fallback to pure Rust implementation when SIMD is not available
  */
 
 use crate::g729_external_asm::{
-    autocorrelation_optimized, levinson_durbin_optimized, lsp_quantization_optimized, 
-    L_FRAME, L_SUBFR, M, L_WINDOW
+    autocorrelation_optimized, levinson_durbin_optimized, lsp_quantization_optimized, L_FRAME,
+    L_SUBFR, L_WINDOW, M,
 };
+use anyhow::{anyhow, Result};
 #[cfg(target_arch = "x86_64")]
 use std::arch::is_x86_feature_detected;
-use anyhow::{Result, anyhow};
 
 /// Optimized G.729 codec with SIMD acceleration
 pub struct OptimizedG729Codec {
@@ -42,8 +42,8 @@ impl OptimizedG729Codec {
             {
                 (
                     is_x86_feature_detected!("sse"),
-                    is_x86_feature_detected!("avx"), 
-                    is_x86_feature_detected!("fma")
+                    is_x86_feature_detected!("avx"),
+                    is_x86_feature_detected!("fma"),
                 )
             }
             #[cfg(not(target_arch = "x86_64"))]
@@ -51,9 +51,11 @@ impl OptimizedG729Codec {
                 (false, false, false)
             }
         };
-        println!("G.729 Optimized Codec initialized with SIMD support: SSE={}, AVX={}, FMA={}", 
-                 simd_support.0, simd_support.1, simd_support.2);
-        
+        println!(
+            "G.729 Optimized Codec initialized with SIMD support: SSE={}, AVX={}, FMA={}",
+            simd_support.0, simd_support.1, simd_support.2
+        );
+
         let mut codec = Self {
             old_speech: [0.0; L_WINDOW],
             old_exc: [0.0; 154],
@@ -68,7 +70,7 @@ impl OptimizedG729Codec {
 
         // Initialize analysis window (Hamming window)
         codec.initialize_analysis_window();
-        
+
         // Initialize LSP to stable values
         for i in 0..M {
             codec.lsp_old[i] = (i + 1) as f32 * std::f32::consts::PI / (M + 1) as f32;
@@ -92,14 +94,15 @@ impl OptimizedG729Codec {
     fn initialize_analysis_window(&mut self) {
         for i in 0..L_WINDOW {
             let n = i as f32;
-            self.window[i] = 0.54 - 0.46 * (2.0 * std::f32::consts::PI * n / (L_WINDOW - 1) as f32).cos();
+            self.window[i] =
+                0.54 - 0.46 * (2.0 * std::f32::consts::PI * n / (L_WINDOW - 1) as f32).cos();
         }
     }
 
     /// Initialize LSF quantization tables
     fn initialize_lsf_quantization_table() -> Vec<[f32; 10]> {
         let mut table = Vec::with_capacity(1024);
-        
+
         // Create more realistic quantization codebook based on typical LSF distributions
         for i in 0..1024 {
             let mut entry = [0.0f32; 10];
@@ -109,36 +112,39 @@ impl OptimizedG729Codec {
                 let perturbation = ((i >> j) & 1) as f32 * 0.05 - 0.025;
                 entry[j] = base_freq + perturbation;
             }
-            
+
             // Ensure LSF ordering
             for j in 1..10 {
                 if entry[j] <= entry[j - 1] {
                     entry[j] = entry[j - 1] + 0.01;
                 }
             }
-            
+
             table.push(entry);
         }
-        
+
         table
     }
 
     /// Encode speech frame to G.729 bitstream with SIMD optimization
     pub fn encode(&mut self, speech: &[i16]) -> Result<Vec<u8>> {
         if speech.len() != L_FRAME {
-            return Err(anyhow!("Invalid frame size: expected {}, got {}", 
-                              L_FRAME, speech.len()));
+            return Err(anyhow!(
+                "Invalid frame size: expected {}, got {}",
+                L_FRAME,
+                speech.len()
+            ));
         }
 
         // Convert to floating point and apply pre-emphasis
         let mut speech_f = [0.0f32; L_FRAME];
         let preemph_factor = 0.68f32;
-        let mut prev_sample = if self.frame_count > 0 { 
-            self.old_speech[L_WINDOW - 1] 
-        } else { 
-            0.0 
+        let mut prev_sample = if self.frame_count > 0 {
+            self.old_speech[L_WINDOW - 1]
+        } else {
+            0.0
         };
-        
+
         for (i, &sample) in speech.iter().enumerate() {
             let current_sample = sample as f32 / 32768.0;
             speech_f[i] = current_sample - preemph_factor * prev_sample;
@@ -162,8 +168,8 @@ impl OptimizedG729Codec {
 
         // Add lag windowing to autocorrelation
         let lag_window = [
-            1.00000000, 0.99879038, 0.99518473, 0.98921439, 0.98092961,
-            0.97039264, 0.95767454, 0.94285714, 0.92603099, 0.90729493, 0.88675135
+            1.00000000, 0.99879038, 0.99518473, 0.98921439, 0.98092961, 0.97039264, 0.95767454,
+            0.94285714, 0.92603099, 0.90729493, 0.88675135,
         ];
         for i in 1..11 {
             autocorr[i] *= lag_window[i];
@@ -178,9 +184,10 @@ impl OptimizedG729Codec {
 
         // Convert LP coefficients to Line Spectral Pairs
         let lsp = self.lp_to_lsp(&lp_coeffs)?;
-        
+
         // Quantize LSP parameters with SIMD optimization
-        let (lsp_index, _quantization_error) = lsp_quantization_optimized(&lsp, &self.lsf_q_table, self.lsf_q_table.len());
+        let (lsp_index, _quantization_error) =
+            lsp_quantization_optimized(&lsp, &self.lsf_q_table, self.lsf_q_table.len());
 
         // Perceptual weighting
         let weighted_speech = self.perceptual_weighting(&speech_f, &lp_coeffs)?;
@@ -188,19 +195,19 @@ impl OptimizedG729Codec {
         // Process subframes for pitch and fixed codebook search
         let mut pitch_params = Vec::new();
         let mut fixed_params = Vec::new();
-        
+
         for subframe in 0..2 {
             let start = subframe * L_SUBFR;
             let target = &weighted_speech[start..start + L_SUBFR];
             let mut target_array = [0.0f32; L_SUBFR];
             target_array.copy_from_slice(target);
-            
+
             // Adaptive codebook search (pitch analysis)
             let (pitch_lag, pitch_gain) = self.pitch_analysis(&target_array)?;
-            
+
             // Fixed codebook search with SIMD-optimized correlation
             let (fixed_index, fixed_gain) = self.fixed_codebook_search(&target_array)?;
-            
+
             pitch_params.push((pitch_lag, pitch_gain));
             fixed_params.push((fixed_index, fixed_gain));
         }
@@ -220,39 +227,39 @@ impl OptimizedG729Codec {
     fn lp_to_lsp(&self, lp_coeffs: &[f32; 11]) -> Result<[f32; M]> {
         // Simplified LSP computation using Chebyshev polynomial method
         let mut lsp = [0.0f32; M];
-        
+
         // Form symmetric and antisymmetric polynomials
-        let mut p = [0.0f32; 6]; // P(z) = A(z) + z^-11 * A(z^-1)  
+        let mut p = [0.0f32; 6]; // P(z) = A(z) + z^-11 * A(z^-1)
         let mut q = [0.0f32; 6]; // Q(z) = A(z) - z^-11 * A(z^-1)
-        
+
         p[0] = 1.0;
         q[0] = 1.0;
-        
+
         for i in 1..=5 {
             p[i] = lp_coeffs[i] + lp_coeffs[11 - i] - p[i - 1];
             q[i] = lp_coeffs[i] - lp_coeffs[11 - i] + q[i - 1];
         }
-        
+
         // Find roots using simplified method
         let mut lsp_idx = 0;
-        
+
         // Find LSP frequencies (simplified approach)
         for i in 0..M {
             lsp[i] = (i + 1) as f32 * std::f32::consts::PI / (M + 1) as f32;
-            
+
             // Add perturbation based on LP coefficients
             if i < 10 {
                 lsp[i] += lp_coeffs[i + 1] * 0.05;
             }
         }
-        
+
         // Ensure proper ordering
         for i in 1..M {
             if lsp[i] <= lsp[i - 1] {
                 lsp[i] = lsp[i - 1] + 0.01;
             }
         }
-        
+
         Ok(lsp)
     }
 
@@ -261,16 +268,16 @@ impl OptimizedG729Codec {
         let mut weighted = vec![0.0f32; L_FRAME];
         let gamma1 = 0.94f32;
         let gamma2 = 0.6f32;
-        
+
         for i in 0..L_FRAME {
             weighted[i] = speech[i];
-            
+
             // Apply perceptual weighting W(z) = A(z/γ₁) / A(z/γ₂)
             for j in 1..=M.min(i) {
                 weighted[i] -= lp_coeffs[j] * gamma1.powi(j as i32) * speech[i - j];
             }
         }
-        
+
         Ok(weighted)
     }
 
@@ -278,12 +285,12 @@ impl OptimizedG729Codec {
     fn pitch_analysis(&mut self, target: &[f32; L_SUBFR]) -> Result<(u8, u8)> {
         let mut best_lag = 18u8;
         let mut best_correlation = 0.0f32;
-        
+
         // Search pitch delay in typical range
         for lag in 18..=143 {
             let mut correlation = 0.0f32;
             let mut energy = 0.0f32;
-            
+
             // Compute correlation with past excitation
             for i in 0..L_SUBFR {
                 let exc_idx = 154 - lag + i;
@@ -293,7 +300,7 @@ impl OptimizedG729Codec {
                     energy += exc_val * exc_val;
                 }
             }
-            
+
             if energy > 0.0 {
                 let normalized_corr = correlation * correlation / energy;
                 if normalized_corr > best_correlation {
@@ -302,11 +309,11 @@ impl OptimizedG729Codec {
                 }
             }
         }
-        
+
         // Compute optimal gain
         let mut correlation = 0.0f32;
         let mut energy = 0.0f32;
-        
+
         for i in 0..L_SUBFR {
             let exc_idx = 154 - best_lag as usize + i;
             if exc_idx < 154 {
@@ -315,15 +322,15 @@ impl OptimizedG729Codec {
                 energy += exc_val * exc_val;
             }
         }
-        
+
         let gain = if energy > 0.0 {
             (correlation / energy).clamp(0.0, 1.2)
         } else {
             0.0
         };
-        
+
         let quantized_gain = (gain * 127.0) as u8;
-        
+
         Ok((best_lag, quantized_gain))
     }
 
@@ -332,23 +339,23 @@ impl OptimizedG729Codec {
         let mut best_index = 0u16;
         let mut best_gain = 0.0f32;
         let mut max_correlation = 0.0f32;
-        
+
         // Simplified algebraic codebook search
         // G.729 uses structured search with 4 pulses in specific tracks
         let tracks = [
-            [0, 5, 10, 15, 20, 25, 30, 35],  // Track 0
-            [1, 6, 11, 16, 21, 26, 31, 36],  // Track 1  
-            [2, 7, 12, 17, 22, 27, 32, 37],  // Track 2
-            [3, 8, 13, 18, 23, 28, 33, 38],  // Track 3
+            [0, 5, 10, 15, 20, 25, 30, 35], // Track 0
+            [1, 6, 11, 16, 21, 26, 31, 36], // Track 1
+            [2, 7, 12, 17, 22, 27, 32, 37], // Track 2
+            [3, 8, 13, 18, 23, 28, 33, 38], // Track 3
         ];
-        
+
         // Find best pulse position in each track
         let mut pulse_positions = [0usize; 4];
         let mut pulse_signs = [1.0f32; 4];
-        
+
         for (track_idx, track) in tracks.iter().enumerate() {
             let mut track_max = 0.0f32;
-            
+
             for &pos in track {
                 if pos < L_SUBFR {
                     let val = target[pos].abs();
@@ -360,72 +367,78 @@ impl OptimizedG729Codec {
                 }
             }
         }
-        
-        // Encode pulse positions into index  
+
+        // Encode pulse positions into index
         for i in 0..4 {
             best_index = (best_index << 3) | ((pulse_positions[i] / 5) as u16);
             if pulse_signs[i] < 0.0 {
                 best_index |= 1 << (12 - i);
             }
         }
-        
+
         // Compute optimal gain using SIMD if available
         let mut correlation = 0.0f32;
-        
+
         // Scalar correlation computation (same for both SIMD and non-SIMD paths)
         for i in 0..4 {
             correlation += target[pulse_positions[i]] * pulse_signs[i];
         }
-        
+
         let energy = 4.0; // 4 unit pulses
         best_gain = if energy > 0.0 {
             correlation / energy
         } else {
             0.0
         };
-        
+
         let quantized_gain = (best_gain.abs() * 32.0).clamp(0.0, 255.0) as u8;
-        
+
         Ok((best_index, quantized_gain))
     }
 
     /// Pack frame parameters into G.729 bitstream
-    fn pack_frame(&self, lsp_index: usize, pitch_params: &[(u8, u8)], 
-                  fixed_params: &[(u16, u8)]) -> Result<Vec<u8>> {
+    fn pack_frame(
+        &self,
+        lsp_index: usize,
+        pitch_params: &[(u8, u8)],
+        fixed_params: &[(u16, u8)],
+    ) -> Result<Vec<u8>> {
         let mut bitstream = vec![0u8; 10]; // G.729 frame is 10 bytes (80 bits)
         let mut bit_pos = 0;
-        
+
         // Pack LSP index (18 bits - simplified to 16 bits)
         self.pack_bits(&mut bitstream, &mut bit_pos, lsp_index as u32 & 0xFFFF, 16);
-        
+
         // Pack subframe parameters
-        for (sf_idx, ((pitch_lag, pitch_gain), (fixed_index, fixed_gain))) in 
-            pitch_params.iter().zip(fixed_params.iter()).enumerate() {
-            
+        for (sf_idx, ((pitch_lag, pitch_gain), (fixed_index, fixed_gain))) in
+            pitch_params.iter().zip(fixed_params.iter()).enumerate()
+        {
             if sf_idx == 0 {
                 // First subframe: full pitch lag (8 bits)
                 self.pack_bits(&mut bitstream, &mut bit_pos, *pitch_lag as u32, 8);
                 // Parity bit (1 bit)
                 self.pack_bits(&mut bitstream, &mut bit_pos, 0, 1);
             } else {
-                // Second subframe: differential pitch lag (5 bits)  
-                let diff = (*pitch_lag as i16 - pitch_params[0].0 as i16).max(-16).min(15);
+                // Second subframe: differential pitch lag (5 bits)
+                let diff = (*pitch_lag as i16 - pitch_params[0].0 as i16)
+                    .max(-16)
+                    .min(15);
                 self.pack_bits(&mut bitstream, &mut bit_pos, (diff + 16) as u32, 5);
             }
-            
+
             // Fixed codebook index (13 bits)
             self.pack_bits(&mut bitstream, &mut bit_pos, *fixed_index as u32, 13);
-            
+
             // Quantized gains (7 bits total: 3 for pitch, 4 for fixed)
             let gain_index = ((*pitch_gain >> 4) << 4) | (*fixed_gain >> 4);
             self.pack_bits(&mut bitstream, &mut bit_pos, gain_index as u32, 7);
         }
-        
+
         // Pad remaining bits
         while bit_pos < 80 {
             self.pack_bits(&mut bitstream, &mut bit_pos, 0, 1);
         }
-        
+
         Ok(bitstream)
     }
 
@@ -435,13 +448,13 @@ impl OptimizedG729Codec {
             let bit = (value >> (num_bits - 1 - i)) & 1;
             let byte_idx = *bit_pos / 8;
             let bit_idx = 7 - (*bit_pos % 8);
-            
+
             if byte_idx < bitstream.len() {
                 if bit == 1 {
                     bitstream[byte_idx] |= 1 << bit_idx;
                 }
             }
-            
+
             *bit_pos += 1;
         }
     }
@@ -467,7 +480,7 @@ mod tests {
     fn test_optimized_codec_creation() {
         let codec = OptimizedG729Codec::new();
         assert_eq!(codec.frame_count, 0);
-        
+
         let (simd_ops, fallback_ops, ratio) = codec.get_performance_stats();
         assert_eq!(simd_ops, 0);
         assert_eq!(fallback_ops, 0);
@@ -477,15 +490,15 @@ mod tests {
     #[test]
     fn test_optimized_encode() {
         let mut codec = OptimizedG729Codec::new();
-        
+
         // Generate test signal
         let test_signal: Vec<i16> = (0..L_FRAME)
             .map(|i| ((i as f32 * 0.1).sin() * 16384.0) as i16)
             .collect();
-        
+
         let encoded = codec.encode(&test_signal).unwrap();
         assert_eq!(encoded.len(), 10);
-        
+
         // Check performance stats
         let (simd_ops, fallback_ops, _) = codec.get_performance_stats();
         assert!(simd_ops > 0 || fallback_ops > 0);
@@ -494,17 +507,19 @@ mod tests {
     #[test]
     fn test_simd_vs_scalar_consistency() {
         let mut codec = OptimizedG729Codec::new();
-        
+
         // Test multiple frames to ensure consistency
         for _ in 0..10 {
             let test_signal: Vec<i16> = (0..L_FRAME)
-                .map(|i| ((i as f32 * 0.05 + codec.frame_count as f32 * 0.01).sin() * 12000.0) as i16)
+                .map(|i| {
+                    ((i as f32 * 0.05 + codec.frame_count as f32 * 0.01).sin() * 12000.0) as i16
+                })
                 .collect();
-            
+
             let encoded = codec.encode(&test_signal).unwrap();
             assert_eq!(encoded.len(), 10);
         }
-        
+
         println!("Performance stats: {:?}", codec.get_performance_stats());
     }
 }

@@ -1,12 +1,12 @@
 /*
  * Redfire Switch - A Class 4 SIP Telephone Switch
  * Copyright (C) 2025 Carrier One Inc and contributors
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Sponsored by Carrier One Inc (https://www.carrierone.com)
  */
 
@@ -32,7 +32,7 @@ async fn main() -> Result<()> {
                 .value_name("MODE")
                 .help("Operation mode")
                 .value_parser(["b2bua", "demo", "test"])
-                .default_value("demo")
+                .default_value("demo"),
         )
         .arg(
             Arg::new("bind")
@@ -40,14 +40,16 @@ async fn main() -> Result<()> {
                 .long("bind")
                 .value_name("ADDR")
                 .help("Bind address")
-                .default_value("0.0.0.0:5060")
+                .default_value("0.0.0.0:5060"),
         )
         .get_matches();
 
     // FIXED: Replace unwrap() with proper error handling
-    let mode = matches.get_one::<String>("mode")
+    let mode = matches
+        .get_one::<String>("mode")
         .ok_or_else(|| anyhow::anyhow!("Mode parameter is required"))?;
-    let _bind_addr = matches.get_one::<String>("bind")
+    let _bind_addr = matches
+        .get_one::<String>("bind")
         .ok_or_else(|| anyhow::anyhow!("Bind address parameter is required"))?;
 
     match mode.as_str() {
@@ -69,7 +71,7 @@ async fn main() -> Result<()> {
             println!("Use: cargo run --bin simple-b2bua-test");
         }
         "test" => {
-            println!("🔥 RedFire Switch - Test Mode"); 
+            println!("🔥 RedFire Switch - Test Mode");
             println!("Use: cargo run --bin sipi-automated-tests");
         }
         _ => {

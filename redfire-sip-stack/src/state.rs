@@ -1,27 +1,31 @@
 /*
  * Redfire Switch - SIP Dialog and Transaction State Management
  * Copyright (C) 2025 Carrier One Inc and contributors
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Sponsored by Carrier One Inc (https://www.carrierone.com)
  */
 
 use crate::parser::{
-    SipMessage, SipDialog, SipTransaction, DialogState, TransactionState,
-    InviteTransactionState, NonInviteTransactionState, TransactionTimers
+    DialogState, InviteTransactionState, NonInviteTransactionState, SipDialog, SipMessage,
+    SipTransaction, TransactionState, TransactionTimers,
 };
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use dashmap::DashMap;
-use rsip::{message::{SipMessage as RsipMessage, HeadersExt}, Request, Response, Method, param::Param};
+use rsip::{
+    message::{HeadersExt, SipMessage as RsipMessage},
+    param::Param,
+    Method, Request, Response,
+};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
 use tokio::time::{interval, Instant};
-use tracing::{debug, info, warn, error};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 /// SIP state manager for dialogs and transactions
@@ -56,12 +60,12 @@ pub struct SipStateConfig {
 impl Default for SipStateConfig {
     fn default() -> Self {
         Self {
-            timer_t1: 500,      // 500ms default RTT
-            timer_t2: 4000,     // 4s maximum retransmit interval
-            timer_t4: 5000,     // 5s maximum network duration
-            max_dialog_lifetime: 3600, // 1 hour
+            timer_t1: 500,                 // 500ms default RTT
+            timer_t2: 4000,                // 4s maximum retransmit interval
+            timer_t4: 5000,                // 5s maximum network duration
+            max_dialog_lifetime: 3600,     // 1 hour
             max_transaction_lifetime: 300, // 5 minutes
-            cleanup_interval: 60, // 1 minute
+            cleanup_interval: 60,          // 1 minute
         }
     }
 }
@@ -73,7 +77,7 @@ impl SipStateManager {
         let transactions = Arc::new(DashMap::new());
         let timer_manager = Arc::new(TransactionTimerManager::new(
             config.clone(),
-            transactions.clone()
+            transactions.clone(),
         ));
 
         Self {
@@ -107,10 +111,11 @@ impl SipStateManager {
                 interval.tick().await;
                 Self::cleanup_expired_state(
                     &dialogs,
-                    &transactions, 
+                    &transactions,
                     max_dialog_lifetime,
-                    max_transaction_lifetime
-                ).await;
+                    max_transaction_lifetime,
+                )
+                .await;
             }
         });
 
@@ -126,49 +131,87 @@ impl SipStateManager {
     }
 
     /// Process SIP request
-    async fn process_request(&self, message: &SipMessage, request: &Request) -> Result<SipStateAction> {
+    async fn process_request(
+        &self,
+        message: &SipMessage,
+        request: &Request,
+    ) -> Result<SipStateAction> {
         let call_id = crate::parser::utils::extract_call_id(&message.message)?;
         let from_tag = crate::parser::utils::extract_from_tag(&message.message)?;
         let to_tag = crate::parser::utils::extract_to_tag(&message.message)?;
 
         match request.method() {
-            Method::Invite => self.process_invite_request(message, request, &call_id, from_tag, to_tag).await,
-            Method::Ack => self.process_ack_request(message, request, &call_id, from_tag, to_tag).await,
-            Method::Bye => self.process_bye_request(message, request, &call_id, from_tag, to_tag).await,
-            Method::Cancel => self.process_cancel_request(message, request, &call_id, from_tag, to_tag).await,
-            _ => self.process_other_request(message, request, &call_id, from_tag, to_tag).await,
+            Method::Invite => {
+                self.process_invite_request(message, request, &call_id, from_tag, to_tag)
+                    .await
+            }
+            Method::Ack => {
+                self.process_ack_request(message, request, &call_id, from_tag, to_tag)
+                    .await
+            }
+            Method::Bye => {
+                self.process_bye_request(message, request, &call_id, from_tag, to_tag)
+                    .await
+            }
+            Method::Cancel => {
+                self.process_cancel_request(message, request, &call_id, from_tag, to_tag)
+                    .await
+            }
+            _ => {
+                self.process_other_request(message, request, &call_id, from_tag, to_tag)
+                    .await
+            }
         }
     }
 
     /// Process SIP response
-    async fn process_response(&self, message: &SipMessage, response: &Response) -> Result<SipStateAction> {
+    async fn process_response(
+        &self,
+        message: &SipMessage,
+        response: &Response,
+    ) -> Result<SipStateAction> {
         let call_id = crate::parser::utils::extract_call_id(&message.message)?;
         let from_tag = crate::parser::utils::extract_from_tag(&message.message)?;
         let to_tag = crate::parser::utils::extract_to_tag(&message.message)?;
 
         // Find transaction
         let transaction_id = self.extract_transaction_id_from_response(response)?;
-        
+
         if let Some(mut transaction) = self.transactions.get_mut(&transaction_id) {
             // Update transaction state
             self.update_transaction_state_for_response(&mut transaction, response)?;
-            
+
             // Handle dialog creation/update for 2xx responses
             if crate::parser::utils::is_success_response(&message.message) {
                 if let Some(to_tag) = to_tag {
-                    let dialog_id = format!("{}:{}:{}", call_id, from_tag.clone().unwrap_or_default(), to_tag);
-                    self.create_or_update_dialog(&dialog_id, &call_id, from_tag, Some(to_tag), message).await?;
+                    let dialog_id = format!(
+                        "{}:{}:{}",
+                        call_id,
+                        from_tag.clone().unwrap_or_default(),
+                        to_tag
+                    );
+                    self.create_or_update_dialog(
+                        &dialog_id,
+                        &call_id,
+                        from_tag,
+                        Some(to_tag),
+                        message,
+                    )
+                    .await?;
                 }
             }
 
             Ok(SipStateAction::ProcessResponse {
                 transaction_id: transaction_id.clone(),
                 dialog_id: None, // Will be set if dialog exists
-                requires_ack: crate::parser::utils::is_success_response(&message.message) && 
-                             transaction.method == Method::Invite,
+                requires_ack: crate::parser::utils::is_success_response(&message.message)
+                    && transaction.method == Method::Invite,
             })
         } else {
-            warn!("Received response for unknown transaction: {}", transaction_id);
+            warn!(
+                "Received response for unknown transaction: {}",
+                transaction_id
+            );
             Ok(SipStateAction::DropMessage)
         }
     }
@@ -201,7 +244,8 @@ impl SipStateManager {
             created_at: chrono::Utc::now(),
         };
 
-        self.transactions.insert(transaction_id.clone(), transaction);
+        self.transactions
+            .insert(transaction_id.clone(), transaction);
 
         // Check if this is a re-INVITE (dialog exists)
         if let Some(from_tag) = from_tag {
@@ -230,19 +274,19 @@ impl SipStateManager {
     ) -> Result<SipStateAction> {
         if let (Some(from_tag), Some(to_tag)) = (from_tag, to_tag) {
             let dialog_id = format!("{}:{}:{}", call_id, from_tag, to_tag);
-            
+
             if let Some(mut dialog) = self.dialogs.get_mut(&dialog_id) {
                 // Update dialog state to confirmed
                 dialog.state = DialogState::Confirmed;
                 dialog.last_activity = chrono::Utc::now();
-                
+
                 return Ok(SipStateAction::ProcessAck { dialog_id });
             }
         }
 
         // ACK for error response or unknown dialog
-        Ok(SipStateAction::ProcessAck { 
-            dialog_id: "unknown".to_string() 
+        Ok(SipStateAction::ProcessAck {
+            dialog_id: "unknown".to_string(),
         })
     }
 
@@ -268,16 +312,17 @@ impl SipStateManager {
             created_at: chrono::Utc::now(),
         };
 
-        self.transactions.insert(transaction_id.clone(), transaction);
+        self.transactions
+            .insert(transaction_id.clone(), transaction);
 
         // Find and terminate dialog
         if let (Some(from_tag), Some(to_tag)) = (from_tag, to_tag) {
             let dialog_id = format!("{}:{}:{}", call_id, from_tag, to_tag);
-            
+
             if let Some(mut dialog) = self.dialogs.get_mut(&dialog_id) {
                 dialog.state = DialogState::Terminated;
                 dialog.last_activity = chrono::Utc::now();
-                
+
                 return Ok(SipStateAction::ProcessBye {
                     transaction_id,
                     dialog_id,
@@ -306,8 +351,9 @@ impl SipStateManager {
         // CANCEL has same branch as original INVITE
         if let Some(mut invite_transaction) = self.transactions.get_mut(&transaction_id) {
             if invite_transaction.method == Method::Invite {
-                invite_transaction.state = TransactionState::Invite(InviteTransactionState::Completed);
-                
+                invite_transaction.state =
+                    TransactionState::Invite(InviteTransactionState::Completed);
+
                 return Ok(SipStateAction::ProcessCancel {
                     transaction_id: transaction_id.clone(),
                     invite_transaction_id: transaction_id,
@@ -315,7 +361,10 @@ impl SipStateManager {
             }
         }
 
-        warn!("CANCEL received for unknown INVITE transaction: {}", transaction_id);
+        warn!(
+            "CANCEL received for unknown INVITE transaction: {}",
+            transaction_id
+        );
         Ok(SipStateAction::DropMessage)
     }
 
@@ -346,7 +395,8 @@ impl SipStateManager {
             created_at: chrono::Utc::now(),
         };
 
-        self.transactions.insert(transaction_id.clone(), transaction);
+        self.transactions
+            .insert(transaction_id.clone(), transaction);
 
         Ok(SipStateAction::ProcessOtherRequest {
             transaction_id,
@@ -393,9 +443,10 @@ impl SipStateManager {
     /// Extract transaction ID from request
     fn extract_transaction_id_from_request(&self, request: &Request) -> Result<String> {
         // Get branch parameter from top Via header
-        let via = request.via_header()
+        let via = request
+            .via_header()
             .map_err(|e| anyhow!("No Via header in request: {}", e))?;
-        
+
         // TODO: Fix Param::Branch pattern matching with rsip library API
         // For now, create a default transaction ID
         warn!("Branch parameter extraction not implemented due to rsip API compatibility");
@@ -406,9 +457,10 @@ impl SipStateManager {
     /// Extract transaction ID from response
     fn extract_transaction_id_from_response(&self, response: &Response) -> Result<String> {
         // Get branch parameter from top Via header
-        let via = response.via_header()
+        let via = response
+            .via_header()
             .map_err(|e| anyhow!("No Via header in response: {}", e))?;
-        
+
         // TODO: Fix Param::Branch pattern matching with rsip library API
         // For now, create a default transaction ID
         warn!("Branch parameter extraction not implemented due to rsip API compatibility");
@@ -513,18 +565,14 @@ impl SipStateManager {
 #[derive(Debug, Clone)]
 pub enum SipStateAction {
     /// Process new INVITE request
-    ProcessNewInvite {
-        transaction_id: String,
-    },
+    ProcessNewInvite { transaction_id: String },
     /// Process re-INVITE within existing dialog
     ProcessReInvite {
         transaction_id: String,
         dialog_id: String,
     },
     /// Process ACK request
-    ProcessAck {
-        dialog_id: String,
-    },
+    ProcessAck { dialog_id: String },
     /// Process BYE request
     ProcessBye {
         transaction_id: String,
@@ -547,9 +595,7 @@ pub enum SipStateAction {
         requires_ack: bool,
     },
     /// Retransmit last response (for retransmitted requests)
-    RetransmitLastResponse {
-        transaction_id: String,
-    },
+    RetransmitLastResponse { transaction_id: String },
     /// Drop message (invalid or unknown)
     DropMessage,
 }

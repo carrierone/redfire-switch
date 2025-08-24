@@ -1,17 +1,17 @@
 /*
  * Redfire Switch - SIP Debugging CLI with Color-Coded Filtering
  * Copyright (C) 2025 Carrier One Inc and contributors
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Sponsored by Carrier One Inc (https://www.carrierone.com)
  */
 
 //! # SIP Debugging CLI
-//! 
+//!
 //! Provides real-time SIP message debugging with:
 //! - Color-coded message display
 //! - Filtering by trunk, ANI, DNIS, IP, response codes
@@ -19,25 +19,25 @@
 //! - Performance statistics
 //! - Export capabilities
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
+use colored::*;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::collections::{HashMap, VecDeque};
-use std::net::{IpAddr, SocketAddr};
+use std::io::{stdin, stdout, Write};
+use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tokio::sync::{mpsc, RwLock, broadcast};
-use tracing::{debug, info, warn, error};
-use colored::*;
-use termion::{color, style, clear, cursor};
-use termion::raw::IntoRawMode;
-use termion::input::TermRead;
 use termion::event::Key;
-use std::io::{self, Write, stdout, stdin};
-use regex::Regex;
+use termion::input::TermRead;
+use termion::raw::IntoRawMode;
+use termion::{clear, color, cursor, style};
+use tokio::sync::{broadcast, mpsc, RwLock};
+use tracing::{debug, error, info, warn};
 
-use crate::parser::{SipMessage};
-use crate::transport::{SipTransport};
+use crate::parser::SipMessage;
+use crate::transport::SipTransport;
 
 /// SIP debug configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -240,26 +240,26 @@ impl SipDebugCli {
             export_buffer: Arc::new(RwLock::new(Vec::new())),
         }
     }
-    
+
     /// Start the SIP debug CLI
     pub async fn start(&mut self, message_receiver: mpsc::Receiver<SipDebugMessage>) -> Result<()> {
         self.message_receiver = Some(message_receiver);
-        
+
         // Initialize statistics
         {
             let mut stats = self.statistics.write().await;
             stats.start_time = Some(SystemTime::now());
         }
-        
+
         info!("Starting SIP Debug CLI");
         println!("{}", self.format_header());
-        
+
         // Start message processing task
         let message_buffer = self.message_buffer.clone();
         let current_filter = self.current_filter.clone();
         let statistics = self.statistics.clone();
         let config = self.config.clone();
-        
+
         if let Some(mut receiver) = self.message_receiver.take() {
             tokio::spawn(async move {
                 while let Some(debug_message) = receiver.recv().await {
@@ -269,17 +269,18 @@ impl SipDebugCli {
                         &current_filter,
                         &statistics,
                         &config,
-                    ).await;
+                    )
+                    .await;
                 }
             });
         }
-        
+
         // Start interactive CLI
         self.start_interactive_mode().await?;
-        
+
         Ok(())
     }
-    
+
     /// Process incoming debug message
     async fn process_debug_message(
         debug_message: SipDebugMessage,
@@ -292,14 +293,14 @@ impl SipDebugCli {
         {
             let mut stats = statistics.write().await;
             stats.total_messages += 1;
-            
+
             if let Some(call_info) = &debug_message.call_info {
                 if let Some(method) = &call_info.method {
                     if method == "INVITE" {
                         stats.invites += 1;
                     }
                 }
-                
+
                 if let Some(code) = call_info.response_code {
                     match code {
                         200..=299 => stats.responses_2xx += 1,
@@ -310,58 +311,64 @@ impl SipDebugCli {
                     }
                 }
             }
-            
+
             // Calculate messages per second
             if let Some(start_time) = stats.start_time {
-                let elapsed = SystemTime::now().duration_since(start_time).unwrap_or(Duration::from_secs(1));
+                let elapsed = SystemTime::now()
+                    .duration_since(start_time)
+                    .unwrap_or(Duration::from_secs(1));
                 stats.messages_per_second = stats.total_messages as f64 / elapsed.as_secs_f64();
             }
         }
-        
+
         // Apply filter
         let filter = current_filter.read().await;
         if Self::message_matches_filter(&debug_message, &filter) {
             let mut buffer = message_buffer.write().await;
-            
+
             // Update filtered count
             {
                 let mut stats = statistics.write().await;
                 stats.filtered_messages += 1;
             }
-            
+
             buffer.push_back(debug_message.clone());
-            
+
             // Maintain buffer size
             if buffer.len() > config.max_buffer_size {
                 buffer.pop_front();
             }
-            
+
             // Print message if auto-scroll is enabled
             if config.auto_scroll {
                 println!("{}", Self::format_debug_message(&debug_message, config));
             }
         }
     }
-    
+
     /// Check if message matches current filter
     fn message_matches_filter(message: &SipDebugMessage, filter: &SipDebugFilter) -> bool {
         // Trunk filter
         if let Some(ref orig_trunk) = filter.orig_trunk {
             if let Some(ref trunk_info) = message.trunk_info {
-                if trunk_info.trunk_type == TrunkType::Origination && trunk_info.trunk_id != *orig_trunk {
+                if trunk_info.trunk_type == TrunkType::Origination
+                    && trunk_info.trunk_id != *orig_trunk
+                {
                     return false;
                 }
             }
         }
-        
+
         if let Some(ref term_trunk) = filter.term_trunk {
             if let Some(ref trunk_info) = message.trunk_info {
-                if trunk_info.trunk_type == TrunkType::Termination && trunk_info.trunk_id != *term_trunk {
+                if trunk_info.trunk_type == TrunkType::Termination
+                    && trunk_info.trunk_id != *term_trunk
+                {
                     return false;
                 }
             }
         }
-        
+
         // ANI/DNIS filter
         if let Some(ref call_info) = message.call_info {
             if let Some(ref ani_filter) = filter.ani {
@@ -373,7 +380,7 @@ impl SipDebugCli {
                     return false;
                 }
             }
-            
+
             if let Some(ref dnis_filter) = filter.dnis {
                 if let Some(ref dnis) = call_info.dnis {
                     if !dnis.contains(dnis_filter) {
@@ -383,7 +390,7 @@ impl SipDebugCli {
                     return false;
                 }
             }
-            
+
             // Response code filter
             if !filter.response_codes.is_empty() {
                 if let Some(code) = call_info.response_code {
@@ -394,29 +401,36 @@ impl SipDebugCli {
                     return false;
                 }
             }
-            
+
             // Method filter
             if !filter.methods.is_empty() {
                 if let Some(ref method) = call_info.method {
-                    if !filter.methods.iter().any(|m| m.eq_ignore_ascii_case(method)) {
+                    if !filter
+                        .methods
+                        .iter()
+                        .any(|m| m.eq_ignore_ascii_case(method))
+                    {
                         return false;
                     }
                 } else {
                     return false;
                 }
             }
-            
+
             // Call-ID filter
             if let Some(ref call_id_filter) = filter.call_id {
                 if !call_info.call_id.contains(call_id_filter) {
                     return false;
                 }
             }
-            
+
             // User-Agent filter
             if let Some(ref ua_filter) = filter.user_agent {
                 if let Some(ref user_agent) = call_info.user_agent {
-                    if !user_agent.to_lowercase().contains(&ua_filter.to_lowercase()) {
+                    if !user_agent
+                        .to_lowercase()
+                        .contains(&ua_filter.to_lowercase())
+                    {
                         return false;
                     }
                 } else {
@@ -424,21 +438,23 @@ impl SipDebugCli {
                 }
             }
         }
-        
+
         // IP address filter
         if let Some(ip_filter) = filter.ip_address {
-            if message.message.source.ip() != ip_filter && message.message.destination.ip() != ip_filter {
+            if message.message.source.ip() != ip_filter
+                && message.message.destination.ip() != ip_filter
+            {
                 return false;
             }
         }
-        
+
         // Time range filter
         if let Some((start, end)) = filter.time_range {
             if message.timing.received_at < start || message.timing.received_at > end {
                 return false;
             }
         }
-        
+
         // Regex filter
         if let Some(ref regex) = filter.regex_filter {
             let message_text = format!("{:?}", message.message);
@@ -446,20 +462,20 @@ impl SipDebugCli {
                 return false;
             }
         }
-        
+
         true
     }
-    
+
     /// Start interactive CLI mode
     async fn start_interactive_mode(&self) -> Result<()> {
         println!("{}", self.format_help());
-        
+
         let stdin = stdin();
         let mut stdout = stdout().into_raw_mode()?;
-        
+
         write!(stdout, "{}{}", clear::All, cursor::Goto(1, 1))?;
         stdout.flush()?;
-        
+
         for key in stdin.keys() {
             match key? {
                 Key::Char('q') => {
@@ -482,7 +498,12 @@ impl SipDebugCli {
                     self.clear_buffer().await;
                 }
                 Key::Char('p') => {
-                    write!(stdout, "{}{}", clear::All, self.format_recent_messages().await)?;
+                    write!(
+                        stdout,
+                        "{}{}",
+                        clear::All,
+                        self.format_recent_messages().await
+                    )?;
                 }
                 Key::Char('e') => {
                     self.export_messages().await?;
@@ -492,23 +513,25 @@ impl SipDebugCli {
             }
             stdout.flush()?;
         }
-        
+
         Ok(())
     }
-    
+
     /// Format debug message for display
     fn format_debug_message(message: &SipDebugMessage, config: &SipDebugConfig) -> String {
         let mut output = String::new();
-        
+
         // Timestamp
         if config.show_timestamps {
-            let timestamp = message.timing.received_at
+            let timestamp = message
+                .timing
+                .received_at
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or(Duration::ZERO)
                 .as_secs();
             output.push_str(&format!("[{}] ", timestamp).dimmed().to_string());
         }
-        
+
         // Direction indicator
         let direction_str = match message.direction {
             MessageDirection::Inbound => "→".green(),
@@ -516,12 +539,14 @@ impl SipDebugCli {
             MessageDirection::Internal => "↔".yellow(),
         };
         output.push_str(&format!("{} ", direction_str));
-        
+
         // Source and destination
-        output.push_str(&format!("{} → {} ", 
+        output.push_str(&format!(
+            "{} → {} ",
             message.message.source.to_string().cyan(),
-            message.message.destination.to_string().magenta()));
-        
+            message.message.destination.to_string().magenta()
+        ));
+
         // Method/Response
         if let Some(ref call_info) = message.call_info {
             if let Some(ref method) = call_info.method {
@@ -539,7 +564,7 @@ impl SipDebugCli {
                 output.push_str(&color_code.to_string());
             }
         }
-        
+
         // Call information
         if let Some(ref call_info) = message.call_info {
             if let Some(ref ani) = call_info.ani {
@@ -552,7 +577,7 @@ impl SipDebugCli {
                 output.push_str(&format!(" Call-ID:{}", call_info.call_id.dimmed()));
             }
         }
-        
+
         // Trunk information
         if let Some(ref trunk_info) = message.trunk_info {
             let trunk_color = match trunk_info.trunk_type {
@@ -563,7 +588,7 @@ impl SipDebugCli {
             };
             output.push_str(&format!(" Trunk:{}", trunk_color));
         }
-        
+
         // Processing result
         if let Some(ref result) = message.processing_result {
             let status_str = match result.status {
@@ -574,16 +599,16 @@ impl SipDebugCli {
                 ProcessingStatus::Retrying => "↻".bright_yellow(),
             };
             output.push_str(&format!(" {}", status_str));
-            
+
             if let Some(ref route) = result.route_decision {
                 output.push_str(&format!(" Route:{}", route.bright_blue()));
             }
-            
+
             if let Some(ref error) = result.error_message {
                 output.push_str(&format!(" Error:{}", error.bright_red()));
             }
         }
-        
+
         // Response time
         if let Some(response_time) = message.timing.response_time {
             let time_color = if response_time.as_millis() < 100 {
@@ -595,32 +620,43 @@ impl SipDebugCli {
             };
             output.push_str(&format!(" {}ms", time_color));
         }
-        
+
         output.push('\n');
-        
+
         // Show message details if enabled
         if config.show_details {
             // TODO: Add formatted SIP message content
         }
-        
+
         output
     }
-    
+
     /// Format CLI header
     fn format_header(&self) -> String {
-        format!("{}{}{}",
+        format!(
+            "{}{}{}",
             "🔍 Redfire Switch - SIP Debug CLI".bright_green().bold(),
-            "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n".dimmed(),
-            "Press 'h' for help, 'q' to quit, 's' for statistics\n".bright_yellow())
+            "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                .dimmed(),
+            "Press 'h' for help, 'q' to quit, 's' for statistics\n".bright_yellow()
+        )
     }
-    
+
     /// Format help text
     fn format_help(&self) -> String {
-        let inbound_outbound_internal = format!("  {} Inbound   {} Outbound   {} Internal\n",
-            "→".green(), "←".blue(), "↔".yellow());
-        let success_failed_routed = format!("  {} Success   {} Failed     {} Routed\n",
-            "✓".bright_green(), "✗".bright_red(), "→".bright_blue());
-            
+        let inbound_outbound_internal = format!(
+            "  {} Inbound   {} Outbound   {} Internal\n",
+            "→".green(),
+            "←".blue(),
+            "↔".yellow()
+        );
+        let success_failed_routed = format!(
+            "  {} Success   {} Failed     {} Routed\n",
+            "✓".bright_green(),
+            "✗".bright_red(),
+            "→".bright_blue()
+        );
+
         format!("{}{}{}{}{}{}{}{}{}{}",
             "📖 SIP Debug CLI Help\n".bright_green().bold(),
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n".dimmed(),
@@ -634,61 +670,78 @@ impl SipDebugCli {
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n".dimmed(),
         )
     }
-    
+
     /// Format statistics
     async fn format_statistics(&self) -> String {
         let stats = self.statistics.read().await;
         let uptime = if let Some(start_time) = stats.start_time {
-            SystemTime::now().duration_since(start_time).unwrap_or(Duration::ZERO)
+            SystemTime::now()
+                .duration_since(start_time)
+                .unwrap_or(Duration::ZERO)
         } else {
             Duration::ZERO
         };
-        
-        format!("{}{}{}{}{}{}{}{}{}{}{}{}",
+
+        format!(
+            "{}{}{}{}{}{}{}{}{}{}{}{}",
             "📊 SIP Debug Statistics\n".bright_green().bold(),
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n".dimmed(),
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                .dimmed(),
             format!("Uptime: {}s\n", uptime.as_secs()),
             format!("Total Messages: {}\n", stats.total_messages),
             format!("Filtered Messages: {}\n", stats.filtered_messages),
             format!("Messages/Second: {:.2}\n", stats.messages_per_second),
             format!("INVITE Requests: {}\n", stats.invites),
-            format!("2xx Responses: {}\n", stats.responses_2xx.to_string().green()),
-            format!("4xx Responses: {}\n", stats.responses_4xx.to_string().yellow()),
+            format!(
+                "2xx Responses: {}\n",
+                stats.responses_2xx.to_string().green()
+            ),
+            format!(
+                "4xx Responses: {}\n",
+                stats.responses_4xx.to_string().yellow()
+            ),
             format!("5xx Responses: {}\n", stats.responses_5xx.to_string().red()),
-            format!("6xx Responses: {}\n", stats.responses_6xx.to_string().bright_red()),
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n".dimmed(),
+            format!(
+                "6xx Responses: {}\n",
+                stats.responses_6xx.to_string().bright_red()
+            ),
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                .dimmed(),
         )
     }
-    
+
     /// Format recent messages
     async fn format_recent_messages(&self) -> String {
         let buffer = self.message_buffer.read().await;
         let mut output = String::new();
-        
+
         output.push_str(&"📝 Recent SIP Messages\n".bright_green().bold());
-        output.push_str(&"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n".dimmed());
-        
+        output.push_str(
+            &"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                .dimmed(),
+        );
+
         for message in buffer.iter().rev().take(20) {
             output.push_str(&Self::format_debug_message(message, &self.config));
         }
-        
+
         output
     }
-    
+
     /// Clear message buffer
     async fn clear_buffer(&self) {
         let mut buffer = self.message_buffer.write().await;
         buffer.clear();
-        
+
         let mut stats = self.statistics.write().await;
         stats.filtered_messages = 0;
     }
-    
+
     /// Export messages
     async fn export_messages(&self) -> Result<()> {
         let buffer = self.message_buffer.read().await;
         let export_data = buffer.iter().cloned().collect::<Vec<_>>();
-        
+
         match self.config.export_format {
             ExportFormat::Json => {
                 let json = serde_json::to_string_pretty(&export_data)?;
@@ -708,23 +761,23 @@ impl SipDebugCli {
                 // TODO: Implement PCAP export
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Apply filter from command string
     pub async fn apply_filter(&self, filter_command: &str) -> Result<()> {
         let mut filter = self.current_filter.write().await;
-        
+
         // Parse filter command
         let parts: Vec<&str> = filter_command.split(':').collect();
         if parts.len() != 2 {
             return Err(anyhow!("Invalid filter format. Use type:value"));
         }
-        
+
         let filter_type = parts[0].trim();
         let filter_value = parts[1].trim();
-        
+
         match filter_type {
             "orig_trunk" => filter.orig_trunk = Some(filter_value.to_string()),
             "term_trunk" => filter.term_trunk = Some(filter_value.to_string()),
@@ -741,11 +794,11 @@ impl SipDebugCli {
             "regex" => filter.regex_filter = Some(Regex::new(filter_value)?),
             _ => return Err(anyhow!("Unknown filter type: {}", filter_type)),
         }
-        
+
         info!("Applied filter: {} = {}", filter_type, filter_value);
         Ok(())
     }
-    
+
     /// Clear all filters
     pub async fn clear_filters(&self) {
         let mut filter = self.current_filter.write().await;
@@ -757,7 +810,7 @@ impl SipDebugCli {
 /// Utility functions for SIP debugging
 pub mod utils {
     use super::*;
-    
+
     /// Extract call information from SIP message
     pub fn extract_call_info(message: &SipMessage) -> CallInfo {
         let mut call_info = CallInfo {
@@ -769,13 +822,13 @@ pub mod utils {
             response_code: None,
             cseq: None,
         };
-        
+
         // TODO: Implement actual SIP header parsing
         // This is a placeholder implementation
-        
+
         call_info
     }
-    
+
     /// Create debug message from SIP message
     pub fn create_debug_message(
         sip_message: SipMessage,
@@ -783,7 +836,7 @@ pub mod utils {
         trunk_info: Option<TrunkInfo>,
     ) -> SipDebugMessage {
         let call_info = extract_call_info(&sip_message);
-        
+
         SipDebugMessage {
             message: sip_message,
             direction,
@@ -802,12 +855,12 @@ pub mod utils {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_message_filter() {
         // TODO: Add tests for message filtering
     }
-    
+
     #[test]
     fn test_color_formatting() {
         // TODO: Add tests for color formatting

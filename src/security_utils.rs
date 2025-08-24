@@ -3,18 +3,18 @@
  * Provides secure input validation, sanitization, and logging functions
  */
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use regex::Regex;
 use std::sync::OnceLock;
-use tracing::{warn, error};
+use tracing::{error, warn};
 
 // Security constants
-pub const MAX_SIP_MESSAGE_SIZE: usize = 65536;      // 64KB max SIP message
-pub const MAX_HEADER_LENGTH: usize = 2048;          // 2KB max header
-pub const MAX_PHONE_NUMBER_LENGTH: usize = 20;      // E.164 max length
-pub const MAX_ISUP_SIZE: usize = 4096;              // 4KB max ISUP data
+pub const MAX_SIP_MESSAGE_SIZE: usize = 65536; // 64KB max SIP message
+pub const MAX_HEADER_LENGTH: usize = 2048; // 2KB max header
+pub const MAX_PHONE_NUMBER_LENGTH: usize = 20; // E.164 max length
+pub const MAX_ISUP_SIZE: usize = 4096; // 4KB max ISUP data
 pub const MAX_HEX_INPUT_SIZE: usize = MAX_ISUP_SIZE * 2; // Hex is 2x binary size
-pub const MAX_JWT_SIZE: usize = 4096;               // 4KB max JWT token
+pub const MAX_JWT_SIZE: usize = 4096; // 4KB max JWT token
 
 // Static regex patterns for validation
 static SAFE_LOGGING_REGEX: OnceLock<Regex> = OnceLock::new();
@@ -29,19 +29,16 @@ pub fn init_security() {
     SAFE_LOGGING_REGEX.get_or_init(|| {
         Regex::new(r"[^a-zA-Z0-9+\-().\s@:/_]").expect("Invalid safe logging regex")
     });
-    
-    PHONE_NUMBER_REGEX.get_or_init(|| {
-        Regex::new(r"^\+?[1-9]\d{7,18}$").expect("Invalid phone number regex")
-    });
-    
+
+    PHONE_NUMBER_REGEX
+        .get_or_init(|| Regex::new(r"^\+?[1-9]\d{7,18}$").expect("Invalid phone number regex"));
+
     SIP_URI_REGEX.get_or_init(|| {
         Regex::new(r"^sip:[a-zA-Z0-9+\-._]+@[a-zA-Z0-9.\-]+$").expect("Invalid SIP URI regex")
     });
-    
-    HEX_REGEX.get_or_init(|| {
-        Regex::new(r"^[0-9a-fA-F\s]*$").expect("Invalid hex regex")
-    });
-    
+
+    HEX_REGEX.get_or_init(|| Regex::new(r"^[0-9a-fA-F\s]*$").expect("Invalid hex regex"));
+
     HEADER_NAME_REGEX.get_or_init(|| {
         Regex::new(r"^[a-zA-Z][a-zA-Z0-9\-]*$").expect("Invalid header name regex")
     });
@@ -54,8 +51,13 @@ pub fn sanitize_for_logging(input: &str) -> String {
         Some(regex) => regex,
         None => {
             // Fallback: basic character filtering if regex not initialized
-            let truncated = if input.len() > 256 { &input[..256] } else { input };
-            let result: String = truncated.chars()
+            let truncated = if input.len() > 256 {
+                &input[..256]
+            } else {
+                input
+            };
+            let result: String = truncated
+                .chars()
                 .map(|c| {
                     if c.is_alphanumeric() || " .-+()@:/_".contains(c) {
                         c
@@ -67,7 +69,7 @@ pub fn sanitize_for_logging(input: &str) -> String {
             return result;
         }
     };
-    
+
     // Truncate overly long inputs
     let truncated = if input.len() > 256 {
         warn!("Truncating oversized input for logging");
@@ -75,7 +77,7 @@ pub fn sanitize_for_logging(input: &str) -> String {
     } else {
         input
     };
-    
+
     // Replace unsafe characters with underscores
     regex.replace_all(truncated, "_").to_string()
 }
@@ -85,12 +87,12 @@ pub fn mask_phone_number(number: &str) -> String {
     if number.is_empty() {
         return "****".to_string();
     }
-    
+
     // Remove non-numeric characters for processing
     let digits: String = number.chars().filter(|c| c.is_ascii_digit()).collect();
-    
+
     if digits.len() > 4 {
-        format!("{}****{}", &digits[..2], &digits[digits.len()-2..])
+        format!("{}****{}", &digits[..2], &digits[digits.len() - 2..])
     } else if digits.len() > 0 {
         "****".to_string()
     } else {
@@ -114,21 +116,26 @@ pub fn validate_header(header_name: &str, header_value: &str) -> Result<()> {
     if !name_regex.is_match(header_name) {
         return Err(anyhow!("Invalid SIP header name format"));
     }
-    
+
     // Validate header size
     if header_value.len() > MAX_HEADER_LENGTH {
-        error!("Header '{}' exceeds maximum length: {} bytes", 
-               sanitize_for_logging(header_name), header_value.len());
+        error!(
+            "Header '{}' exceeds maximum length: {} bytes",
+            sanitize_for_logging(header_name),
+            header_value.len()
+        );
         return Err(anyhow!("SIP header exceeds maximum allowed size"));
     }
-    
+
     // Check for header injection attacks (CRLF injection)
     if header_value.contains('\r') || header_value.contains('\n') {
-        error!("Potential header injection attack detected in header '{}'", 
-               sanitize_for_logging(header_name));
+        error!(
+            "Potential header injection attack detected in header '{}'",
+            sanitize_for_logging(header_name)
+        );
         return Err(anyhow!("Invalid characters in SIP header"));
     }
-    
+
     Ok(())
 }
 
@@ -137,33 +144,34 @@ pub fn validate_phone_number(number: &str) -> Result<String> {
     if number.len() > MAX_PHONE_NUMBER_LENGTH {
         return Err(anyhow!("Phone number exceeds maximum length"));
     }
-    
+
     let regex = PHONE_NUMBER_REGEX.get().expect("Security not initialized");
-    
+
     // Clean the number (remove common formatting)
-    let cleaned = number.chars()
+    let cleaned = number
+        .chars()
         .filter(|c| c.is_ascii_digit() || *c == '+')
         .collect::<String>();
-    
+
     if !regex.is_match(&cleaned) {
         return Err(anyhow!("Invalid phone number format"));
     }
-    
+
     Ok(cleaned)
 }
 
 /// Validate SIP URI format
 pub fn validate_sip_uri(uri: &str) -> Result<()> {
     let regex = SIP_URI_REGEX.get().expect("Security not initialized");
-    
+
     if uri.len() > 256 {
         return Err(anyhow!("SIP URI exceeds maximum length"));
     }
-    
+
     if !regex.is_match(uri) {
         return Err(anyhow!("Invalid SIP URI format"));
     }
-    
+
     Ok(())
 }
 
@@ -174,28 +182,32 @@ pub fn validate_and_decode_hex(hex_input: &str) -> Result<Vec<u8>> {
         error!("Hex input exceeds maximum size: {} chars", hex_input.len());
         return Err(anyhow!("Hex input exceeds maximum allowed size"));
     }
-    
+
     // Format validation
     let hex_regex = HEX_REGEX.get().expect("Security not initialized");
     if !hex_regex.is_match(hex_input) {
         return Err(anyhow!("Invalid hex format - contains illegal characters"));
     }
-    
+
     // Clean whitespace
-    let cleaned = hex_input.chars()
+    let cleaned = hex_input
+        .chars()
         .filter(|c| !c.is_whitespace())
         .collect::<String>();
-    
+
     // Validate even length
     if cleaned.len() % 2 != 0 {
         return Err(anyhow!("Invalid hex data - odd number of characters"));
     }
-    
+
     // Decode with size check
     match hex::decode(&cleaned) {
         Ok(data) => {
             if data.len() > MAX_ISUP_SIZE {
-                error!("Decoded hex data exceeds maximum size: {} bytes", data.len());
+                error!(
+                    "Decoded hex data exceeds maximum size: {} bytes",
+                    data.len()
+                );
                 return Err(anyhow!("Decoded data exceeds maximum allowed size"));
             }
             Ok(data)
@@ -214,42 +226,60 @@ pub fn validate_jwt_token(token: &str) -> Result<()> {
         error!("JWT token exceeds maximum size: {} chars", token.len());
         return Err(anyhow!("JWT token exceeds maximum allowed size"));
     }
-    
+
     // Validate JWT structure (header.payload.signature)
     let parts: Vec<&str> = token.split('.').collect();
     if parts.len() != 3 {
         return Err(anyhow!("Invalid JWT format - must have 3 parts"));
     }
-    
+
     // Validate each part is valid base64
     for (i, part) in parts.iter().enumerate() {
         if part.is_empty() {
             return Err(anyhow!("Invalid JWT format - empty part {}", i));
         }
-        
+
         // Basic base64 character validation
-        if !part.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
-            return Err(anyhow!("Invalid JWT format - illegal characters in part {}", i));
+        if !part
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+        {
+            return Err(anyhow!(
+                "Invalid JWT format - illegal characters in part {}",
+                i
+            ));
         }
     }
-    
+
     Ok(())
 }
 
 /// Safe string slicing with bounds checking
 pub fn safe_slice(input: &str, start: usize, end: usize) -> Result<&str> {
     if start > input.len() {
-        return Err(anyhow!("Start index {} exceeds string length {}", start, input.len()));
+        return Err(anyhow!(
+            "Start index {} exceeds string length {}",
+            start,
+            input.len()
+        ));
     }
-    
+
     if end > input.len() {
-        return Err(anyhow!("End index {} exceeds string length {}", end, input.len()));
+        return Err(anyhow!(
+            "End index {} exceeds string length {}",
+            end,
+            input.len()
+        ));
     }
-    
+
     if start > end {
-        return Err(anyhow!("Start index {} is greater than end index {}", start, end));
+        return Err(anyhow!(
+            "Start index {} is greater than end index {}",
+            start,
+            end
+        ));
     }
-    
+
     Ok(&input[start..end])
 }
 
@@ -269,14 +299,15 @@ impl RateLimiter {
             requests: std::collections::HashMap::new(),
         }
     }
-    
+
     pub fn check_rate_limit(&mut self, ip: std::net::IpAddr) -> bool {
         let now = std::time::Instant::now();
         let window_duration = std::time::Duration::from_secs(self.window_seconds);
-        
+
         // Clean old entries
-        self.requests.retain(|_, (_, timestamp)| now.duration_since(*timestamp) < window_duration);
-        
+        self.requests
+            .retain(|_, (_, timestamp)| now.duration_since(*timestamp) < window_duration);
+
         // Check current IP
         match self.requests.get_mut(&ip) {
             Some((count, timestamp)) => {
@@ -295,7 +326,7 @@ impl RateLimiter {
                 self.requests.insert(ip, (1, now));
             }
         }
-        
+
         true
     }
 }
@@ -303,43 +334,43 @@ impl RateLimiter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_sanitize_for_logging() {
         init_security();
-        
+
         assert_eq!(sanitize_for_logging("normal@test.com"), "normal@test.com");
         assert_eq!(sanitize_for_logging("evil\r\ninjection"), "evil__injection");
         assert_eq!(sanitize_for_logging("script<>alert"), "script__alert");
     }
-    
+
     #[test]
     fn test_mask_phone_number() {
         assert_eq!(mask_phone_number("+15551234567"), "15****67");
         assert_eq!(mask_phone_number("123"), "****");
         assert_eq!(mask_phone_number(""), "****");
     }
-    
+
     #[test]
     fn test_validate_phone_number() {
         init_security();
-        
+
         assert!(validate_phone_number("+15551234567").is_ok());
         assert!(validate_phone_number("15551234567").is_ok());
         assert!(validate_phone_number("invalid").is_err());
         assert!(validate_phone_number("").is_err());
     }
-    
+
     #[test]
     fn test_validate_hex() {
         init_security();
-        
+
         assert!(validate_and_decode_hex("48656c6c6f").is_ok());
         assert!(validate_and_decode_hex("48 65 6c 6c 6f").is_ok());
         assert!(validate_and_decode_hex("invalid").is_err());
         assert!(validate_and_decode_hex("4865g").is_err());
     }
-    
+
     #[test]
     fn test_safe_slice() {
         assert!(safe_slice("hello", 0, 3).is_ok());

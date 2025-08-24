@@ -8,15 +8,15 @@
  * - Bidirectional event negotiation and transport
  */
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
+use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::io::Cursor;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{RwLock, mpsc};
-use tracing::{debug, info, warn, error};
-use serde::{Serialize, Deserialize};
-use byteorder::{BigEndian, ByteOrder, WriteBytesExt, ReadBytesExt};
-use std::io::Cursor;
+use tokio::sync::{mpsc, RwLock};
+use tracing::{debug, error, info, warn};
 
 use crate::dtmf_processor::{DtmfEvent, DtmfSource};
 
@@ -49,15 +49,15 @@ pub enum Rfc2833EventId {
     Dtmf7 = 7,
     Dtmf8 = 8,
     Dtmf9 = 9,
-    DtmfStar = 10,   // *
-    DtmfHash = 11,   // #
+    DtmfStar = 10, // *
+    DtmfHash = 11, // #
     DtmfA = 12,
     DtmfB = 13,
     DtmfC = 14,
     DtmfD = 15,
-    
+
     // Telephony Events (16-31)
-    Flash = 16,           // Hook flash
+    Flash = 16, // Hook flash
     Reserved17 = 17,
     Reserved18 = 18,
     Reserved19 = 19,
@@ -73,7 +73,7 @@ pub enum Rfc2833EventId {
     Reserved29 = 29,
     Reserved30 = 30,
     Reserved31 = 31,
-    
+
     // Tone Events (32-63)
     DialTone = 32,        // Dial tone
     RingbackTone = 33,    // Ringback tone
@@ -91,7 +91,7 @@ pub enum Rfc2833EventId {
     Reserved45 = 45,
     Reserved46 = 46,
     Reserved47 = 47,
-    
+
     // Country-specific tones (48-63)
     CountryTone48 = 48,
     CountryTone49 = 49,
@@ -134,7 +134,7 @@ impl Rfc2833EventId {
             _ => None,
         }
     }
-    
+
     /// Convert RFC 2833 event ID to DTMF character
     pub fn to_dtmf_char(self) -> Option<char> {
         match self {
@@ -157,17 +157,17 @@ impl Rfc2833EventId {
             _ => None,
         }
     }
-    
+
     /// Check if event ID is a DTMF event
     pub fn is_dtmf(self) -> bool {
         matches!(self as u8, 0..=15)
     }
-    
+
     /// Check if event ID is a telephony event
     pub fn is_telephony(self) -> bool {
         matches!(self as u8, 16..=31)
     }
-    
+
     /// Check if event ID is a tone event
     pub fn is_tone(self) -> bool {
         matches!(self as u8, 32..=63)
@@ -200,7 +200,7 @@ impl Rfc2833Event {
             duration,
         }
     }
-    
+
     /// Create end-of-event marker
     pub fn end_event(event_id: Rfc2833EventId, volume: u8, duration: u16) -> Self {
         Self {
@@ -211,14 +211,14 @@ impl Rfc2833Event {
             duration,
         }
     }
-    
+
     /// Serialize to RFC 2833 packet format
     pub fn to_bytes(&self) -> Result<Vec<u8>> {
         let mut bytes = Vec::with_capacity(4);
-        
+
         // Byte 0: Event ID
         bytes.push(self.event_id as u8);
-        
+
         // Byte 1: E|R|Volume
         let mut flags_volume = self.volume & 0x3F; // Volume is 6 bits
         if self.end_of_event {
@@ -228,19 +228,19 @@ impl Rfc2833Event {
             flags_volume |= 0x40; // Set R bit (should be 0)
         }
         bytes.push(flags_volume);
-        
+
         // Bytes 2-3: Duration (big-endian)
         bytes.write_u16::<BigEndian>(self.duration)?;
-        
+
         Ok(bytes)
     }
-    
+
     /// Deserialize from RFC 2833 packet format
     pub fn from_bytes(data: &[u8]) -> Result<Self> {
         if data.len() < 4 {
             return Err(anyhow!("RFC 2833 packet too short: {} bytes", data.len()));
         }
-        
+
         let event_id = match data[0] {
             0 => Rfc2833EventId::Dtmf0,
             1 => Rfc2833EventId::Dtmf1,
@@ -267,15 +267,15 @@ impl Rfc2833Event {
             37 => Rfc2833EventId::WarningTone,
             id => return Err(anyhow!("Unknown RFC 2833 event ID: {}", id)),
         };
-        
+
         let flags_volume = data[1];
         let end_of_event = (flags_volume & 0x80) != 0;
         let reserved = (flags_volume & 0x40) != 0;
         let volume = flags_volume & 0x3F;
-        
+
         let mut cursor = Cursor::new(&data[2..4]);
         let duration = cursor.read_u16::<BigEndian>()?;
-        
+
         Ok(Self {
             event_id,
             end_of_event,
@@ -313,7 +313,7 @@ impl Rfc2833Processor {
     pub fn new(event_sender: mpsc::UnboundedSender<DtmfEvent>) -> Self {
         let mut payload_types = HashMap::new();
         payload_types.insert(101, Rfc2833PayloadType::TelephoneEvent(101)); // Default
-        
+
         Self {
             payload_types,
             active_events: Arc::new(RwLock::new(HashMap::new())),
@@ -321,19 +321,22 @@ impl Rfc2833Processor {
             clock_rate: 8000,
         }
     }
-    
+
     /// Add payload type mapping
     pub fn add_payload_type(&mut self, pt: u8, event_type: Rfc2833PayloadType) {
         self.payload_types.insert(pt, event_type);
-        debug!("Added RFC 2833 payload type mapping: {} -> {:?}", pt, event_type);
+        debug!(
+            "Added RFC 2833 payload type mapping: {} -> {:?}",
+            pt, event_type
+        );
     }
-    
+
     /// Remove payload type mapping
     pub fn remove_payload_type(&mut self, pt: u8) {
         self.payload_types.remove(&pt);
         debug!("Removed RFC 2833 payload type mapping: {}", pt);
     }
-    
+
     /// Process incoming RFC 2833 RTP packet
     pub async fn process_incoming_packet(
         &self,
@@ -346,17 +349,21 @@ impl Rfc2833Processor {
         if !self.payload_types.contains_key(&payload_type) {
             return Ok(()); // Not an RFC 2833 packet
         }
-        
+
         // Parse RFC 2833 event
         let event = Rfc2833Event::from_bytes(payload)?;
-        debug!("Received RFC 2833 event: {:?} for session {}", event, session_id);
-        
+        debug!(
+            "Received RFC 2833 event: {:?} for session {}",
+            event, session_id
+        );
+
         // Handle event
-        self.handle_incoming_event(session_id, timestamp, event).await?;
-        
+        self.handle_incoming_event(session_id, timestamp, event)
+            .await?;
+
         Ok(())
     }
-    
+
     /// Handle incoming RFC 2833 event
     async fn handle_incoming_event(
         &self,
@@ -366,14 +373,13 @@ impl Rfc2833Processor {
     ) -> Result<()> {
         let mut active_events = self.active_events.write().await;
         let now = Instant::now();
-        
+
         if event.end_of_event {
             // End of event
             if let Some(active_event) = active_events.remove(session_id) {
-                let total_duration = Duration::from_millis(
-                    (event.duration as u64 * 1000) / self.clock_rate as u64
-                );
-                
+                let total_duration =
+                    Duration::from_millis((event.duration as u64 * 1000) / self.clock_rate as u64);
+
                 // Convert to DTMF event if applicable
                 if let Some(digit) = event.event_id.to_dtmf_char() {
                     let dtmf_event = DtmfEvent::DigitDetected {
@@ -383,13 +389,15 @@ impl Rfc2833Processor {
                         confidence: self.volume_to_confidence(event.volume),
                         source: DtmfSource::Rfc2833,
                     };
-                    
+
                     if let Err(e) = self.event_sender.send(dtmf_event) {
                         warn!("Failed to send DTMF event from RFC 2833: {}", e);
                     }
-                    
-                    info!("RFC 2833 DTMF '{}' completed for session {} (duration: {:?})", 
-                          digit, session_id, total_duration);
+
+                    info!(
+                        "RFC 2833 DTMF '{}' completed for session {} (duration: {:?})",
+                        digit, session_id, total_duration
+                    );
                 }
             }
         } else {
@@ -410,22 +418,28 @@ impl Rfc2833Processor {
                         start_time: now,
                         packet_count: 1,
                     };
-                    
+
                     active_events.insert(session_id.to_string(), active_event);
-                    
+
                     // Log start of event
                     if let Some(digit) = event.event_id.to_dtmf_char() {
-                        debug!("RFC 2833 DTMF '{}' started for session {}", digit, session_id);
+                        debug!(
+                            "RFC 2833 DTMF '{}' started for session {}",
+                            digit, session_id
+                        );
                     } else {
-                        debug!("RFC 2833 event {:?} started for session {}", event.event_id, session_id);
+                        debug!(
+                            "RFC 2833 event {:?} started for session {}",
+                            event.event_id, session_id
+                        );
                     }
                 }
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Generate RFC 2833 event packets for outgoing DTMF
     pub async fn generate_outgoing_packets(
         &self,
@@ -437,19 +451,19 @@ impl Rfc2833Processor {
     ) -> Result<Vec<(u32, Vec<u8>)>> {
         let event_id = Rfc2833EventId::from_dtmf_char(digit)
             .ok_or_else(|| anyhow!("Invalid DTMF digit for RFC 2833: {}", digit))?;
-        
+
         let mut packets = Vec::new();
-        
+
         // Calculate timing parameters
         let duration_samples = (duration_ms as u64 * self.clock_rate as u64) / 1000;
         let packet_interval = self.clock_rate / 50; // 20ms packets at 8kHz = 160 samples
         let total_packets = (duration_samples / packet_interval as u64).max(1) as u32;
-        
+
         // Generate event packets
         for i in 0..total_packets {
             let timestamp = start_timestamp + (i * packet_interval);
             let current_duration = ((i + 1) * packet_interval).min(duration_samples as u32);
-            
+
             let event = if i == total_packets - 1 {
                 // Last packet - mark as end of event
                 Rfc2833Event::end_event(event_id, volume, current_duration as u16)
@@ -457,28 +471,33 @@ impl Rfc2833Processor {
                 // Regular event packet
                 Rfc2833Event::new(event_id, volume, current_duration as u16)
             };
-            
+
             let packet_data = event.to_bytes()?;
             packets.push((timestamp, packet_data));
         }
-        
+
         // Send end-of-event packets (RFC recommends sending 3 copies)
         if total_packets > 0 {
             let final_timestamp = start_timestamp + duration_samples as u32;
             let end_event = Rfc2833Event::end_event(event_id, volume, duration_samples as u16);
             let end_packet_data = end_event.to_bytes()?;
-            
+
             for _ in 0..3 {
                 packets.push((final_timestamp, end_packet_data.clone()));
             }
         }
-        
-        info!("Generated {} RFC 2833 packets for DTMF '{}' (session: {}, duration: {}ms)", 
-              packets.len(), digit, session_id, duration_ms);
-        
+
+        info!(
+            "Generated {} RFC 2833 packets for DTMF '{}' (session: {}, duration: {}ms)",
+            packets.len(),
+            digit,
+            session_id,
+            duration_ms
+        );
+
         Ok(packets)
     }
-    
+
     /// Convert volume level to confidence score
     fn volume_to_confidence(&self, volume: u8) -> f32 {
         // RFC 2833 volume: 0 = loudest, 63 = softest
@@ -486,41 +505,41 @@ impl Rfc2833Processor {
         let normalized_volume = (63 - volume.min(63)) as f32 / 63.0;
         0.5 + (normalized_volume * 0.5) // Range: 0.5 to 1.0
     }
-    
+
     /// Get active events statistics
     pub async fn get_active_events(&self) -> HashMap<String, Rfc2833EventStats> {
         let active_events = self.active_events.read().await;
         let mut stats = HashMap::new();
-        
+
         for (session_id, active_event) in active_events.iter() {
             let event_stats = Rfc2833EventStats {
                 session_id: session_id.clone(),
                 event_id: active_event.event.event_id,
                 start_time: active_event.start_time,
                 duration: Duration::from_millis(
-                    (active_event.event.duration as u64 * 1000) / self.clock_rate as u64
+                    (active_event.event.duration as u64 * 1000) / self.clock_rate as u64,
                 ),
                 packet_count: active_event.packet_count,
                 volume: active_event.event.volume,
             };
             stats.insert(session_id.clone(), event_stats);
         }
-        
+
         stats
     }
-    
+
     /// Clean up stale events (events that haven't been updated recently)
     pub async fn cleanup_stale_events(&self, max_age: Duration) {
         let mut active_events = self.active_events.write().await;
         let now = Instant::now();
         let mut to_remove = Vec::new();
-        
+
         for (session_id, active_event) in active_events.iter() {
             if now.duration_since(active_event.start_time) > max_age {
                 to_remove.push(session_id.clone());
             }
         }
-        
+
         for session_id in to_remove {
             active_events.remove(&session_id);
             warn!("Removed stale RFC 2833 event for session: {}", session_id);
@@ -556,31 +575,34 @@ impl Rfc2833SdpNegotiator {
             preferred_payload_type: 101, // Most common default
         }
     }
-    
+
     /// Generate SDP attribute for RFC 2833 support
     pub fn generate_sdp_attributes(&self) -> Vec<String> {
         let mut attributes = Vec::new();
-        
+
         // Add rtpmap attribute
-        attributes.push(format!("a=rtpmap:{} telephone-event/8000", self.preferred_payload_type));
-        
+        attributes.push(format!(
+            "a=rtpmap:{} telephone-event/8000",
+            self.preferred_payload_type
+        ));
+
         // Add fmtp attribute for supported events
         attributes.push(format!("a=fmtp:{} 0-15", self.preferred_payload_type)); // DTMF events
-        
+
         attributes
     }
-    
+
     /// Parse SDP attributes to extract RFC 2833 configuration
     pub fn parse_sdp_attributes(&self, sdp_lines: &[&str]) -> Result<Rfc2833SdpConfig> {
         let mut config = Rfc2833SdpConfig::default();
-        
+
         for line in sdp_lines {
             if let Some(rtpmap) = line.strip_prefix("a=rtpmap:") {
                 if rtpmap.contains("telephone-event") {
                     let parts: Vec<&str> = rtpmap.split_whitespace().collect();
                     if let Ok(pt) = parts[0].parse::<u8>() {
                         config.payload_type = pt;
-                        
+
                         // Parse clock rate if specified
                         if let Some(format_part) = parts.get(1) {
                             if let Some(rate_part) = format_part.split('/').nth(1) {
@@ -602,14 +624,14 @@ impl Rfc2833SdpNegotiator {
                 }
             }
         }
-        
+
         Ok(config)
     }
-    
+
     /// Parse event list from fmtp attribute
     fn parse_event_list(event_str: &str) -> Result<Vec<u8>> {
         let mut events = Vec::new();
-        
+
         for part in event_str.split(',') {
             let part = part.trim();
             if let Some(dash_pos) = part.find('-') {
@@ -624,7 +646,7 @@ impl Rfc2833SdpNegotiator {
                 events.push(part.parse::<u8>()?);
             }
         }
-        
+
         Ok(events)
     }
 }
@@ -657,17 +679,17 @@ impl Default for Rfc2833SdpConfig {
 mod tests {
     use super::*;
     use tokio::sync::mpsc;
-    
+
     #[test]
     fn test_rfc2833_event_serialization() {
         let event = Rfc2833Event::new(Rfc2833EventId::Dtmf5, 10, 1600);
         let bytes = event.to_bytes().unwrap();
-        
+
         assert_eq!(bytes.len(), 4);
         assert_eq!(bytes[0], 5); // Event ID for '5'
         assert_eq!(bytes[1], 10); // Volume
         assert_eq!((bytes[2] as u16) << 8 | bytes[3] as u16, 1600); // Duration
-        
+
         // Test round-trip
         let decoded = Rfc2833Event::from_bytes(&bytes).unwrap();
         assert_eq!(decoded.event_id as u8, event.event_id as u8);
@@ -675,37 +697,52 @@ mod tests {
         assert_eq!(decoded.duration, event.duration);
         assert_eq!(decoded.end_of_event, event.end_of_event);
     }
-    
+
     #[test]
     fn test_dtmf_char_conversion() {
-        assert_eq!(Rfc2833EventId::from_dtmf_char('5'), Some(Rfc2833EventId::Dtmf5));
-        assert_eq!(Rfc2833EventId::from_dtmf_char('*'), Some(Rfc2833EventId::DtmfStar));
-        assert_eq!(Rfc2833EventId::from_dtmf_char('A'), Some(Rfc2833EventId::DtmfA));
+        assert_eq!(
+            Rfc2833EventId::from_dtmf_char('5'),
+            Some(Rfc2833EventId::Dtmf5)
+        );
+        assert_eq!(
+            Rfc2833EventId::from_dtmf_char('*'),
+            Some(Rfc2833EventId::DtmfStar)
+        );
+        assert_eq!(
+            Rfc2833EventId::from_dtmf_char('A'),
+            Some(Rfc2833EventId::DtmfA)
+        );
         assert_eq!(Rfc2833EventId::from_dtmf_char('X'), None);
-        
+
         assert_eq!(Rfc2833EventId::Dtmf5.to_dtmf_char(), Some('5'));
         assert_eq!(Rfc2833EventId::DtmfStar.to_dtmf_char(), Some('*'));
         assert_eq!(Rfc2833EventId::DtmfA.to_dtmf_char(), Some('A'));
         assert_eq!(Rfc2833EventId::Flash.to_dtmf_char(), None);
     }
-    
+
     #[tokio::test]
     async fn test_rfc2833_processor() {
         let (event_sender, mut event_receiver) = mpsc::unbounded_channel();
         let processor = Rfc2833Processor::new(event_sender);
-        
+
         // Create test event packet
         let event = Rfc2833Event::new(Rfc2833EventId::Dtmf5, 10, 800);
         let packet_data = event.to_bytes().unwrap();
-        
+
         // Process start event
-        processor.process_incoming_packet("test_session", 101, 1000, &packet_data).await.unwrap();
-        
+        processor
+            .process_incoming_packet("test_session", 101, 1000, &packet_data)
+            .await
+            .unwrap();
+
         // Process end event
         let end_event = Rfc2833Event::end_event(Rfc2833EventId::Dtmf5, 10, 1600);
         let end_packet_data = end_event.to_bytes().unwrap();
-        processor.process_incoming_packet("test_session", 101, 1000, &end_packet_data).await.unwrap();
-        
+        processor
+            .process_incoming_packet("test_session", 101, 1000, &end_packet_data)
+            .await
+            .unwrap();
+
         // Should receive DTMF event
         let received_event = event_receiver.try_recv().unwrap();
         match received_event {
@@ -716,21 +753,20 @@ mod tests {
             _ => panic!("Expected DigitDetected event"),
         }
     }
-    
+
     #[test]
     fn test_sdp_negotiation() {
         let negotiator = Rfc2833SdpNegotiator::new();
-        
+
         // Test SDP generation
         let attributes = negotiator.generate_sdp_attributes();
-        assert!(attributes.iter().any(|attr| attr.contains("telephone-event/8000")));
+        assert!(attributes
+            .iter()
+            .any(|attr| attr.contains("telephone-event/8000")));
         assert!(attributes.iter().any(|attr| attr.contains("0-15")));
-        
+
         // Test SDP parsing
-        let sdp_lines = vec![
-            "a=rtpmap:101 telephone-event/8000",
-            "a=fmtp:101 0-15",
-        ];
+        let sdp_lines = vec!["a=rtpmap:101 telephone-event/8000", "a=fmtp:101 0-15"];
         let config = negotiator.parse_sdp_attributes(&sdp_lines).unwrap();
         assert_eq!(config.payload_type, 101);
         assert_eq!(config.clock_rate, 8000);

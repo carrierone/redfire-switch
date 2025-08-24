@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+
+<!-- LCR Toll-Free Call Test: 17028880001 → 18002255288 to 173.193.144.207:5060 -->
+<scenario name="LCR Toll-Free Test">
+  
+  <!-- Send INVITE with specific ANI and DNIS for LCR testing -->
+  <send retrans="500">
+    <![CDATA[
+      INVITE sip:18002255288@[remote_ip]:[remote_port] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=[branch]
+      Max-Forwards: 70
+      From: "Las Vegas Test" <sip:17028880001@[local_ip]:[local_port]>;tag=[call_number]
+      To: <sip:18002255288@[remote_ip]:[remote_port]>
+      Call-ID: [call_id]
+      CSeq: 1 INVITE
+      Contact: <sip:17028880001@[local_ip]:[local_port];transport=[transport]>
+      User-Agent: SIPp LCR Test - Vegas to TollFree
+      Allow: INVITE, ACK, CANCEL, BYE, OPTIONS, INFO, UPDATE
+      P-Asserted-Identity: <sip:17028880001@[local_ip]:[local_port]>
+      Remote-Party-ID: "Las Vegas Caller" <sip:17028880001@[local_ip]:[local_port]>;party=calling;privacy=off
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=lcr_test 12345678 87654321 IN IP[local_ip_type] [local_ip]
+      s=LCR Toll-Free Test Call
+      c=IN IP[media_ip_type] [media_ip]
+      t=0 0
+      m=audio [media_port] RTP/AVP 0 8 101
+      a=rtpmap:0 PCMU/8000
+      a=rtpmap:8 PCMA/8000
+      a=rtpmap:101 telephone-event/8000
+      a=fmtp:101 0-15
+      a=sendrecv
+    ]]>
+  </send>
+
+  <!-- Receive 100 Trying from Redfire Switch -->
+  <recv response="100" optional="true" timeout="2000">
+    <action>
+      <log message="LCR Test: Received 100 Trying from Redfire Switch"/>
+    </action>
+  </recv>
+
+  <!-- Receive 180 Ringing (from egress trunk) -->
+  <recv response="180" optional="true" timeout="10000">
+    <action>
+      <log message="LCR Test: Received 180 Ringing - Call routing to egress trunk"/>
+    </action>
+  </recv>
+
+  <!-- Receive 183 Session Progress (optional) -->
+  <recv response="183" optional="true" timeout="5000">
+    <action>
+      <log message="LCR Test: Received 183 Session Progress"/>
+    </action>
+  </recv>
+
+  <!-- Wait for response - expecting routing based on LCR logic -->
+  <recv response="200,404,503,486,600,480" rtd="true" timeout="30000">
+    <action>
+      <ereg regexp="([0-9]+)" search_in="hdr" header="CSeq:" assign_to="cseq_value"/>
+      <switch variable="1">
+        <case value="200">
+          <log message="LCR Test SUCCESS: Call connected (200 OK) - LCR routing successful"/>
+          <assign assign_to="call_connected" value="true"/>
+        </case>
+        <case value="404">
+          <log message="LCR Test: 404 Not Found - Check egress trunk configuration"/>
+        </case>
+        <case value="503">
+          <log message="LCR Test: 503 Service Unavailable - Check trunk capacity/availability"/>
+        </case>
+        <case value="486">
+          <log message="LCR Test: 486 Busy Here - Trunk busy"/>
+        </case>
+        <case value="600">
+          <log message="LCR Test: 600 Busy Everywhere - All trunks busy"/>
+        </case>
+        <case value="480">
+          <log message="LCR Test: 480 Temporarily Unavailable - Trunk issues"/>
+        </case>
+        <default>
+          <log message="LCR Test: Received response [$1] - Analyze LCR behavior"/>
+        </default>
+      </switch>
+    </action>
+  </recv>
+
+  <!-- If we got 200 OK, send ACK and maintain call -->
+  <nop test="[$call_connected]" next="send_ack"/>
+  
+  <!-- For error responses, just pause and end -->
+  <pause milliseconds="2000"/>
+  <nop next="end"/>
+
+  <!-- Send ACK for successful call -->
+  <label id="send_ack"/>
+  <send>
+    <![CDATA[
+      ACK sip:18002255288@[remote_ip]:[remote_port] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=[branch]
+      Max-Forwards: 70
+      From: "Las Vegas Test" <sip:17028880001@[local_ip]:[local_port]>;tag=[call_number]
+      To: <sip:18002255288@[remote_ip]:[remote_port]>[peer_tag_param]
+      Call-ID: [call_id]
+      CSeq: 1 ACK
+      Contact: <sip:17028880001@[local_ip]:[local_port];transport=[transport]>
+      Content-Length: 0
+    ]]>
+  </send>
+
+  <!-- Maintain call for 8 seconds to test billing/timing -->
+  <pause milliseconds="8000"/>
+  <action>
+    <log message="LCR Test: Call active for 8 seconds - Testing call duration billing"/>
+  </action>
+
+  <!-- Send BYE to terminate call -->
+  <send retrans="500">
+    <![CDATA[
+      BYE sip:18002255288@[remote_ip]:[remote_port] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=[branch]
+      Max-Forwards: 70
+      From: "Las Vegas Test" <sip:17028880001@[local_ip]:[local_port]>;tag=[call_number]
+      To: <sip:18002255288@[remote_ip]:[remote_port]>[peer_tag_param]
+      Call-ID: [call_id]
+      CSeq: 2 BYE
+      Contact: <sip:17028880001@[local_ip]:[local_port];transport=[transport]>
+      Content-Length: 0
+    ]]>
+  </send>
+
+  <!-- Receive 200 OK for BYE -->
+  <recv response="200" timeout="5000">
+    <action>
+      <log message="LCR Test: Call terminated successfully (BYE 200 OK)"/>
+    </action>
+  </recv>
+
+  <label id="end"/>
+  
+  <!-- Performance statistics for LCR analysis -->
+  <ResponseTimeRepartition value="100, 200, 500, 1000, 2000, 5000, 10000, 15000, 30000"/>
+  <CallLengthRepartition value="1000, 2000, 5000, 8000, 10000, 15000, 20000, 30000"/>
+
+</scenario>

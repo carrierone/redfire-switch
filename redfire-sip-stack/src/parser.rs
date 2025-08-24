@@ -1,23 +1,24 @@
 /*
  * Redfire Switch - RFC 3261 Compliant SIP Message Parser
  * Copyright (C) 2025 Carrier One Inc and contributors
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Sponsored by Carrier One Inc (https://www.carrierone.com)
  */
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use rsip::{
-    message::{SipMessage as RsipMessage, HeadersExt}, Request, Response, 
-    headers::{Header, CSeq, ContentLength},
+    headers::{CSeq, ContentLength, Header},
+    message::{HeadersExt, SipMessage as RsipMessage},
     method::Method,
-    version::Version,
-    uri::Uri,
     param::Param,
+    uri::Uri,
+    version::Version,
+    Request, Response,
 };
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
@@ -222,7 +223,13 @@ impl SipParser {
     }
 
     /// Parse SIP message from bytes
-    pub fn parse_message(&self, data: &[u8], source: SocketAddr, destination: SocketAddr, transport: SipTransport) -> Result<SipMessage> {
+    pub fn parse_message(
+        &self,
+        data: &[u8],
+        source: SocketAddr,
+        destination: SocketAddr,
+        transport: SipTransport,
+    ) -> Result<SipMessage> {
         let message_str = String::from_utf8_lossy(data);
         debug!("Parsing SIP message from {}: {}", source, message_str);
 
@@ -254,7 +261,7 @@ impl SipParser {
     /// Validate SIP request
     fn validate_request(&self, request: &Request) -> Result<()> {
         // Check required headers per RFC 3261 Section 8.1.1
-        
+
         // Via header (required)
         if request.via_header().is_err() {
             return Err(anyhow!("Missing required Via header"));
@@ -309,11 +316,12 @@ impl SipParser {
                 false
             }
         });
-        
+
         if has_content {
-            let has_content_type = request.headers.iter().any(|h| {
-                matches!(h, Header::ContentType(_))
-            });
+            let has_content_type = request
+                .headers
+                .iter()
+                .any(|h| matches!(h, Header::ContentType(_)));
             if !has_content_type {
                 return Err(anyhow!("INVITE with body missing Content-Type header"));
             }
@@ -341,7 +349,7 @@ impl SipParser {
     /// Validate SIP response
     fn validate_response(&self, response: &Response) -> Result<()> {
         // Check required headers per RFC 3261 Section 8.1.1
-        
+
         // Via header (required)
         if response.via_header().is_err() {
             return Err(anyhow!("Response missing required Via header"));
@@ -373,9 +381,10 @@ impl SipParser {
     /// Create transaction ID from request
     pub fn create_transaction_id(&self, request: &Request) -> Result<String> {
         // Transaction ID is the branch parameter from the top Via header
-        let via = request.via_header()
+        let via = request
+            .via_header()
             .map_err(|e| anyhow!("No Via header found: {}", e))?;
-        
+
         // Look for branch parameter
         // TODO: Fix Param::Branch pattern matching with rsip library API
         // For now, create a default transaction ID
@@ -407,7 +416,12 @@ impl SipParser {
     }
 
     /// Create SIP response from request
-    pub fn create_response(&self, request: &Request, status_code: u16, reason_phrase: &str) -> Result<Response> {
+    pub fn create_response(
+        &self,
+        request: &Request,
+        status_code: u16,
+        reason_phrase: &str,
+    ) -> Result<Response> {
         // Create response using Response::default and modify fields
         let mut response = Response::default();
         // Note: In production, proper response construction would be implemented
@@ -491,7 +505,11 @@ impl SipParser {
     }
 
     /// Check if message is retransmission
-    pub fn is_retransmission(&self, message: &SipMessage, previous_messages: &[SipMessage]) -> bool {
+    pub fn is_retransmission(
+        &self,
+        message: &SipMessage,
+        previous_messages: &[SipMessage],
+    ) -> bool {
         match &message.message {
             RsipMessage::Request(req) => {
                 // For requests, check Call-ID, CSeq, From tag, and method
@@ -595,12 +613,14 @@ pub mod utils {
     pub fn extract_call_id(message: &RsipMessage) -> Result<String> {
         match message {
             RsipMessage::Request(req) => {
-                let call_id = req.call_id_header()
+                let call_id = req
+                    .call_id_header()
                     .map_err(|e| anyhow!("No Call-ID header: {}", e))?;
                 Ok(call_id.to_string())
             }
             RsipMessage::Response(resp) => {
-                let call_id = resp.call_id_header()
+                let call_id = resp
+                    .call_id_header()
                     .map_err(|e| anyhow!("No Call-ID header: {}", e))?;
                 Ok(call_id.to_string())
             }
@@ -611,12 +631,14 @@ pub mod utils {
     pub fn extract_from_tag(message: &RsipMessage) -> Result<Option<String>> {
         match message {
             RsipMessage::Request(req) => {
-                let from = req.from_header()
+                let from = req
+                    .from_header()
                     .map_err(|e| anyhow!("No From header: {}", e))?;
                 Ok(extract_tag_from_header(&from))
             }
             RsipMessage::Response(resp) => {
-                let from = resp.from_header()
+                let from = resp
+                    .from_header()
                     .map_err(|e| anyhow!("No From header: {}", e))?;
                 Ok(extract_tag_from_header(&from))
             }
@@ -627,12 +649,14 @@ pub mod utils {
     pub fn extract_to_tag(message: &RsipMessage) -> Result<Option<String>> {
         match message {
             RsipMessage::Request(req) => {
-                let to = req.to_header()
+                let to = req
+                    .to_header()
                     .map_err(|e| anyhow!("No To header: {}", e))?;
                 Ok(extract_tag_from_header(&to))
             }
             RsipMessage::Response(resp) => {
-                let to = resp.to_header()
+                let to = resp
+                    .to_header()
                     .map_err(|e| anyhow!("No To header: {}", e))?;
                 Ok(extract_tag_from_header(&to))
             }
@@ -658,14 +682,18 @@ pub mod utils {
     pub fn extract_cseq_number(message: &RsipMessage) -> Result<u32> {
         match message {
             RsipMessage::Request(req) => {
-                let cseq = req.cseq_header()
+                let cseq = req
+                    .cseq_header()
                     .map_err(|e| anyhow!("No CSeq header: {}", e))?;
-                cseq.seq().map_err(|e| anyhow!("Failed to get CSeq number: {}", e))
+                cseq.seq()
+                    .map_err(|e| anyhow!("Failed to get CSeq number: {}", e))
             }
             RsipMessage::Response(resp) => {
-                let cseq = resp.cseq_header()
+                let cseq = resp
+                    .cseq_header()
                     .map_err(|e| anyhow!("No CSeq header: {}", e))?;
-                cseq.seq().map_err(|e| anyhow!("Failed to get CSeq number: {}", e))
+                cseq.seq()
+                    .map_err(|e| anyhow!("Failed to get CSeq number: {}", e))
             }
         }
     }

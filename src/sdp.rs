@@ -3,7 +3,7 @@
  * RFC 4566 compliant SDP parsing and generation for media negotiation
  */
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
@@ -25,10 +25,10 @@ pub struct SdpSession {
     pub times: Vec<TimeDescription>,
     pub encryption_key: Option<String>,
     pub attributes: HashMap<String, Option<String>>,
-    
+
     /// Media descriptions
     pub media: Vec<MediaDescription>,
-    
+
     /// Version (always 0)
     pub version: u8,
     /// Origin information
@@ -92,13 +92,13 @@ pub struct MediaDescription {
     pub protocol: String,
     /// Format list (payload types)
     pub formats: Vec<String>,
-    
+
     /// Media-level attributes
     pub connection: Option<ConnectionData>,
     pub bandwidth: Vec<BandwidthInfo>,
     pub encryption_key: Option<String>,
     pub attributes: HashMap<String, Option<String>>,
-    
+
     /// Parsed codec information
     pub codecs: Vec<CodecInfo>,
 }
@@ -327,7 +327,8 @@ impl SdpSession {
             (address_part, None, None)
         };
 
-        let address = address_str.parse()
+        let address = address_str
+            .parse()
             .map_err(|_| anyhow!("Invalid IP address: {}", address_str))?;
 
         Ok(ConnectionData {
@@ -363,9 +364,11 @@ impl SdpSession {
             return Err(anyhow!("Invalid time field: {}", value));
         }
 
-        let start_time = parts[0].parse()
+        let start_time = parts[0]
+            .parse()
             .map_err(|_| anyhow!("Invalid start time: {}", parts[0]))?;
-        let stop_time = parts[1].parse()
+        let stop_time = parts[1]
+            .parse()
             .map_err(|_| anyhow!("Invalid stop time: {}", parts[1]))?;
 
         Ok(TimeDescription {
@@ -394,20 +397,25 @@ impl SdpSession {
         }
 
         let media_type = parts[0].parse()?;
-        
+
         let (port, num_ports) = if parts[1].contains('/') {
             let port_parts: Vec<&str> = parts[1].split('/').collect();
-            let port = port_parts[0].parse()
+            let port = port_parts[0]
+                .parse()
                 .map_err(|_| anyhow!("Invalid port: {}", port_parts[0]))?;
             let num_ports = if port_parts.len() > 1 {
-                Some(port_parts[1].parse()
-                    .map_err(|_| anyhow!("Invalid number of ports: {}", port_parts[1]))?)
+                Some(
+                    port_parts[1]
+                        .parse()
+                        .map_err(|_| anyhow!("Invalid number of ports: {}", port_parts[1]))?,
+                )
             } else {
                 None
             };
             (port, num_ports)
         } else {
-            let port = parts[1].parse()
+            let port = parts[1]
+                .parse()
                 .map_err(|_| anyhow!("Invalid port: {}", parts[1]))?;
             (port, None)
         };
@@ -473,17 +481,22 @@ impl SdpSession {
 
         let (clock_rate, channels) = if clock_info.contains('/') {
             let clock_parts: Vec<&str> = clock_info.split('/').collect();
-            let rate = clock_parts[0].parse()
+            let rate = clock_parts[0]
+                .parse()
                 .map_err(|_| anyhow!("Invalid clock rate: {}", clock_parts[0]))?;
             let ch = if clock_parts.len() > 1 {
-                Some(clock_parts[1].parse()
-                    .map_err(|_| anyhow!("Invalid channels: {}", clock_parts[1]))?)
+                Some(
+                    clock_parts[1]
+                        .parse()
+                        .map_err(|_| anyhow!("Invalid channels: {}", clock_parts[1]))?,
+                )
             } else {
                 None
             };
             (rate, ch)
         } else {
-            let rate = clock_info.parse()
+            let rate = clock_info
+                .parse()
                 .map_err(|_| anyhow!("Invalid clock rate: {}", clock_info))?;
             (rate, None)
         };
@@ -500,7 +513,7 @@ impl SdpSession {
     /// Parse fmtp (format parameters) attribute
     fn parse_fmtp(fmtp: &str) -> HashMap<String, String> {
         let mut params = HashMap::new();
-        
+
         for param in fmtp.split(';') {
             let param = param.trim();
             if let Some(eq_pos) = param.find('=') {
@@ -624,15 +637,18 @@ impl SdpSession {
     }
 
     fn connection_to_string(conn: &ConnectionData) -> String {
-        let mut result = format!("c={} {} {}", conn.network_type, conn.address_type, conn.address);
-        
+        let mut result = format!(
+            "c={} {} {}",
+            conn.network_type, conn.address_type, conn.address
+        );
+
         if let Some(ttl) = conn.ttl {
             result.push_str(&format!("/{}", ttl));
             if let Some(num) = conn.num_addresses {
                 result.push_str(&format!("/{}", num));
             }
         }
-        
+
         result.push_str("\r\n");
         result
     }
@@ -719,16 +735,16 @@ a=rtpmap:8 PCMA/8000
 "#;
 
         let session = SdpSession::parse(sdp_text).unwrap();
-        
+
         assert_eq!(session.version, 0);
         assert_eq!(session.origin.username, "alice");
         assert_eq!(session.media.len(), 1);
-        
+
         let audio = &session.media[0];
         assert_eq!(audio.media_type, MediaType::Audio);
         assert_eq!(audio.port, 49170);
         assert_eq!(audio.codecs.len(), 2);
-        
+
         assert_eq!(audio.codecs[0].name, "PCMU");
         assert_eq!(audio.codecs[0].clock_rate, 8000);
         assert_eq!(audio.codecs[1].name, "PCMA");
@@ -782,8 +798,12 @@ a=rtpmap:8 PCMA/8000
             codecs: Vec::new(),
         };
 
-        audio_media.attributes.insert("rtpmap:0".to_string(), Some("PCMU/8000".to_string()));
-        audio_media.attributes.insert("rtpmap:8".to_string(), Some("PCMA/8000".to_string()));
+        audio_media
+            .attributes
+            .insert("rtpmap:0".to_string(), Some("PCMU/8000".to_string()));
+        audio_media
+            .attributes
+            .insert("rtpmap:8".to_string(), Some("PCMA/8000".to_string()));
 
         session.media.push(audio_media);
 
@@ -823,7 +843,7 @@ a=rtpmap:96 opus/48000/2
 
         let common_codecs = session1.find_common_codecs(&session2);
         assert_eq!(common_codecs.len(), 2); // PCMA and G729
-        
+
         assert!(common_codecs.iter().any(|c| c.name == "PCMA"));
         assert!(common_codecs.iter().any(|c| c.name == "G729"));
     }

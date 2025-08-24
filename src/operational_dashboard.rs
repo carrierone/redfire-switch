@@ -3,14 +3,14 @@
  * Real-time system monitoring, analytics, and management interface
  */
 
+use crate::security_monitor::{SecurityMonitor, SecurityStats};
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 use tokio::sync::RwLock;
-use tracing::{info, warn, error, debug};
-use serde::{Deserialize, Serialize};
-use crate::security_monitor::{SecurityMonitor, SecurityStats};
+use tracing::{debug, error, info, warn};
 
 /// Real-time system metrics
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -148,8 +148,11 @@ pub struct OperationalDashboard {
 
 impl OperationalDashboard {
     pub fn new(config: DashboardConfig, security_monitor: Option<Arc<SecurityMonitor>>) -> Self {
-        info!("🖥️ Operational Dashboard initialized - Monitoring enabled: {}", config.enabled);
-        
+        info!(
+            "🖥️ Operational Dashboard initialized - Monitoring enabled: {}",
+            config.enabled
+        );
+
         Self {
             config,
             system_metrics: Arc::new(RwLock::new(Vec::new())),
@@ -170,20 +173,20 @@ impl OperationalDashboard {
         }
 
         info!("🖥️ Starting operational dashboard monitoring...");
-        
+
         // Start metrics collection tasks
         self.start_system_metrics_collection().await;
         self.start_performance_monitoring().await;
         self.start_alert_monitoring().await;
         self.start_cleanup_task().await;
-        
+
         info!("✅ Operational dashboard monitoring started");
     }
 
     /// Collect real-time system metrics
     pub async fn collect_system_metrics(&self) -> Result<SystemMetrics> {
         let uptime = self.start_time.elapsed().as_secs();
-        
+
         // In a real implementation, these would be collected from system APIs
         let metrics = SystemMetrics {
             timestamp: SystemTime::now(),
@@ -201,9 +204,10 @@ impl OperationalDashboard {
         {
             let mut system_metrics = self.system_metrics.write().await;
             system_metrics.push(metrics.clone());
-            
+
             // Keep only recent metrics
-            let cutoff = SystemTime::now() - Duration::from_secs(self.config.metrics_retention_hours * 3600);
+            let cutoff =
+                SystemTime::now() - Duration::from_secs(self.config.metrics_retention_hours * 3600);
             system_metrics.retain(|m| m.timestamp > cutoff);
         }
 
@@ -214,7 +218,8 @@ impl OperationalDashboard {
     }
 
     /// Collect call quality metrics
-    pub async fn collect_call_quality_metrics(&self, 
+    pub async fn collect_call_quality_metrics(
+        &self,
         total_calls: u64,
         active_calls: u64,
         completed_calls: u64,
@@ -248,8 +253,9 @@ impl OperationalDashboard {
         {
             let mut call_quality = self.call_quality_metrics.write().await;
             call_quality.push(metrics.clone());
-            
-            let cutoff = SystemTime::now() - Duration::from_secs(self.config.metrics_retention_hours * 3600);
+
+            let cutoff =
+                SystemTime::now() - Duration::from_secs(self.config.metrics_retention_hours * 3600);
             call_quality.retain(|m| m.timestamp > cutoff);
         }
 
@@ -260,7 +266,8 @@ impl OperationalDashboard {
     }
 
     /// Collect STIR/SHAKEN metrics
-    pub async fn collect_stir_shaken_metrics(&self,
+    pub async fn collect_stir_shaken_metrics(
+        &self,
         verified_calls: u64,
         attestation_counts: HashMap<String, u64>,
     ) -> Result<StirShakenMetrics> {
@@ -280,8 +287,9 @@ impl OperationalDashboard {
         {
             let mut stir_shaken = self.stir_shaken_metrics.write().await;
             stir_shaken.push(metrics.clone());
-            
-            let cutoff = SystemTime::now() - Duration::from_secs(self.config.metrics_retention_hours * 3600);
+
+            let cutoff =
+                SystemTime::now() - Duration::from_secs(self.config.metrics_retention_hours * 3600);
             stir_shaken.retain(|m| m.timestamp > cutoff);
         }
 
@@ -314,9 +322,18 @@ impl OperationalDashboard {
 
         // Log alert based on level
         match level {
-            AlertLevel::Emergency => error!("🚨 EMERGENCY: {} - {} - {}", category, source_component, message),
-            AlertLevel::Critical => error!("🔴 CRITICAL: {} - {} - {}", category, source_component, message),
-            AlertLevel::Warning => warn!("🟡 WARNING: {} - {} - {}", category, source_component, message),
+            AlertLevel::Emergency => error!(
+                "🚨 EMERGENCY: {} - {} - {}",
+                category, source_component, message
+            ),
+            AlertLevel::Critical => error!(
+                "🔴 CRITICAL: {} - {} - {}",
+                category, source_component, message
+            ),
+            AlertLevel::Warning => warn!(
+                "🟡 WARNING: {} - {} - {}",
+                category, source_component, message
+            ),
             AlertLevel::Info => info!("ℹ️ INFO: {} - {} - {}", category, source_component, message),
         }
 
@@ -324,9 +341,10 @@ impl OperationalDashboard {
         {
             let mut alerts = self.active_alerts.write().await;
             alerts.push(alert);
-            
+
             // Keep only recent alerts
-            let cutoff = SystemTime::now() - Duration::from_secs(self.config.alert_retention_hours * 3600);
+            let cutoff =
+                SystemTime::now() - Duration::from_secs(self.config.alert_retention_hours * 3600);
             alerts.retain(|a| a.timestamp > cutoff);
         }
 
@@ -339,7 +357,7 @@ impl OperationalDashboard {
         let call_quality = self.get_latest_call_quality_metrics().await?;
         let stir_shaken = self.get_latest_stir_shaken_metrics().await?;
         let performance = self.get_latest_performance_metrics().await?;
-        
+
         let security_stats = if let Some(ref monitor) = self.security_monitor {
             Some(monitor.get_security_stats().await?)
         } else {
@@ -353,8 +371,13 @@ impl OperationalDashboard {
 
         let critical_alerts = {
             let alerts = self.active_alerts.read().await;
-            alerts.iter().filter(|a| !a.resolved && 
-                (a.level == AlertLevel::Critical || a.level == AlertLevel::Emergency)).count()
+            alerts
+                .iter()
+                .filter(|a| {
+                    !a.resolved
+                        && (a.level == AlertLevel::Critical || a.level == AlertLevel::Emergency)
+                })
+                .count()
         };
 
         Ok(DashboardSummary {
@@ -366,13 +389,15 @@ impl OperationalDashboard {
             active_alerts,
             critical_alerts,
             security_threats_blocked: security_stats.map(|s| s.currently_blocked_ips).unwrap_or(0),
-            stir_shaken_verification_rate: stir_shaken.map(|m| {
-                if m.total_identity_headers > 0 {
-                    (m.verified_calls as f32 / m.total_identity_headers as f32) * 100.0
-                } else {
-                    0.0
-                }
-            }).unwrap_or(0.0),
+            stir_shaken_verification_rate: stir_shaken
+                .map(|m| {
+                    if m.total_identity_headers > 0 {
+                        (m.verified_calls as f32 / m.total_identity_headers as f32) * 100.0
+                    } else {
+                        0.0
+                    }
+                })
+                .unwrap_or(0.0),
         })
     }
 
@@ -400,13 +425,13 @@ impl OperationalDashboard {
         let system_metrics = Arc::clone(&self.system_metrics);
         let start_time = self.start_time;
         let refresh_seconds = self.config.dashboard_refresh_seconds;
-        
+
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(refresh_seconds));
-            
+
             loop {
                 interval.tick().await;
-                
+
                 // Simplified metric collection in spawned task
                 let uptime = start_time.elapsed().as_secs();
                 let metrics = SystemMetrics {
@@ -424,7 +449,7 @@ impl OperationalDashboard {
                 {
                     let mut metrics_vec = system_metrics.write().await;
                     metrics_vec.push(metrics);
-                    
+
                     let cutoff = SystemTime::now() - Duration::from_secs(168 * 3600); // 7 days
                     metrics_vec.retain(|m| m.timestamp > cutoff);
                 }
@@ -439,13 +464,13 @@ impl OperationalDashboard {
         }
 
         let performance_metrics = Arc::clone(&self.performance_metrics);
-        
+
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(1));
-            
+
             loop {
                 interval.tick().await;
-                
+
                 let metrics = PerformanceMetrics {
                     timestamp: SystemTime::now(),
                     message_throughput: 367000.0,
@@ -461,7 +486,7 @@ impl OperationalDashboard {
                 {
                     let mut metrics_vec = performance_metrics.write().await;
                     metrics_vec.push(metrics);
-                    
+
                     let cutoff = SystemTime::now() - Duration::from_secs(168 * 3600);
                     metrics_vec.retain(|m| m.timestamp > cutoff);
                 }
@@ -477,10 +502,10 @@ impl OperationalDashboard {
 
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(30));
-            
+
             loop {
                 interval.tick().await;
-                
+
                 // Simplified health checks in spawned task
                 debug!("Performing system health check");
             }
@@ -500,45 +525,47 @@ impl OperationalDashboard {
 
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(3600)); // Every hour
-            
+
             loop {
                 interval.tick().await;
-                
-                let metrics_cutoff = SystemTime::now() - Duration::from_secs(retention_hours * 3600);
-                let alerts_cutoff = SystemTime::now() - Duration::from_secs(alert_retention_hours * 3600);
-                
+
+                let metrics_cutoff =
+                    SystemTime::now() - Duration::from_secs(retention_hours * 3600);
+                let alerts_cutoff =
+                    SystemTime::now() - Duration::from_secs(alert_retention_hours * 3600);
+
                 // Clean up old metrics
                 {
                     let mut metrics = system_metrics.write().await;
                     metrics.retain(|m| m.timestamp > metrics_cutoff);
                 }
-                
+
                 {
                     let mut metrics = call_quality_metrics.write().await;
                     metrics.retain(|m| m.timestamp > metrics_cutoff);
                 }
-                
+
                 {
                     let mut metrics = stir_shaken_metrics.write().await;
                     metrics.retain(|m| m.timestamp > metrics_cutoff);
                 }
-                
+
                 {
                     let mut metrics = sipi_metrics.write().await;
                     metrics.retain(|m| m.timestamp > metrics_cutoff);
                 }
-                
+
                 {
                     let mut metrics = performance_metrics.write().await;
                     metrics.retain(|m| m.timestamp > metrics_cutoff);
                 }
-                
+
                 // Clean up old alerts
                 {
                     let mut alerts = active_alerts.write().await;
                     alerts.retain(|a| a.timestamp > alerts_cutoff);
                 }
-                
+
                 debug!("Dashboard cleanup completed");
             }
         });
@@ -613,8 +640,9 @@ impl OperationalDashboard {
 
         let mut performance = self.performance_metrics.write().await;
         performance.push(metrics);
-        
-        let cutoff = SystemTime::now() - Duration::from_secs(self.config.metrics_retention_hours * 3600);
+
+        let cutoff =
+            SystemTime::now() - Duration::from_secs(self.config.metrics_retention_hours * 3600);
         performance.retain(|m| m.timestamp > cutoff);
 
         Ok(())
@@ -628,8 +656,13 @@ impl OperationalDashboard {
                 "Performance".to_string(),
                 format!("High CPU usage: {:.1}%", metrics.cpu_usage_percent),
                 "SystemMonitor".to_string(),
-                [("cpu_usage".to_string(), format!("{:.1}", metrics.cpu_usage_percent))].into(),
-            ).await?;
+                [(
+                    "cpu_usage".to_string(),
+                    format!("{:.1}", metrics.cpu_usage_percent),
+                )]
+                .into(),
+            )
+            .await?;
         }
 
         // Memory usage alert
@@ -639,8 +672,13 @@ impl OperationalDashboard {
                 "Performance".to_string(),
                 format!("High memory usage: {} MB", metrics.memory_usage_mb),
                 "SystemMonitor".to_string(),
-                [("memory_usage_mb".to_string(), metrics.memory_usage_mb.to_string())].into(),
-            ).await?;
+                [(
+                    "memory_usage_mb".to_string(),
+                    metrics.memory_usage_mb.to_string(),
+                )]
+                .into(),
+            )
+            .await?;
         }
 
         // Error rate alert
@@ -650,8 +688,13 @@ impl OperationalDashboard {
                 "Quality".to_string(),
                 format!("High error rate: {:.1}%", metrics.error_rate_percent),
                 "SystemMonitor".to_string(),
-                [("error_rate".to_string(), format!("{:.1}", metrics.error_rate_percent))].into(),
-            ).await?;
+                [(
+                    "error_rate".to_string(),
+                    format!("{:.1}", metrics.error_rate_percent),
+                )]
+                .into(),
+            )
+            .await?;
         }
 
         Ok(())
@@ -663,10 +706,18 @@ impl OperationalDashboard {
             self.create_alert(
                 AlertLevel::Warning,
                 "CallQuality".to_string(),
-                format!("Low call success rate: {:.1}%", metrics.call_success_rate_percent),
+                format!(
+                    "Low call success rate: {:.1}%",
+                    metrics.call_success_rate_percent
+                ),
                 "CallQualityMonitor".to_string(),
-                [("success_rate".to_string(), format!("{:.1}", metrics.call_success_rate_percent))].into(),
-            ).await?;
+                [(
+                    "success_rate".to_string(),
+                    format!("{:.1}", metrics.call_success_rate_percent),
+                )]
+                .into(),
+            )
+            .await?;
         }
 
         // Post dial delay alert
@@ -676,8 +727,13 @@ impl OperationalDashboard {
                 "CallQuality".to_string(),
                 format!("High post dial delay: {:.1}ms", metrics.post_dial_delay_ms),
                 "CallQualityMonitor".to_string(),
-                [("pdd_ms".to_string(), format!("{:.1}", metrics.post_dial_delay_ms))].into(),
-            ).await?;
+                [(
+                    "pdd_ms".to_string(),
+                    format!("{:.1}", metrics.post_dial_delay_ms),
+                )]
+                .into(),
+            )
+            .await?;
         }
 
         Ok(())
@@ -698,7 +754,8 @@ impl OperationalDashboard {
                 format!("High verification failure rate: {:.1}%", failure_rate),
                 "StirShakenMonitor".to_string(),
                 [("failure_rate".to_string(), format!("{:.1}", failure_rate))].into(),
-            ).await?;
+            )
+            .await?;
         }
 
         Ok(())
@@ -746,14 +803,16 @@ impl OperationalDashboard {
 
     async fn get_performance_trends(&self) -> Result<PerformanceTrends> {
         let metrics = self.performance_metrics.read().await;
-        
-        let recent_throughput: Vec<f32> = metrics.iter()
+
+        let recent_throughput: Vec<f32> = metrics
+            .iter()
             .rev()
             .take(60)
             .map(|m| m.message_throughput)
             .collect();
 
-        let recent_latency: Vec<f32> = metrics.iter()
+        let recent_latency: Vec<f32> = metrics
+            .iter()
             .rev()
             .take(60)
             .map(|m| m.average_latency_ms)
@@ -771,8 +830,10 @@ impl OperationalDashboard {
             return "stable".to_string();
         }
 
-        let first_half: f32 = values.iter().take(values.len() / 2).sum::<f32>() / (values.len() / 2) as f32;
-        let second_half: f32 = values.iter().skip(values.len() / 2).sum::<f32>() / (values.len() / 2) as f32;
+        let first_half: f32 =
+            values.iter().take(values.len() / 2).sum::<f32>() / (values.len() / 2) as f32;
+        let second_half: f32 =
+            values.iter().skip(values.len() / 2).sum::<f32>() / (values.len() / 2) as f32;
 
         if second_half > first_half * 1.05 {
             "increasing".to_string()
@@ -824,7 +885,7 @@ mod tests {
     async fn test_dashboard_creation() {
         let config = DashboardConfig::default();
         let dashboard = OperationalDashboard::new(config, None);
-        
+
         assert!(dashboard.config.enabled);
         assert_eq!(dashboard.config.metrics_retention_hours, 168);
     }
@@ -833,10 +894,10 @@ mod tests {
     async fn test_metrics_collection() {
         let config = DashboardConfig::default();
         let dashboard = OperationalDashboard::new(config, None);
-        
+
         // Wait a bit to ensure uptime > 0
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
-        
+
         let metrics = dashboard.collect_system_metrics().await.unwrap();
         assert!(metrics.uptime_seconds >= 0); // Changed to >= 0 since it could still be 0
         assert!(metrics.cpu_usage_percent >= 0.0);
@@ -846,14 +907,17 @@ mod tests {
     async fn test_alert_creation() {
         let config = DashboardConfig::default();
         let dashboard = OperationalDashboard::new(config, None);
-        
-        dashboard.create_alert(
-            AlertLevel::Warning,
-            "Test".to_string(),
-            "Test alert".to_string(),
-            "TestComponent".to_string(),
-            HashMap::new(),
-        ).await.unwrap();
+
+        dashboard
+            .create_alert(
+                AlertLevel::Warning,
+                "Test".to_string(),
+                "Test alert".to_string(),
+                "TestComponent".to_string(),
+                HashMap::new(),
+            )
+            .await
+            .unwrap();
 
         let alerts = dashboard.get_recent_alerts(10).await.unwrap();
         assert_eq!(alerts.len(), 1);

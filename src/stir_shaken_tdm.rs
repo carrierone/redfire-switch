@@ -13,16 +13,16 @@
  * - RFC 8226: Common Behavior for STIR Certificate Management
  */
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
+use base64::{engine::general_purpose, Engine as _};
+use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
+use reqwest::Client as HttpClient;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tokio::sync::{RwLock, mpsc};
-use tracing::{debug, info, warn, error};
-use serde::{Serialize, Deserialize};
-use jsonwebtoken::{Header, Algorithm, encode, decode, EncodingKey, DecodingKey, Validation};
-use base64::{Engine as _, engine::general_purpose};
-use reqwest::Client as HttpClient;
+use tokio::sync::{mpsc, RwLock};
+use tracing::{debug, error, info, warn};
 use url::Url;
 
 /// STIR/SHAKEN TDM transport methods
@@ -58,7 +58,7 @@ impl AttestationLevel {
             Self::GatewayAttestation => 'C',
         }
     }
-    
+
     /// Parse attestation code from character
     pub fn from_code(code: char) -> Option<Self> {
         match code.to_ascii_uppercase() {
@@ -90,7 +90,7 @@ impl VerificationStatus {
             Self::NoValidation => "No-TN-Validation",
         }
     }
-    
+
     /// Parse status from string
     pub fn from_string(s: &str) -> Option<Self> {
         match s {
@@ -280,33 +280,30 @@ pub enum StirShakenEvent {
         expires_at: SystemTime,
     },
     /// Certificate validation failed
-    CertificateValidationFailed {
-        cert_url: String,
-        reason: String,
-    },
+    CertificateValidationFailed { cert_url: String, reason: String },
 }
 
 impl StirShakenTdmProcessor {
     /// Create new STIR/SHAKEN TDM processor
-    pub async fn new(config: StirShakenTdmConfig) -> Result<(Self, mpsc::UnboundedReceiver<StirShakenEvent>)> {
+    pub async fn new(
+        config: StirShakenTdmConfig,
+    ) -> Result<(Self, mpsc::UnboundedReceiver<StirShakenEvent>)> {
         let (event_sender, event_receiver) = mpsc::unbounded_channel();
-        
+
         let http_client = HttpClient::builder()
             .timeout(Duration::from_secs(10))
             .build()?;
-        
+
         // Load signing key if configured
         let signing_key = if let Some(key_path) = &config.local_key_path {
             match tokio::fs::read_to_string(key_path).await {
-                Ok(key_data) => {
-                    match EncodingKey::from_ec_pem(key_data.as_bytes()) {
-                        Ok(key) => Some(key),
-                        Err(e) => {
-                            warn!("Failed to load STIR/SHAKEN signing key: {}", e);
-                            None
-                        }
+                Ok(key_data) => match EncodingKey::from_ec_pem(key_data.as_bytes()) {
+                    Ok(key) => Some(key),
+                    Err(e) => {
+                        warn!("Failed to load STIR/SHAKEN signing key: {}", e);
+                        None
                     }
-                }
+                },
                 Err(e) => {
                     warn!("Failed to read STIR/SHAKEN key file {}: {}", key_path, e);
                     None
@@ -315,7 +312,7 @@ impl StirShakenTdmProcessor {
         } else {
             None
         };
-        
+
         let processor = Self {
             config,
             cert_cache: Arc::new(RwLock::new(HashMap::new())),
@@ -323,20 +320,33 @@ impl StirShakenTdmProcessor {
             signing_key,
             event_sender,
         };
-        
+
         Ok((processor, event_receiver))
     }
-    
+
     /// Process incoming STIR/SHAKEN TDM message
-    pub async fn process_incoming_message(&self, message: StirShakenTdmMessage) -> Result<VerificationStatus> {
+    pub async fn process_incoming_message(
+        &self,
+        message: StirShakenTdmMessage,
+    ) -> Result<VerificationStatus> {
         if !self.config.enabled {
             return Ok(VerificationStatus::NoValidation);
         }
-        
-        debug!("Processing STIR/SHAKEN TDM message for call {}", message.call_id);
-        
+
+        debug!(
+            "Processing STIR/SHAKEN TDM message for call {}",
+            message.call_id
+        );
+
         // Verify PASSporT token
-        match self.verify_passport_token(&message.passport_token, &message.calling_number, &message.called_number).await {
+        match self
+            .verify_passport_token(
+                &message.passport_token,
+                &message.calling_number,
+                &message.called_number,
+            )
+            .await
+        {
             Ok(verification_result) => {
                 // Send verification event
                 let event = StirShakenEvent::CallVerified {
@@ -347,14 +357,16 @@ impl StirShakenTdmProcessor {
                     verification_status: verification_result,
                     transport: message.transport,
                 };
-                
+
                 if let Err(e) = self.event_sender.send(event) {
                     warn!("Failed to send STIR/SHAKEN verification event: {}", e);
                 }
-                
-                info!("STIR/SHAKEN verification passed for call {} ({} -> {})", 
-                      message.call_id, message.calling_number, message.called_number);
-                
+
+                info!(
+                    "STIR/SHAKEN verification passed for call {} ({} -> {})",
+                    message.call_id, message.calling_number, message.called_number
+                );
+
                 Ok(verification_result)
             }
             Err(e) => {
@@ -366,13 +378,16 @@ impl StirShakenTdmProcessor {
                     reason: e.to_string(),
                     transport: message.transport,
                 };
-                
+
                 if let Err(send_err) = self.event_sender.send(event) {
                     warn!("Failed to send STIR/SHAKEN failure event: {}", send_err);
                 }
-                
-                warn!("STIR/SHAKEN verification failed for call {}: {}", message.call_id, e);
-                
+
+                warn!(
+                    "STIR/SHAKEN verification failed for call {}: {}",
+                    message.call_id, e
+                );
+
                 if self.config.require_verification {
                     Ok(VerificationStatus::Failed)
                 } else {
@@ -381,7 +396,7 @@ impl StirShakenTdmProcessor {
             }
         }
     }
-    
+
     /// Generate outgoing STIR/SHAKEN TDM message
     pub async fn generate_outgoing_message(
         &self,
@@ -394,16 +409,22 @@ impl StirShakenTdmProcessor {
         if !self.config.enabled {
             return Err(anyhow!("STIR/SHAKEN is disabled"));
         }
-        
-        let signing_key = self.signing_key.as_ref()
+
+        let signing_key = self
+            .signing_key
+            .as_ref()
             .ok_or_else(|| anyhow!("No signing key configured"))?;
-        
+
         // Create PASSporT
-        let passport = self.create_passport(&calling_number, &called_number, self.config.default_attestation_level)?;
-        
+        let passport = self.create_passport(
+            &calling_number,
+            &called_number,
+            self.config.default_attestation_level,
+        )?;
+
         // Sign PASSporT to create JWT
         let passport_token = self.sign_passport(passport, signing_key)?;
-        
+
         let message = StirShakenTdmMessage {
             transport,
             calling_number: calling_number.clone(),
@@ -416,24 +437,31 @@ impl StirShakenTdmProcessor {
             parameters: HashMap::new(),
             timestamp: SystemTime::now(),
         };
-        
-        info!("Generated STIR/SHAKEN TDM message for call {} ({} -> {})", 
-              call_id, calling_number, called_number);
-        
+
+        info!(
+            "Generated STIR/SHAKEN TDM message for call {} ({} -> {})",
+            call_id, calling_number, called_number
+        );
+
         Ok(message)
     }
-    
+
     /// Create PASSporT token
-    fn create_passport(&self, calling_number: &str, called_number: &str, attestation: AttestationLevel) -> Result<Passport> {
+    fn create_passport(
+        &self,
+        calling_number: &str,
+        called_number: &str,
+        attestation: AttestationLevel,
+    ) -> Result<Passport> {
         let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-        
+
         let header = PassportHeader {
             alg: "ES256".to_string(),
             ppt: "shaken".to_string(),
             typ: "passport".to_string(),
             x5u: self.config.cert_store_url.clone(),
         };
-        
+
         let payload = PassportPayload {
             attest: attestation.to_code().to_string(),
             dest: PassportDestination {
@@ -445,84 +473,112 @@ impl StirShakenTdmProcessor {
             },
             origid: format!("{}_{}", calling_number, now), // Unique identifier
         };
-        
+
         Ok(Passport {
             header,
             payload,
             signature: Vec::new(), // Will be filled by signing
         })
     }
-    
+
     /// Sign PASSporT to create JWT
     fn sign_passport(&self, passport: Passport, signing_key: &EncodingKey) -> Result<String> {
         let header = Header::new(Algorithm::ES256);
         let token = encode(&header, &passport.payload, signing_key)
             .map_err(|e| anyhow!("Failed to sign PASSporT: {}", e))?;
-        
+
         Ok(token)
     }
-    
+
     /// Verify PASSporT token
-    async fn verify_passport_token(&self, token: &str, calling_number: &str, called_number: &str) -> Result<VerificationStatus> {
+    async fn verify_passport_token(
+        &self,
+        token: &str,
+        calling_number: &str,
+        called_number: &str,
+    ) -> Result<VerificationStatus> {
         // Decode JWT header to get certificate URL
-        let header_b64 = token.split('.').next()
+        let header_b64 = token
+            .split('.')
+            .next()
             .ok_or_else(|| anyhow!("Invalid JWT format"))?;
-        
-        let header_json = general_purpose::URL_SAFE_NO_PAD.decode(header_b64)
+
+        let header_json = general_purpose::URL_SAFE_NO_PAD
+            .decode(header_b64)
             .map_err(|e| anyhow!("Failed to decode JWT header: {}", e))?;
-        
+
         let header: PassportHeader = serde_json::from_slice(&header_json)
             .map_err(|e| anyhow!("Failed to parse JWT header: {}", e))?;
-        
+
         // Get certificate
-        let cert_url = header.x5u.ok_or_else(|| anyhow!("No certificate URL in PASSporT header"))?;
+        let cert_url = header
+            .x5u
+            .ok_or_else(|| anyhow!("No certificate URL in PASSporT header"))?;
         let certificate = self.get_certificate(&cert_url).await?;
-        
+
         // Create decoding key from certificate
         let decoding_key = DecodingKey::from_ec_pem(certificate.cert_data.as_bytes())
             .map_err(|e| anyhow!("Failed to create decoding key: {}", e))?;
-        
+
         // Verify JWT signature and decode payload
         let mut validation = Validation::new(Algorithm::ES256);
         validation.validate_exp = true;
         validation.validate_aud = false; // PASSporT doesn't use audience
-        
+
         let token_data = decode::<PassportPayload>(token, &decoding_key, &validation)
             .map_err(|e| anyhow!("JWT verification failed: {}", e))?;
-        
+
         // Verify payload contents
-        self.verify_passport_payload(&token_data.claims, calling_number, called_number, &certificate)?;
-        
+        self.verify_passport_payload(
+            &token_data.claims,
+            calling_number,
+            called_number,
+            &certificate,
+        )?;
+
         Ok(VerificationStatus::Passed)
     }
-    
+
     /// Verify PASSporT payload contents
-    fn verify_passport_payload(&self, payload: &PassportPayload, calling_number: &str, called_number: &str, certificate: &StirShakenCertificate) -> Result<()> {
+    fn verify_passport_payload(
+        &self,
+        payload: &PassportPayload,
+        calling_number: &str,
+        called_number: &str,
+        certificate: &StirShakenCertificate,
+    ) -> Result<()> {
         // Verify calling number matches
         if payload.orig.tn != calling_number {
-            return Err(anyhow!("PASSporT calling number mismatch: {} != {}", payload.orig.tn, calling_number));
+            return Err(anyhow!(
+                "PASSporT calling number mismatch: {} != {}",
+                payload.orig.tn,
+                calling_number
+            ));
         }
-        
+
         // Verify called number is in destination list
         if !payload.dest.tn.contains(&called_number.to_string()) {
             return Err(anyhow!("PASSporT called number not in destination list"));
         }
-        
+
         // Verify calling number is authorized by certificate
         if !self.is_number_authorized(&payload.orig.tn, certificate) {
-            return Err(anyhow!("Calling number {} not authorized by certificate", payload.orig.tn));
+            return Err(anyhow!(
+                "Calling number {} not authorized by certificate",
+                payload.orig.tn
+            ));
         }
-        
+
         // Verify timestamp is recent (within 60 seconds)
         let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
         let age = now.saturating_sub(payload.iat);
         if age > 60 {
             return Err(anyhow!("PASSporT is too old: {} seconds", age));
         }
-        
+
         Ok(())
     }
-    
+
     /// Check if telephone number is authorized by certificate
     fn is_number_authorized(&self, tn: &str, certificate: &StirShakenCertificate) -> bool {
         for block in &certificate.authorized_tn_blocks {
@@ -532,7 +588,7 @@ impl StirShakenTdmProcessor {
         }
         false
     }
-    
+
     /// Get certificate from cache or fetch from URL
     async fn get_certificate(&self, cert_url: &str) -> Result<StirShakenCertificate> {
         // Check cache first
@@ -545,56 +601,62 @@ impl StirShakenTdmProcessor {
                 }
             }
         }
-        
+
         // Fetch certificate from URL
         let cert = self.fetch_certificate(cert_url).await?;
-        
+
         // Update cache
         {
             let mut cache = self.cert_cache.write().await;
             cache.insert(cert_url.to_string(), cert.clone());
         }
-        
+
         // Send certificate event
         let event = StirShakenEvent::CertificateRetrieved {
             cert_url: cert_url.to_string(),
             expires_at: cert.expires_at,
         };
-        
+
         if let Err(e) = self.event_sender.send(event) {
             warn!("Failed to send certificate retrieved event: {}", e);
         }
-        
+
         Ok(cert)
     }
-    
+
     /// Fetch certificate from URL
     async fn fetch_certificate(&self, cert_url: &str) -> Result<StirShakenCertificate> {
-        let url = Url::parse(cert_url)
-            .map_err(|e| anyhow!("Invalid certificate URL: {}", e))?;
-        
-        let response = self.http_client.get(url)
+        let url = Url::parse(cert_url).map_err(|e| anyhow!("Invalid certificate URL: {}", e))?;
+
+        let response = self
+            .http_client
+            .get(url)
             .header("Accept", "application/pkcs7-mime")
             .send()
             .await
             .map_err(|e| anyhow!("Failed to fetch certificate: {}", e))?;
-        
+
         if !response.status().is_success() {
-            return Err(anyhow!("Certificate fetch failed: HTTP {}", response.status()));
+            return Err(anyhow!(
+                "Certificate fetch failed: HTTP {}",
+                response.status()
+            ));
         }
-        
-        let cert_data = response.text().await
+
+        let cert_data = response
+            .text()
+            .await
             .map_err(|e| anyhow!("Failed to read certificate data: {}", e))?;
-        
+
         if cert_data.len() > self.config.max_cert_size {
             return Err(anyhow!("Certificate too large: {} bytes", cert_data.len()));
         }
-        
+
         // Parse certificate to extract information
         // This is a simplified implementation - in production you'd use proper X.509 parsing
         let expires_at = SystemTime::now() + Duration::from_secs(self.config.cert_cache_timeout);
         let authorized_tn_blocks = vec!["1".to_string()]; // Simplified - would parse from cert
-        
+
         Ok(StirShakenCertificate {
             cert_url: cert_url.to_string(),
             cert_data,
@@ -603,20 +665,20 @@ impl StirShakenTdmProcessor {
             authorized_tn_blocks,
         })
     }
-    
+
     /// Encode STIR/SHAKEN for ISUP User-to-User Information
     pub fn encode_for_isup_uui(&self, message: &StirShakenTdmMessage) -> Result<Vec<u8>> {
         let mut data = Vec::new();
-        
+
         // UUI Protocol Discriminator (0x04 for User-specific)
         data.push(0x04);
-        
+
         // STIR/SHAKEN indicator
         data.extend_from_slice(b"STIR");
-        
+
         // Attestation level
         data.push(message.attestation_level.to_code() as u8);
-        
+
         // PASSporT token (truncated to fit UUI size limits)
         let token_bytes = message.passport_token.as_bytes();
         let max_token_size = 128 - data.len(); // UUI size limit minus header
@@ -625,35 +687,35 @@ impl StirShakenTdmProcessor {
         } else {
             token_bytes
         };
-        
+
         data.extend_from_slice(token_data);
-        
+
         Ok(data)
     }
-    
+
     /// Decode STIR/SHAKEN from ISUP User-to-User Information
     pub fn decode_from_isup_uui(&self, uui_data: &[u8]) -> Result<StirShakenTdmMessage> {
         if uui_data.len() < 6 {
             return Err(anyhow!("UUI data too short for STIR/SHAKEN"));
         }
-        
+
         // Check protocol discriminator
         if uui_data[0] != 0x04 {
             return Err(anyhow!("Invalid UUI protocol discriminator"));
         }
-        
+
         // Check STIR/SHAKEN indicator
         if &uui_data[1..5] != b"STIR" {
             return Err(anyhow!("STIR/SHAKEN indicator not found in UUI"));
         }
-        
+
         // Extract attestation level
         let attestation_level = AttestationLevel::from_code(uui_data[5] as char)
             .ok_or_else(|| anyhow!("Invalid attestation level in UUI"))?;
-        
+
         // Extract PASSporT token (rest of the data)
         let passport_token = String::from_utf8_lossy(&uui_data[6..]).to_string();
-        
+
         Ok(StirShakenTdmMessage {
             transport: StirShakenTransport::InBandIsup,
             calling_number: String::new(), // Would be extracted from ISUP IAM
@@ -667,29 +729,29 @@ impl StirShakenTdmProcessor {
             timestamp: SystemTime::now(),
         })
     }
-    
+
     /// Clean up expired certificates from cache
     pub async fn cleanup_certificate_cache(&self) {
         let mut cache = self.cert_cache.write().await;
         let now = SystemTime::now();
         let mut to_remove = Vec::new();
-        
+
         for (url, cert) in cache.iter() {
             if cert.expires_at <= now {
                 to_remove.push(url.clone());
             }
         }
-        
+
         for url in to_remove {
             cache.remove(&url);
             debug!("Removed expired STIR/SHAKEN certificate: {}", url);
         }
     }
-    
+
     /// Get processor statistics
     pub async fn get_statistics(&self) -> StirShakenTdmStats {
         let cache = self.cert_cache.read().await;
-        
+
         StirShakenTdmStats {
             enabled: self.config.enabled,
             cached_certificates: cache.len(),
@@ -712,40 +774,58 @@ pub struct StirShakenTdmStats {
 mod tests {
     use super::*;
     use tokio::time::timeout;
-    
+
     #[test]
     fn test_attestation_level_conversion() {
         assert_eq!(AttestationLevel::FullAttestation.to_code(), 'A');
         assert_eq!(AttestationLevel::PartialAttestation.to_code(), 'B');
         assert_eq!(AttestationLevel::GatewayAttestation.to_code(), 'C');
-        
-        assert_eq!(AttestationLevel::from_code('A'), Some(AttestationLevel::FullAttestation));
-        assert_eq!(AttestationLevel::from_code('b'), Some(AttestationLevel::PartialAttestation));
+
+        assert_eq!(
+            AttestationLevel::from_code('A'),
+            Some(AttestationLevel::FullAttestation)
+        );
+        assert_eq!(
+            AttestationLevel::from_code('b'),
+            Some(AttestationLevel::PartialAttestation)
+        );
         assert_eq!(AttestationLevel::from_code('X'), None);
     }
-    
+
     #[test]
     fn test_verification_status_conversion() {
-        assert_eq!(VerificationStatus::Passed.to_string(), "TN-Validation-Passed");
-        assert_eq!(VerificationStatus::Failed.to_string(), "TN-Validation-Failed");
-        assert_eq!(VerificationStatus::NoValidation.to_string(), "No-TN-Validation");
-        
-        assert_eq!(VerificationStatus::from_string("TN-Validation-Passed"), Some(VerificationStatus::Passed));
+        assert_eq!(
+            VerificationStatus::Passed.to_string(),
+            "TN-Validation-Passed"
+        );
+        assert_eq!(
+            VerificationStatus::Failed.to_string(),
+            "TN-Validation-Failed"
+        );
+        assert_eq!(
+            VerificationStatus::NoValidation.to_string(),
+            "No-TN-Validation"
+        );
+
+        assert_eq!(
+            VerificationStatus::from_string("TN-Validation-Passed"),
+            Some(VerificationStatus::Passed)
+        );
         assert_eq!(VerificationStatus::from_string("Unknown"), None);
     }
-    
+
     #[tokio::test]
     async fn test_stir_shaken_processor_creation() {
         let config = StirShakenTdmConfig::default();
         let result = StirShakenTdmProcessor::new(config).await;
         assert!(result.is_ok());
-        
+
         let (processor, _receiver) = result.unwrap();
         let stats = processor.get_statistics().await;
         assert_eq!(stats.enabled, true);
         assert_eq!(stats.cached_certificates, 0);
     }
-    
+
     #[test]
     fn test_passport_creation() {
         let config = StirShakenTdmConfig::default();
@@ -758,18 +838,20 @@ mod tests {
             signing_key: None,
             event_sender,
         };
-        
-        let passport = processor.create_passport(
-            "+15551234567", 
-            "+15559876543", 
-            AttestationLevel::FullAttestation
-        ).unwrap();
-        
+
+        let passport = processor
+            .create_passport(
+                "+15551234567",
+                "+15559876543",
+                AttestationLevel::FullAttestation,
+            )
+            .unwrap();
+
         assert_eq!(passport.payload.orig.tn, "+15551234567");
         assert_eq!(passport.payload.dest.tn, vec!["+15559876543"]);
         assert_eq!(passport.payload.attest, "A");
     }
-    
+
     #[test]
     fn test_isup_uui_encoding() {
         let config = StirShakenTdmConfig::default();
@@ -782,7 +864,7 @@ mod tests {
             signing_key: None,
             event_sender,
         };
-        
+
         let message = StirShakenTdmMessage {
             transport: StirShakenTransport::InBandIsup,
             calling_number: "+15551234567".to_string(),
@@ -795,12 +877,12 @@ mod tests {
             parameters: HashMap::new(),
             timestamp: SystemTime::now(),
         };
-        
+
         let uui_data = processor.encode_for_isup_uui(&message).unwrap();
         assert_eq!(uui_data[0], 0x04); // Protocol discriminator
         assert_eq!(&uui_data[1..5], b"STIR"); // STIR indicator
         assert_eq!(uui_data[5], b'A'); // Attestation level
-        
+
         // Test round-trip
         let decoded = processor.decode_from_isup_uui(&uui_data).unwrap();
         assert_eq!(decoded.attestation_level, AttestationLevel::FullAttestation);

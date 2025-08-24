@@ -1,39 +1,41 @@
 /*
  * SIP to TDMoE to SIP Integration Test Suite
- * 
+ *
  * This test creates a complete call flow:
  * SIP Ingress -> TDMoE NI-2 -> TDMoE NI-2 -> SIP Egress
- * 
+ *
  * Uses SIPp for call generation and comprehensive logging for debugging.
  */
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
+use chrono;
 use clap::{Arg, Command};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::process::Stdio;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncWriteExt, BufWriter};
-use tokio::process::{Command as TokioCommand};
-use tokio::sync::{RwLock, mpsc};
+use tokio::process::Command as TokioCommand;
+use tokio::sync::{mpsc, RwLock};
 use tokio::time::sleep;
-use tracing::{debug, info, warn, error, Level};
+use tracing::{debug, error, info, warn, Level};
 use tracing_subscriber::fmt;
 use uuid::Uuid;
-use chrono;
-use std::str::FromStr;
 
 // Import our modules
-use redfire_codec_engine::{CodecService as CodecEngineService, CodecConfig as CodecEngineConfig, AudioCodec};
+use redfire_codec_engine::{
+    AudioCodec, CodecConfig as CodecEngineConfig, CodecService as CodecEngineService,
+};
+use redfire_sip_stack::{SipCoreConfig, SipTransport};
 use redfire_switch::rtp_proxy_impl::RtpProxyConfig;
 use redfire_switch::sip_codec_integration::SipCodecIntegration;
 use redfire_switch::tdmoe_ni2_signaling::{
-    TdmoeService, TdmoeConfig, TdmoeTrunkPair, Ni2MessageType, TdmoeCodec
+    Ni2MessageType, TdmoeCodec, TdmoeConfig, TdmoeService, TdmoeTrunkPair,
 };
-use redfire_sip_stack::{SipCoreConfig, SipTransport};
 
 /// Test configuration
 #[derive(Debug, Clone)]
@@ -108,7 +110,7 @@ impl TestCodec {
             TestCodec::Opus => AudioCodec::Opus,
         }
     }
-    
+
     fn to_tdmoe_codec(self) -> TdmoeCodec {
         match self {
             TestCodec::G711ULaw => TdmoeCodec::ULaw,
@@ -186,12 +188,12 @@ pub struct SipTdmoeTestSuite {
     log_writer: Option<BufWriter<tokio::fs::File>>,
     test_id: String,
     start_time: Instant,
-    
+
     // Components
     sip_ingress: Arc<SipCodecIntegration>,
     sip_egress: Arc<SipCodecIntegration>,
     tdmoe_pair: Arc<TdmoeTrunkPair>,
-    
+
     // State tracking
     active_calls: Arc<RwLock<HashMap<String, Vec<CallLegInfo>>>>,
     test_stats: Arc<RwLock<TestStats>>,
@@ -201,7 +203,7 @@ impl SipTdmoeTestSuite {
     /// Create new test suite
     pub async fn new(config: TestConfig) -> Result<Self> {
         let test_id = Uuid::new_v4().to_string();
-        
+
         // Setup logging
         let log_writer = if let Some(log_path) = &config.log_file {
             let file = OpenOptions::new()
@@ -214,7 +216,7 @@ impl SipTdmoeTestSuite {
         } else {
             None
         };
-        
+
         // Create SIP ingress service
         let sip_ingress_config = SipCoreConfig {
             transports: vec![redfire_sip_stack::TransportConfig {
@@ -228,15 +230,20 @@ impl SipTdmoeTestSuite {
             }],
             ..SipCoreConfig::default()
         };
-        
+
         let codec_config = CodecEngineConfig::default();
-        
+
         let rtp_config = RtpProxyConfig::default();
-        
+
         let sip_ingress = Arc::new(
-            SipCodecIntegration::new(sip_ingress_config.clone(), codec_config.clone(), rtp_config.clone()).await?
+            SipCodecIntegration::new(
+                sip_ingress_config.clone(),
+                codec_config.clone(),
+                rtp_config.clone(),
+            )
+            .await?,
         );
-        
+
         // Create SIP egress service
         let sip_egress_config = SipCoreConfig {
             transports: vec![redfire_sip_stack::TransportConfig {
@@ -250,14 +257,13 @@ impl SipTdmoeTestSuite {
             }],
             ..SipCoreConfig::default()
         };
-        
-        let sip_egress = Arc::new(
-            SipCodecIntegration::new(sip_egress_config, codec_config, rtp_config).await?
-        );
-        
+
+        let sip_egress =
+            Arc::new(SipCodecIntegration::new(sip_egress_config, codec_config, rtp_config).await?);
+
         // Create TDMoE trunk pair
         let tdmoe_pair = Arc::new(TdmoeTrunkPair::create_loopback_pair().await?);
-        
+
         Ok(Self {
             config,
             log_writer,
@@ -270,26 +276,28 @@ impl SipTdmoeTestSuite {
             test_stats: Arc::new(RwLock::new(TestStats::default())),
         })
     }
-    
+
     /// Run the complete test suite
     pub async fn run_test(&mut self) -> Result<TestStats> {
-        self.log_info("Starting SIP -> TDMoE -> SIP integration test").await;
+        self.log_info("Starting SIP -> TDMoE -> SIP integration test")
+            .await;
         self.log_info(&format!("Test ID: {}", self.test_id)).await;
-        self.log_info(&format!("Configuration: {:?}", self.config)).await;
-        
+        self.log_info(&format!("Configuration: {:?}", self.config))
+            .await;
+
         // Start all services
         self.start_services().await?;
-        
+
         // Run the actual test
         let test_result = self.execute_test().await;
-        
+
         // Stop services and collect final stats
         self.stop_services().await;
         let final_stats = self.collect_final_statistics().await?;
-        
+
         // Log final results
         self.log_test_results(&final_stats).await;
-        
+
         match test_result {
             Ok(_) => {
                 self.log_info("✅ Test completed successfully").await;
@@ -301,69 +309,72 @@ impl SipTdmoeTestSuite {
             }
         }
     }
-    
+
     async fn start_services(&mut self) -> Result<()> {
         self.log_info("🚀 Starting all services...").await;
-        
+
         // Start TDMoE services
         self.log_debug("Starting TDMoE trunk pair").await;
         self.tdmoe_pair.start().await?;
-        
+
         // Allow services to start
         sleep(Duration::from_millis(500)).await;
-        
+
         self.log_info("✅ All services started").await;
         Ok(())
     }
-    
+
     async fn execute_test(&mut self) -> Result<()> {
         self.log_info("🔄 Executing integration test").await;
-        
+
         // Create call scenarios
         let scenarios = self.create_test_scenarios().await;
-        
+
         // Execute scenarios concurrently
         let mut join_handles = Vec::new();
-        
+
         for scenario in scenarios {
             let handle = self.execute_call_scenario(scenario).await?;
             join_handles.push(handle);
         }
-        
+
         // Wait for all scenarios to complete
         let timeout_duration = Duration::from_secs(self.config.test_timeout);
         let start = Instant::now();
-        
+
         while !join_handles.is_empty() && start.elapsed() < timeout_duration {
             let mut completed_indices = Vec::new();
-            
+
             for (index, handle) in join_handles.iter_mut().enumerate() {
                 if handle.is_finished() {
                     completed_indices.push(index);
                 }
             }
-            
+
             // Remove completed handles
             for &index in completed_indices.iter().rev() {
                 join_handles.remove(index);
             }
-            
+
             if !join_handles.is_empty() {
                 sleep(Duration::from_millis(100)).await;
             }
         }
-        
+
         if !join_handles.is_empty() {
-            return Err(anyhow!("Test timeout: {} scenarios still running", join_handles.len()));
+            return Err(anyhow!(
+                "Test timeout: {} scenarios still running",
+                join_handles.len()
+            ));
         }
-        
+
         self.log_info("✅ All test scenarios completed").await;
         Ok(())
     }
-    
+
     async fn create_test_scenarios(&self) -> Vec<CallScenario> {
         let mut scenarios = Vec::new();
-        
+
         for call_id in 0..self.config.concurrent_calls {
             let scenario = CallScenario {
                 call_id: format!("test-call-{:04}", call_id),
@@ -375,61 +386,79 @@ impl SipTdmoeTestSuite {
             };
             scenarios.push(scenario);
         }
-        
+
         scenarios
     }
-    
-    async fn execute_call_scenario(&self, scenario: CallScenario) -> Result<tokio::task::JoinHandle<Result<()>>> {
+
+    async fn execute_call_scenario(
+        &self,
+        scenario: CallScenario,
+    ) -> Result<tokio::task::JoinHandle<Result<()>>> {
         let test_suite = self.clone_for_scenario();
-        
-        let handle = tokio::spawn(async move {
-            test_suite.run_single_call_scenario(scenario).await
-        });
-        
+
+        let handle =
+            tokio::spawn(async move { test_suite.run_single_call_scenario(scenario).await });
+
         Ok(handle)
     }
-    
+
     async fn run_single_call_scenario(&self, scenario: CallScenario) -> Result<()> {
         let call_start = Instant::now();
-        self.log_info(&format!("📞 Starting call scenario: {}", scenario.call_id)).await;
-        self.log_debug(&format!("Scenario details: {:?}", scenario)).await;
-        
+        self.log_info(&format!("📞 Starting call scenario: {}", scenario.call_id))
+            .await;
+        self.log_debug(&format!("Scenario details: {:?}", scenario))
+            .await;
+
         // Update statistics
         {
             let mut stats = self.test_stats.write().await;
             stats.calls_initiated += 1;
         }
-        
+
         // Create call leg tracking
         let mut call_legs = Vec::new();
-        
+
         // Step 1: SIP Ingress -> TDMoE Ingress
-        self.log_debug(&format!("[{}] Step 1: SIP -> TDMoE conversion", scenario.call_id)).await;
-        
+        self.log_debug(&format!(
+            "[{}] Step 1: SIP -> TDMoE conversion",
+            scenario.call_id
+        ))
+        .await;
+
         let ingress_leg = CallLegInfo {
             leg_id: format!("{}-ingress", scenario.call_id),
             leg_type: CallLegType::SipIngress,
             state: "SETUP".to_string(),
             codec: format!("{:?}", scenario.codec),
-            local_addr: format!("127.0.0.1:{}", self.config.sip_ingress_port).parse().unwrap(),
+            local_addr: format!("127.0.0.1:{}", self.config.sip_ingress_port)
+                .parse()
+                .unwrap(),
             remote_addr: "127.0.0.1:5080".parse().unwrap(), // SIPp client
             stats: HashMap::new(),
             last_activity: Instant::now(),
         };
         call_legs.push(ingress_leg);
-        
+
         // Simulate SIP INVITE -> TDMoE IAM conversion
-        self.tdmoe_pair.ingress.originate_call(
-            &scenario.calling_number,
-            &scenario.called_number,
-            scenario.cic,
-        ).await?;
-        
-        self.log_debug(&format!("[{}] TDMoE IAM sent on CIC {}", scenario.call_id, scenario.cic)).await;
-        
+        self.tdmoe_pair
+            .ingress
+            .originate_call(
+                &scenario.calling_number,
+                &scenario.called_number,
+                scenario.cic,
+            )
+            .await?;
+
+        self.log_debug(&format!(
+            "[{}] TDMoE IAM sent on CIC {}",
+            scenario.call_id, scenario.cic
+        ))
+        .await;
+
         // Step 2: TDMoE Ingress -> TDMoE Egress (loopback)
-        self.log_debug(&format!("[{}] Step 2: TDMoE loopback", scenario.call_id)).await;
-        
+        self.log_debug(&format!("[{}] Step 2: TDMoE loopback", scenario.call_id))
+            .await;
+
         let tdmoe_ingress_leg = CallLegInfo {
             leg_id: format!("{}-tdmoe-ingress", scenario.call_id),
             leg_type: CallLegType::TdmoeIngress,
@@ -441,16 +470,20 @@ impl SipTdmoeTestSuite {
             last_activity: Instant::now(),
         };
         call_legs.push(tdmoe_ingress_leg);
-        
+
         // Wait for call to be established
         sleep(Duration::from_millis(100)).await;
-        
+
         // Step 3: TDMoE Egress -> SIP Egress
-        self.log_debug(&format!("[{}] Step 3: TDMoE -> SIP conversion", scenario.call_id)).await;
-        
+        self.log_debug(&format!(
+            "[{}] Step 3: TDMoE -> SIP conversion",
+            scenario.call_id
+        ))
+        .await;
+
         // Simulate answer
         self.tdmoe_pair.egress.answer_call(scenario.cic).await?;
-        
+
         let tdmoe_egress_leg = CallLegInfo {
             leg_id: format!("{}-tdmoe-egress", scenario.call_id),
             leg_type: CallLegType::TdmoeEgress,
@@ -462,90 +495,119 @@ impl SipTdmoeTestSuite {
             last_activity: Instant::now(),
         };
         call_legs.push(tdmoe_egress_leg);
-        
+
         let egress_leg = CallLegInfo {
             leg_id: format!("{}-egress", scenario.call_id),
             leg_type: CallLegType::SipEgress,
             state: "CONNECTED".to_string(),
             codec: format!("{:?}", scenario.codec),
-            local_addr: format!("127.0.0.1:{}", self.config.sip_egress_port).parse().unwrap(),
+            local_addr: format!("127.0.0.1:{}", self.config.sip_egress_port)
+                .parse()
+                .unwrap(),
             remote_addr: "127.0.0.1:5081".parse().unwrap(), // SIPp UAS
             stats: HashMap::new(),
             last_activity: Instant::now(),
         };
         call_legs.push(egress_leg);
-        
+
         // Store call legs for tracking
         {
             let mut active_calls = self.active_calls.write().await;
             active_calls.insert(scenario.call_id.clone(), call_legs);
         }
-        
-        self.log_info(&format!("[{}] ✅ Call established end-to-end", scenario.call_id)).await;
-        
+
+        self.log_info(&format!(
+            "[{}] ✅ Call established end-to-end",
+            scenario.call_id
+        ))
+        .await;
+
         // Step 4: Media flow simulation
         self.simulate_media_flow(&scenario).await?;
-        
+
         // Step 5: Call teardown
-        self.log_debug(&format!("[{}] Step 5: Call teardown", scenario.call_id)).await;
-        
+        self.log_debug(&format!("[{}] Step 5: Call teardown", scenario.call_id))
+            .await;
+
         // Release TDMoE call
-        self.tdmoe_pair.ingress.release_call(scenario.cic, 16).await?; // Normal clearing
-        
+        self.tdmoe_pair
+            .ingress
+            .release_call(scenario.cic, 16)
+            .await?; // Normal clearing
+
         // Wait for cleanup
         sleep(Duration::from_millis(100)).await;
-        
+
         let call_duration = call_start.elapsed();
-        self.log_info(&format!("[{}] ✅ Call completed successfully in {:?}", 
-                               scenario.call_id, call_duration)).await;
-        
+        self.log_info(&format!(
+            "[{}] ✅ Call completed successfully in {:?}",
+            scenario.call_id, call_duration
+        ))
+        .await;
+
         // Update statistics
         {
             let mut stats = self.test_stats.write().await;
             stats.calls_completed += 1;
-            
+
             // Update average call setup time
             let total_calls = stats.calls_completed as u64;
             let current_avg = stats.avg_call_setup_time.as_millis() as u64;
-            let new_avg = (current_avg * (total_calls - 1) + call_duration.as_millis() as u64) / total_calls;
+            let new_avg =
+                (current_avg * (total_calls - 1) + call_duration.as_millis() as u64) / total_calls;
             stats.avg_call_setup_time = Duration::from_millis(new_avg);
         }
-        
+
         // Remove from active calls
         {
             let mut active_calls = self.active_calls.write().await;
             active_calls.remove(&scenario.call_id);
         }
-        
+
         Ok(())
     }
-    
+
     async fn simulate_media_flow(&self, scenario: &CallScenario) -> Result<()> {
-        self.log_debug(&format!("[{}] Simulating media flow for {:?}", 
-                               scenario.call_id, scenario.duration)).await;
-        
+        self.log_debug(&format!(
+            "[{}] Simulating media flow for {:?}",
+            scenario.call_id, scenario.duration
+        ))
+        .await;
+
         let media_duration = scenario.duration;
         let packet_interval = Duration::from_millis(20); // 20ms packets
         let mut packets_sent = 0u64;
-        
+
         let start = Instant::now();
         while start.elapsed() < media_duration {
             // Generate test audio data
             let audio_data = self.generate_test_audio(scenario.codec, 160); // 20ms at 8kHz
-            
+
             // Send voice data through TDMoE
-            if let Err(e) = self.tdmoe_pair.ingress.send_voice_data(scenario.cic, &audio_data).await {
-                self.log_debug(&format!("[{}] Failed to send voice data: {}", scenario.call_id, e)).await;
+            if let Err(e) = self
+                .tdmoe_pair
+                .ingress
+                .send_voice_data(scenario.cic, &audio_data)
+                .await
+            {
+                self.log_debug(&format!(
+                    "[{}] Failed to send voice data: {}",
+                    scenario.call_id, e
+                ))
+                .await;
             } else {
                 packets_sent += 1;
             }
-            
+
             sleep(packet_interval).await;
         }
-        
-        self.log_debug(&format!("[{}] Media flow completed: {} packets sent", 
-                               scenario.call_id, packets_sent)).await;
-        
+
+        self.log_debug(&format!(
+            "[{}] Media flow completed: {} packets sent",
+            scenario.call_id, packets_sent
+        ))
+        .await;
+
         // Update statistics
         {
             let mut stats = self.test_stats.write().await;
@@ -553,17 +615,18 @@ impl SipTdmoeTestSuite {
             // Assume all packets received for this simple test
             stats.audio_quality.packets_received += packets_sent;
         }
-        
+
         Ok(())
     }
-    
+
     fn generate_test_audio(&self, codec: TestCodec, samples: usize) -> Vec<u8> {
         match codec {
             TestCodec::G711ULaw | TestCodec::G711ALaw => {
                 // Generate μ-law/A-law encoded sine wave
                 let mut audio = Vec::with_capacity(samples);
                 for i in 0..samples {
-                    let sample = (((i as f32 * 2.0 * std::f32::consts::PI * 1000.0) / 8000.0).sin() * 127.0) as i8;
+                    let sample = (((i as f32 * 2.0 * std::f32::consts::PI * 1000.0) / 8000.0).sin()
+                        * 127.0) as i8;
                     let encoded = if codec == TestCodec::G711ULaw {
                         self.linear_to_ulaw(sample as i16 * 256)
                     } else {
@@ -587,12 +650,12 @@ impl SipTdmoeTestSuite {
             }
         }
     }
-    
+
     fn linear_to_ulaw(&self, pcm: i16) -> u8 {
         // Simplified μ-law encoding
         const BIAS: i16 = 0x84;
         const CLIP: i16 = 32635;
-        
+
         let mut sample = pcm;
         if sample < 0 {
             sample = -sample;
@@ -600,25 +663,25 @@ impl SipTdmoeTestSuite {
         if sample > CLIP {
             sample = CLIP;
         }
-        
+
         sample += BIAS;
         let exponent = (sample >> 7) & 0x0F;
         let mantissa = (sample >> (exponent + 3)) & 0x0F;
         let ulaw = !(exponent << 4 | mantissa) as u8;
-        
+
         if pcm < 0 {
             ulaw & 0x7F
         } else {
             ulaw | 0x80
         }
     }
-    
+
     fn linear_to_alaw(&self, pcm: i16) -> u8 {
         // Simplified A-law encoding
         const QUANT_MASK: i16 = 0x0F;
         const SEG_SHIFT: i16 = 4;
         const SEG_MASK: i16 = 0x70;
-        
+
         let mut sample = pcm;
         let sign = if sample < 0 {
             sample = -sample;
@@ -626,103 +689,129 @@ impl SipTdmoeTestSuite {
         } else {
             0x80
         };
-        
+
         if sample > 32635 {
             sample = 32635;
         }
-        
+
         let seg = if sample >= 256 {
             ((sample >> SEG_SHIFT) & SEG_MASK) as u8
         } else {
             0
         };
-        
+
         let alaw = sign | seg | ((sample >> (seg + 3)) & QUANT_MASK) as u8;
         alaw ^ 0x55
     }
-    
+
     async fn stop_services(&mut self) {
         self.log_info("🛑 Stopping all services...").await;
-        
+
         // Services will be dropped and cleaned up automatically
         sleep(Duration::from_millis(100)).await;
-        
+
         self.log_info("✅ All services stopped").await;
     }
-    
+
     async fn collect_final_statistics(&self) -> Result<TestStats> {
         let mut stats = self.test_stats.write().await;
         stats.total_duration = self.start_time.elapsed();
-        
+
         // Calculate packet loss
         if stats.audio_quality.packets_sent > 0 {
-            stats.audio_quality.packet_loss_percent = 
-                ((stats.audio_quality.packets_sent - stats.audio_quality.packets_received) as f64 
-                / stats.audio_quality.packets_sent as f64) * 100.0;
+            stats.audio_quality.packet_loss_percent =
+                ((stats.audio_quality.packets_sent - stats.audio_quality.packets_received) as f64
+                    / stats.audio_quality.packets_sent as f64)
+                    * 100.0;
         }
-        
+
         // Get TDMoE statistics
         let ingress_stats = self.tdmoe_pair.ingress.get_statistics().await;
-        self.log_debug(&format!("TDMoE Ingress Stats: {:?}", ingress_stats)).await;
-        
+        self.log_debug(&format!("TDMoE Ingress Stats: {:?}", ingress_stats))
+            .await;
+
         let egress_stats = self.tdmoe_pair.egress.get_statistics().await;
-        self.log_debug(&format!("TDMoE Egress Stats: {:?}", egress_stats)).await;
-        
+        self.log_debug(&format!("TDMoE Egress Stats: {:?}", egress_stats))
+            .await;
+
         Ok((*stats).clone())
     }
-    
+
     async fn log_test_results(&mut self, stats: &TestStats) {
         self.log_info("📊 Final Test Results:").await;
-        self.log_info(&format!("  Calls Initiated: {}", stats.calls_initiated)).await;
-        self.log_info(&format!("  Calls Completed: {}", stats.calls_completed)).await;
-        self.log_info(&format!("  Calls Failed: {}", stats.calls_failed)).await;
-        self.log_info(&format!("  Success Rate: {:.1}%", 
-                              (stats.calls_completed as f64 / stats.calls_initiated as f64) * 100.0)).await;
-        self.log_info(&format!("  Total Duration: {:?}", stats.total_duration)).await;
-        self.log_info(&format!("  Avg Call Setup: {:?}", stats.avg_call_setup_time)).await;
-        self.log_info(&format!("  Packets Sent: {}", stats.audio_quality.packets_sent)).await;
-        self.log_info(&format!("  Packets Received: {}", stats.audio_quality.packets_received)).await;
-        self.log_info(&format!("  Packet Loss: {:.2}%", stats.audio_quality.packet_loss_percent)).await;
+        self.log_info(&format!("  Calls Initiated: {}", stats.calls_initiated))
+            .await;
+        self.log_info(&format!("  Calls Completed: {}", stats.calls_completed))
+            .await;
+        self.log_info(&format!("  Calls Failed: {}", stats.calls_failed))
+            .await;
+        self.log_info(&format!(
+            "  Success Rate: {:.1}%",
+            (stats.calls_completed as f64 / stats.calls_initiated as f64) * 100.0
+        ))
+        .await;
+        self.log_info(&format!("  Total Duration: {:?}", stats.total_duration))
+            .await;
+        self.log_info(&format!(
+            "  Avg Call Setup: {:?}",
+            stats.avg_call_setup_time
+        ))
+        .await;
+        self.log_info(&format!(
+            "  Packets Sent: {}",
+            stats.audio_quality.packets_sent
+        ))
+        .await;
+        self.log_info(&format!(
+            "  Packets Received: {}",
+            stats.audio_quality.packets_received
+        ))
+        .await;
+        self.log_info(&format!(
+            "  Packet Loss: {:.2}%",
+            stats.audio_quality.packet_loss_percent
+        ))
+        .await;
     }
-    
+
     // Helper methods for logging
     async fn log_info(&self, message: &str) {
         let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f");
         let log_line = format!("[{}] INFO: {}\n", timestamp, message);
-        
+
         if self.config.verbose {
             println!("{}", log_line.trim());
         }
-        
+
         info!("{}", message);
-        
+
         // File logging temporarily disabled to avoid &mut self issues
     }
-    
+
     async fn log_debug(&self, message: &str) {
         if !self.config.verbose {
             return;
         }
-        
+
         let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f");
         let log_line = format!("[{}] DEBUG: {}\n", timestamp, message);
-        
+
         println!("{}", log_line.trim());
         debug!("{}", message);
-        
+
         // File logging temporarily disabled to avoid &mut self issues
     }
-    
+
     async fn log_error(&self, message: &str) {
         let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f");
         let log_line = format!("[{}] ERROR: {}\n", timestamp, message);
-        
+
         eprintln!("{}", log_line.trim());
         error!("{}", message);
-        
+
         // File logging temporarily disabled to avoid &mut self issues
     }
-    
+
     // Clone for scenario execution
     fn clone_for_scenario(&self) -> ScenarioRunner {
         ScenarioRunner {
@@ -760,11 +849,11 @@ impl ScenarioRunner {
         // Implementation moved to main struct for now
         Ok(())
     }
-    
+
     async fn log_info(&self, message: &str) {
         info!("[{}] {}", self.test_id, message);
     }
-    
+
     async fn log_debug(&self, message: &str) {
         debug!("[{}] {}", self.test_id, message);
     }
@@ -775,71 +864,87 @@ async fn main() -> Result<()> {
     let matches = Command::new("sip-tdmoe-integration-test")
         .version("1.0")
         .about("SIP to TDMoE to SIP Integration Test Suite")
-        .arg(Arg::new("codec")
-            .long("codec")
-            .short('c')
-            .value_name("CODEC")
-            .help("Audio codec to use for testing")
-            .value_parser(["g711u", "g711a", "g729", "g722", "opus"])
-            .default_value("g711u"))
-        .arg(Arg::new("calls")
-            .long("calls")
-            .short('n')
-            .value_name("COUNT")
-            .help("Number of concurrent calls")
-            .value_parser(clap::value_parser!(u32))
-            .default_value("1"))
-        .arg(Arg::new("duration")
-            .long("duration")
-            .short('d')
-            .value_name("SECONDS")
-            .help("Call duration in seconds")
-            .value_parser(clap::value_parser!(u32))
-            .default_value("10"))
-        .arg(Arg::new("verbose")
-            .long("verbose")
-            .short('v')
-            .help("Enable verbose logging")
-            .action(clap::ArgAction::SetTrue))
-        .arg(Arg::new("log-file")
-            .long("log-file")
-            .short('l')
-            .value_name("PATH")
-            .help("Log file path")
-            .value_parser(clap::value_parser!(PathBuf)))
-        .arg(Arg::new("sip-ingress-port")
-            .long("sip-ingress-port")
-            .value_name("PORT")
-            .help("SIP ingress port")
-            .value_parser(clap::value_parser!(u16))
-            .default_value("5060"))
-        .arg(Arg::new("sip-egress-port")
-            .long("sip-egress-port")
-            .value_name("PORT")
-            .help("SIP egress port")
-            .value_parser(clap::value_parser!(u16))
-            .default_value("5070"))
-        .arg(Arg::new("timeout")
-            .long("timeout")
-            .short('t')
-            .value_name("SECONDS")
-            .help("Test timeout in seconds")
-            .value_parser(clap::value_parser!(u64))
-            .default_value("60"))
+        .arg(
+            Arg::new("codec")
+                .long("codec")
+                .short('c')
+                .value_name("CODEC")
+                .help("Audio codec to use for testing")
+                .value_parser(["g711u", "g711a", "g729", "g722", "opus"])
+                .default_value("g711u"),
+        )
+        .arg(
+            Arg::new("calls")
+                .long("calls")
+                .short('n')
+                .value_name("COUNT")
+                .help("Number of concurrent calls")
+                .value_parser(clap::value_parser!(u32))
+                .default_value("1"),
+        )
+        .arg(
+            Arg::new("duration")
+                .long("duration")
+                .short('d')
+                .value_name("SECONDS")
+                .help("Call duration in seconds")
+                .value_parser(clap::value_parser!(u32))
+                .default_value("10"),
+        )
+        .arg(
+            Arg::new("verbose")
+                .long("verbose")
+                .short('v')
+                .help("Enable verbose logging")
+                .action(clap::ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("log-file")
+                .long("log-file")
+                .short('l')
+                .value_name("PATH")
+                .help("Log file path")
+                .value_parser(clap::value_parser!(PathBuf)),
+        )
+        .arg(
+            Arg::new("sip-ingress-port")
+                .long("sip-ingress-port")
+                .value_name("PORT")
+                .help("SIP ingress port")
+                .value_parser(clap::value_parser!(u16))
+                .default_value("5060"),
+        )
+        .arg(
+            Arg::new("sip-egress-port")
+                .long("sip-egress-port")
+                .value_name("PORT")
+                .help("SIP egress port")
+                .value_parser(clap::value_parser!(u16))
+                .default_value("5070"),
+        )
+        .arg(
+            Arg::new("timeout")
+                .long("timeout")
+                .short('t')
+                .value_name("SECONDS")
+                .help("Test timeout in seconds")
+                .value_parser(clap::value_parser!(u64))
+                .default_value("60"),
+        )
         .get_matches();
-    
+
     // Initialize tracing
     let log_level = if matches.get_flag("verbose") {
         "debug"
     } else {
         "info"
     };
-    
+
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::from_str(log_level).unwrap_or(tracing::Level::INFO))
         .with_target(false)
         .init();
-    
+
     // Parse codec
     let codec = match matches.get_one::<String>("codec").unwrap().as_str() {
         "g711u" => TestCodec::G711ULaw,
@@ -849,7 +954,7 @@ async fn main() -> Result<()> {
         "opus" => TestCodec::Opus,
         _ => TestCodec::G711ULaw,
     };
-    
+
     // Create test configuration
     let config = TestConfig {
         codec,
@@ -862,7 +967,7 @@ async fn main() -> Result<()> {
         test_timeout: *matches.get_one::<u64>("timeout").unwrap(),
         ..TestConfig::default()
     };
-    
+
     println!("🚀 Starting SIP -> TDMoE -> SIP Integration Test");
     println!("📋 Test Configuration:");
     println!("   Codec: {:?}", config.codec);
@@ -875,19 +980,24 @@ async fn main() -> Result<()> {
         println!("   Log File: {}", log_file.display());
     }
     println!();
-    
+
     // Run the test
     let mut test_suite = SipTdmoeTestSuite::new(config).await?;
     let results = test_suite.run_test().await?;
-    
+
     // Print final summary
     println!("\n📊 Test Summary:");
-    println!("   Success Rate: {:.1}%", 
-             (results.calls_completed as f64 / results.calls_initiated as f64) * 100.0);
+    println!(
+        "   Success Rate: {:.1}%",
+        (results.calls_completed as f64 / results.calls_initiated as f64) * 100.0
+    );
     println!("   Total Duration: {:?}", results.total_duration);
     println!("   Avg Setup Time: {:?}", results.avg_call_setup_time);
-    println!("   Packet Loss: {:.2}%", results.audio_quality.packet_loss_percent);
-    
+    println!(
+        "   Packet Loss: {:.2}%",
+        results.audio_quality.packet_loss_percent
+    );
+
     if results.calls_completed == results.calls_initiated {
         println!("\n✅ All tests passed!");
         Ok(())

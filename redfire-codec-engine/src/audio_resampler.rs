@@ -3,7 +3,7 @@
  * High-quality sample rate conversion for media transcoding
  */
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 // dasp Signal import removed - not used in this minimal version
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -136,14 +136,17 @@ impl AudioResampler {
     pub async fn new(config: ResamplerConfig) -> Result<Self> {
         let sinc_table = Self::generate_sinc_table(&config);
         let lowpass_filter = Self::generate_lowpass_filter(&config);
-        
+
         let max_channels = config.max_channels as usize;
         let dc_blocker_state = Arc::new(RwLock::new(
-            (0..max_channels).map(|_| DcBlockerState::new()).collect()
+            (0..max_channels).map(|_| DcBlockerState::new()).collect(),
         ));
 
-        info!("Created audio resampler with quality {:?}, filter length {}", 
-              config.quality, config.quality.filter_length());
+        info!(
+            "Created audio resampler with quality {:?}, filter length {}",
+            config.quality,
+            config.quality.filter_length()
+        );
 
         Ok(Self {
             config,
@@ -164,10 +167,10 @@ impl AudioResampler {
 
         for i in 0..table_size {
             let fraction = i as f64 / table_size as f64;
-            
+
             for j in 0..filter_length {
                 let t = (j as f64 - filter_length as f64 * 0.5 + fraction) * std::f64::consts::PI;
-                
+
                 let sinc_val = if t.abs() < 1e-10 {
                     1.0
                 } else {
@@ -175,7 +178,7 @@ impl AudioResampler {
                     let window = Self::kaiser_window(j, filter_length, 8.0); // Kaiser window with β=8
                     sinc * window
                 };
-                
+
                 table.push(sinc_val);
             }
         }
@@ -189,7 +192,7 @@ impl AudioResampler {
     fn kaiser_window(n: usize, length: usize, beta: f64) -> f64 {
         let n_centered = n as f64 - (length - 1) as f64 * 0.5;
         let alpha = (length - 1) as f64 * 0.5;
-        
+
         let x = beta * (1.0 - (n_centered / alpha).powi(2)).sqrt();
         Self::modified_bessel_i0(x) / Self::modified_bessel_i0(beta)
     }
@@ -199,7 +202,7 @@ impl AudioResampler {
         let mut sum = 1.0;
         let mut term = 1.0;
         let x_half_squared = (x * 0.5).powi(2);
-        
+
         for k in 1..=50 {
             term *= x_half_squared / (k as f64).powi(2);
             sum += term;
@@ -207,7 +210,7 @@ impl AudioResampler {
                 break;
             }
         }
-        
+
         sum
     }
 
@@ -219,13 +222,13 @@ impl AudioResampler {
 
         for i in 0..filter_length {
             let t = (i as f64 - filter_length as f64 * 0.5) * std::f64::consts::PI;
-            
+
             let h = if t.abs() < 1e-10 {
                 cutoff
             } else {
                 (t * cutoff).sin() / t
             };
-            
+
             let window = Self::hanning_window(i, filter_length);
             filter.push(h * window);
         }
@@ -288,11 +291,7 @@ impl AudioResampler {
                 .map(|&x| x as f64)
                 .collect();
 
-            let channel_output = self.resample_channel(
-                &channel_input,
-                ratio,
-                ch,
-            ).await?;
+            let channel_output = self.resample_channel(&channel_input, ratio, ch).await?;
 
             // Interleave output
             for (i, &sample) in channel_output.iter().enumerate() {
@@ -454,10 +453,13 @@ impl ResamplingService {
         channels: u32,
     ) -> Result<Vec<f32>> {
         let resamplers = self.resamplers.read().await;
-        let resampler = resamplers.get(session_id)
+        let resampler = resamplers
+            .get(session_id)
             .ok_or_else(|| anyhow!("Resampling session {} not found", session_id))?;
-        
-        resampler.resample(input, input_rate, output_rate, channels).await
+
+        resampler
+            .resample(input, input_rate, output_rate, channels)
+            .await
     }
 
     /// Get active session count
@@ -482,10 +484,10 @@ mod tests {
     async fn test_no_resampling_needed() {
         let config = ResamplerConfig::default();
         let resampler = AudioResampler::new(config).await.unwrap();
-        
+
         let input = vec![0.5, -0.3, 0.8, -0.2];
         let output = resampler.resample(&input, 8000, 8000, 1).await.unwrap();
-        
+
         assert_eq!(input, output);
     }
 
@@ -493,10 +495,10 @@ mod tests {
     async fn test_upsampling() {
         let config = ResamplerConfig::default();
         let resampler = AudioResampler::new(config).await.unwrap();
-        
+
         let input = vec![1.0, 0.0, -1.0, 0.0]; // 4 samples
         let output = resampler.resample(&input, 8000, 16000, 1).await.unwrap();
-        
+
         // Should approximately double the length
         assert!(output.len() >= 7 && output.len() <= 9);
     }
@@ -505,10 +507,10 @@ mod tests {
     async fn test_downsampling() {
         let config = ResamplerConfig::default();
         let resampler = AudioResampler::new(config).await.unwrap();
-        
+
         let input = vec![1.0, 0.5, 0.0, -0.5, -1.0, -0.5, 0.0, 0.5]; // 8 samples
         let output = resampler.resample(&input, 16000, 8000, 1).await.unwrap();
-        
+
         // Should approximately halve the length
         assert!(output.len() >= 3 && output.len() <= 5);
     }
@@ -517,11 +519,11 @@ mod tests {
     async fn test_stereo_resampling() {
         let config = ResamplerConfig::default();
         let resampler = AudioResampler::new(config).await.unwrap();
-        
+
         // Stereo input: L, R, L, R, ...
         let input = vec![1.0, -1.0, 0.5, -0.5, 0.0, 0.0, -0.5, 0.5];
         let output = resampler.resample(&input, 8000, 16000, 2).await.unwrap();
-        
+
         // Should maintain stereo interleaving
         assert_eq!(output.len() % 2, 0); // Even number of samples
         assert!(output.len() >= 14 && output.len() <= 18);
@@ -531,21 +533,21 @@ mod tests {
     async fn test_resampling_service() {
         let config = ResamplerConfig::default();
         let service = ResamplingService::new(config).await.unwrap();
-        
-        service.start_session("test_session".to_string()).await.unwrap();
+
+        service
+            .start_session("test_session".to_string())
+            .await
+            .unwrap();
         assert_eq!(service.get_active_sessions().await, 1);
-        
+
         let input = vec![1.0, 0.0, -1.0, 0.0];
-        let output = service.resample_for_session(
-            "test_session",
-            &input,
-            8000,
-            16000,
-            1
-        ).await.unwrap();
-        
+        let output = service
+            .resample_for_session("test_session", &input, 8000, 16000, 1)
+            .await
+            .unwrap();
+
         assert!(output.len() > input.len());
-        
+
         service.end_session("test_session").await.unwrap();
         assert_eq!(service.get_active_sessions().await, 0);
     }
@@ -562,10 +564,12 @@ mod tests {
                 quality,
                 ..Default::default()
             };
-            
+
             let resampler = AudioResampler::new(config).await.unwrap();
-            assert_eq!(resampler.sinc_table.len(), 
-                      quality.sinc_table_size() * quality.filter_length());
+            assert_eq!(
+                resampler.sinc_table.len(),
+                quality.sinc_table_size() * quality.filter_length()
+            );
         }
     }
 
@@ -573,15 +577,15 @@ mod tests {
     async fn test_estimate_output_length() {
         let config = ResamplerConfig::default();
         let resampler = AudioResampler::new(config).await.unwrap();
-        
+
         // Test upsampling
         let estimated = resampler.estimate_output_length(1000, 8000, 16000, 1);
         assert_eq!(estimated, 2000);
-        
+
         // Test downsampling
         let estimated = resampler.estimate_output_length(2000, 16000, 8000, 1);
         assert_eq!(estimated, 1000);
-        
+
         // Test with channels
         let estimated = resampler.estimate_output_length(1000, 8000, 16000, 2);
         assert_eq!(estimated, 2000);

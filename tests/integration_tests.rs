@@ -1,49 +1,48 @@
 /*
  * Redfire Switch - Integration Tests for Library System
  * Copyright (C) 2025 Carrier One Inc and contributors
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Sponsored by Carrier One Inc (https://www.carrierone.com)
  */
 
 //! Integration tests for the Redfire Switch library system
-//! 
+//!
 //! This test suite verifies that the codec engine and SIP stack libraries
 //! work correctly both independently and in combination.
 
 use anyhow::Result;
-use redfire_codec_engine::{CodecService, AudioCodec, GpuCodecConfig};
-use redfire_sip_stack::{SipParser, SipMessage, SipTransport};
-use redfire_sip_stack_minimal::{SipParser as MinimalSipParser, SipMessage as MinimalSipMessage};
-use std::net::{SocketAddr, IpAddr, Ipv4Addr};
+use redfire_codec_engine::{AudioCodec, CodecService, GpuCodecConfig};
+use redfire_sip_stack::{SipMessage, SipParser, SipTransport};
+use redfire_sip_stack_minimal::{SipMessage as MinimalSipMessage, SipParser as MinimalSipParser};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 /// Test basic codec engine functionality
 #[tokio::test]
 async fn test_codec_engine_basic() -> Result<()> {
     // Create codec service
     let mut service = CodecService::new(GpuCodecConfig::cpu_only());
-    
+
     // Test codec availability
     assert!(service.is_codec_supported(&AudioCodec::G711ULaw));
     assert!(service.is_codec_supported(&AudioCodec::G711ALaw));
-    
+
     // Start a transcoding session
-    let session_id = service.start_transcoding_session(
-        AudioCodec::G711ULaw,
-        AudioCodec::G711ALaw
-    ).await?;
-    
+    let session_id = service
+        .start_transcoding_session(AudioCodec::G711ULaw, AudioCodec::G711ALaw)
+        .await?;
+
     // Verify session was created
     let stats = service.get_service_statistics();
     assert_eq!(stats.active_sessions, 1);
-    
+
     // Stop the session
     service.stop_transcoding_session(&session_id).await?;
-    
+
     println!("✅ Codec engine basic test passed");
     Ok(())
 }
@@ -55,9 +54,9 @@ fn test_sip_stack_basic() -> Result<()> {
     let parser = SipParser::new(
         "localhost".to_string(),
         5060,
-        "Redfire-Test/1.0".to_string()
+        "Redfire-Test/1.0".to_string(),
     );
-    
+
     // Test SIP message parsing
     let sip_data = "INVITE sip:alice@example.com SIP/2.0\r\n\
                    Via: SIP/2.0/UDP localhost:5060;branch=z9hG4bK123\r\n\
@@ -69,22 +68,17 @@ fn test_sip_stack_basic() -> Result<()> {
                    Contact: <sip:bob@localhost:5060>\r\n\
                    Content-Length: 0\r\n\
                    \r\n";
-    
+
     let source = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 5060);
     let dest = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 5061);
-    
-    let message = parser.parse_message(
-        sip_data.as_bytes(),
-        source,
-        dest,
-        SipTransport::UDP
-    )?;
-    
+
+    let message = parser.parse_message(sip_data.as_bytes(), source, dest, SipTransport::UDP)?;
+
     // Verify parsing
     assert_eq!(message.source, source);
     assert_eq!(message.destination, dest);
     assert_eq!(message.transport, SipTransport::UDP);
-    
+
     println!("✅ SIP stack basic test passed");
     Ok(())
 }
@@ -94,7 +88,7 @@ fn test_sip_stack_basic() -> Result<()> {
 fn test_minimal_sip_stack() -> Result<()> {
     // Create minimal SIP parser
     let parser = MinimalSipParser::new();
-    
+
     // Test parsing
     let sip_text = "INVITE sip:alice@example.com SIP/2.0\r\n\
                    From: Bob <sip:bob@example.org>;tag=456\r\n\
@@ -102,23 +96,25 @@ fn test_minimal_sip_stack() -> Result<()> {
                    Call-ID: test-call-id@localhost\r\n\
                    CSeq: 1 INVITE\r\n\
                    \r\n";
-    
+
     let message = parser.parse_str(sip_text)?;
-    
+
     // Verify message structure
     assert!(message.is_request());
     assert!(!message.is_response());
     assert_eq!(message.headers.len(), 4);
-    
+
     // Test message creation
-    let mut response = MinimalSipMessage::new_response(
-        redfire_sip_stack_minimal::SipStatusCode::Ok
-    );
+    let mut response =
+        MinimalSipMessage::new_response(redfire_sip_stack_minimal::SipStatusCode::Ok);
     response.add_header("Content-Length", "0");
-    
+
     assert!(response.is_response());
-    assert_eq!(response.status_code, Some(redfire_sip_stack_minimal::SipStatusCode::Ok));
-    
+    assert_eq!(
+        response.status_code,
+        Some(redfire_sip_stack_minimal::SipStatusCode::Ok)
+    );
+
     println!("✅ Minimal SIP stack test passed");
     Ok(())
 }
@@ -131,9 +127,9 @@ async fn test_codec_sip_integration() -> Result<()> {
     let sip_parser = SipParser::new(
         "localhost".to_string(),
         5060,
-        "Redfire-Integration-Test/1.0".to_string()
+        "Redfire-Integration-Test/1.0".to_string(),
     );
-    
+
     // Simulate incoming SIP INVITE with SDP offering G.711 µ-law
     let invite_sip = "INVITE sip:alice@example.com SIP/2.0\r\n\
                      Via: SIP/2.0/UDP caller.example.org:5060;branch=z9hG4bK123\r\n\
@@ -153,34 +149,29 @@ async fn test_codec_sip_integration() -> Result<()> {
                      t=0 0\r\n\
                      m=audio 8000 RTP/AVP 0\r\n\
                      a=rtpmap:0 PCMU/8000\r\n";
-    
+
     let source = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100)), 5060);
     let dest = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 5060);
-    
+
     // Parse the SIP INVITE
-    let invite_message = sip_parser.parse_message(
-        invite_sip.as_bytes(),
-        source,
-        dest,
-        SipTransport::UDP
-    )?;
-    
+    let invite_message =
+        sip_parser.parse_message(invite_sip.as_bytes(), source, dest, SipTransport::UDP)?;
+
     // Verify the message was parsed correctly
     assert_eq!(invite_message.transport, SipTransport::UDP);
-    
+
     // Start codec transcoding session (µ-law to A-law conversion)
-    let session_id = codec_service.start_transcoding_session(
-        AudioCodec::G711ULaw,
-        AudioCodec::G711ALaw
-    ).await?;
-    
+    let session_id = codec_service
+        .start_transcoding_session(AudioCodec::G711ULaw, AudioCodec::G711ALaw)
+        .await?;
+
     // Verify codec session is active
     let stats = codec_service.get_service_statistics();
     assert_eq!(stats.active_sessions, 1);
-    
+
     // Clean up
     codec_service.stop_transcoding_session(&session_id).await?;
-    
+
     println!("✅ Codec-SIP integration test passed");
     Ok(())
 }
@@ -190,12 +181,12 @@ async fn test_codec_sip_integration() -> Result<()> {
 fn test_gpu_detection() {
     // Test GPU availability detection
     let gpu_available = redfire_codec_engine::gpu_available();
-    
+
     println!("GPU support available: {}", gpu_available);
-    
+
     // GPU detection should not fail
     assert!(true); // This test always passes, just reports GPU status
-    
+
     println!("✅ GPU detection test passed");
 }
 
@@ -205,24 +196,32 @@ fn test_utility_functions() -> Result<()> {
     // Test SIP stack utilities
     let call_id = redfire_sip_stack::utils::generate_call_id();
     assert!(call_id.starts_with("redfire-"));
-    
+
     let branch = redfire_sip_stack::utils::generate_branch();
     assert!(branch.starts_with("z9hG4bK-redfire-"));
-    
+
     let tag = redfire_sip_stack::utils::generate_tag();
     assert!(tag.starts_with("redfire-"));
-    
+
     // Test URI validation
-    assert!(redfire_sip_stack::utils::validate_sip_uri("sip:alice@example.com"));
-    assert!(redfire_sip_stack::utils::validate_sip_uri("sips:secure@example.com"));
-    assert!(!redfire_sip_stack::utils::validate_sip_uri("http://example.com"));
-    
+    assert!(redfire_sip_stack::utils::validate_sip_uri(
+        "sip:alice@example.com"
+    ));
+    assert!(redfire_sip_stack::utils::validate_sip_uri(
+        "sips:secure@example.com"
+    ));
+    assert!(!redfire_sip_stack::utils::validate_sip_uri(
+        "http://example.com"
+    ));
+
     // Test minimal SIP utilities
     let minimal_call_id = redfire_sip_stack_minimal::utils::generate_call_id();
     assert!(minimal_call_id.starts_with("redfire-"));
-    
-    assert!(redfire_sip_stack_minimal::utils::validate_sip_uri("sip:test@example.com"));
-    
+
+    assert!(redfire_sip_stack_minimal::utils::validate_sip_uri(
+        "sip:test@example.com"
+    ));
+
     println!("✅ Utility functions test passed");
     Ok(())
 }
@@ -232,15 +231,15 @@ fn test_utility_functions() -> Result<()> {
 fn test_error_handling() {
     // Test invalid SIP message parsing
     let parser = MinimalSipParser::new();
-    
+
     let invalid_sip = "This is not a SIP message";
     let result = parser.parse_str(invalid_sip);
     assert!(result.is_err());
-    
+
     // Test empty SIP message
     let empty_result = parser.parse_str("");
     assert!(empty_result.is_err());
-    
+
     println!("✅ Error handling test passed");
 }
 
@@ -248,37 +247,40 @@ fn test_error_handling() {
 #[tokio::test]
 async fn test_performance_basic() -> Result<()> {
     let start = std::time::Instant::now();
-    
+
     // Test codec service creation performance
     let codec_start = std::time::Instant::now();
     let _codec_service = CodecService::new(GpuCodecConfig::cpu_only());
     let codec_time = codec_start.elapsed();
-    
+
     // Test SIP parser creation performance
     let sip_start = std::time::Instant::now();
     let _sip_parser = SipParser::new(
         "localhost".to_string(),
         5060,
-        "Redfire-Perf-Test/1.0".to_string()
+        "Redfire-Perf-Test/1.0".to_string(),
     );
     let sip_time = sip_start.elapsed();
-    
+
     // Test minimal SIP parser performance
     let minimal_start = std::time::Instant::now();
     let _minimal_parser = MinimalSipParser::new();
     let minimal_time = minimal_start.elapsed();
-    
+
     let total_time = start.elapsed();
-    
+
     println!("Performance metrics:");
     println!("  Codec service creation: {:?}", codec_time);
     println!("  SIP parser creation: {:?}", sip_time);
     println!("  Minimal SIP parser creation: {:?}", minimal_time);
     println!("  Total test time: {:?}", total_time);
-    
+
     // Basic sanity check - operations should complete quickly
-    assert!(total_time.as_millis() < 1000, "Library initialization took too long");
-    
+    assert!(
+        total_time.as_millis() < 1000,
+        "Library initialization took too long"
+    );
+
     println!("✅ Performance test passed");
     Ok(())
 }

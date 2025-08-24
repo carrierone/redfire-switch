@@ -4,20 +4,20 @@
  */
 
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 use tokio::sync::RwLock;
-use tracing::{info, warn, error, debug};
-use serde::{Deserialize, Serialize};
+use tracing::{debug, error, info, warn};
 
 /// Security threat levels
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ThreatLevel {
     Low,
     Medium,
-    High, 
+    High,
     Critical,
 }
 
@@ -28,27 +28,27 @@ pub enum SecurityEventType {
     MessageFlood,
     OversizedMessage,
     MalformedMessage,
-    
+
     // Injection Attacks
     LogInjection,
     HeaderInjection,
     SipInjection,
-    
-    // Authentication Attacks  
+
+    // Authentication Attacks
     JwtAlgorithmConfusion,
     InvalidStirShaken,
     CertificateValidationFailure,
-    
+
     // Buffer Attacks
     BufferOverflowAttempt,
     InvalidUriFormat,
     HeaderTruncation,
-    
+
     // Protocol Violations
     InvalidSipMethod,
     MissingRequiredHeaders,
     ProtocolViolation,
-    
+
     // Reconnaissance
     PortScanning,
     MethodEnumeration,
@@ -132,8 +132,11 @@ pub struct SecurityMonitor {
 
 impl SecurityMonitor {
     pub fn new(config: SecurityMonitorConfig) -> Self {
-        info!("🛡️ Security Monitor initialized - Auto-block: {}", config.auto_block_enabled);
-        
+        info!(
+            "🛡️ Security Monitor initialized - Auto-block: {}",
+            config.auto_block_enabled
+        );
+
         Self {
             config,
             ip_stats: Arc::new(RwLock::new(HashMap::new())),
@@ -171,7 +174,7 @@ impl SecurityMonitor {
         }
 
         let threat_level = self.assess_threat_level(&event_type, &details);
-        
+
         let event = SecurityEvent {
             event_type: event_type.clone(),
             threat_level,
@@ -185,14 +188,22 @@ impl SecurityMonitor {
         // Log security event
         if self.config.log_security_events {
             match threat_level {
-                ThreatLevel::Critical => error!("🚨 CRITICAL SECURITY EVENT: {:?} from {} - {}", 
-                    event_type, source_ip, details),
-                ThreatLevel::High => warn!("⚠️ HIGH THREAT: {:?} from {} - {}", 
-                    event_type, source_ip, details),
-                ThreatLevel::Medium => warn!("⚠️ MEDIUM THREAT: {:?} from {} - {}", 
-                    event_type, source_ip, details),
-                ThreatLevel::Low => debug!("ℹ️ Security Event: {:?} from {} - {}", 
-                    event_type, source_ip, details),
+                ThreatLevel::Critical => error!(
+                    "🚨 CRITICAL SECURITY EVENT: {:?} from {} - {}",
+                    event_type, source_ip, details
+                ),
+                ThreatLevel::High => warn!(
+                    "⚠️ HIGH THREAT: {:?} from {} - {}",
+                    event_type, source_ip, details
+                ),
+                ThreatLevel::Medium => warn!(
+                    "⚠️ MEDIUM THREAT: {:?} from {} - {}",
+                    event_type, source_ip, details
+                ),
+                ThreatLevel::Low => debug!(
+                    "ℹ️ Security Event: {:?} from {} - {}",
+                    event_type, source_ip, details
+                ),
             }
         }
 
@@ -203,9 +214,10 @@ impl SecurityMonitor {
         {
             let mut events = self.security_events.write().await;
             events.push(event);
-            
+
             // Keep only recent events (sliding window)
-            let cutoff = SystemTime::now() - Duration::from_secs(self.config.monitoring_window_minutes * 60);
+            let cutoff =
+                SystemTime::now() - Duration::from_secs(self.config.monitoring_window_minutes * 60);
             events.retain(|e| e.timestamp > cutoff);
         }
 
@@ -219,9 +231,9 @@ impl SecurityMonitor {
 
     /// Analyze message for potential security threats
     pub async fn analyze_message(
-        &self, 
-        source_ip: IpAddr, 
-        message: &str
+        &self,
+        source_ip: IpAddr,
+        message: &str,
     ) -> Result<Vec<SecurityEventType>> {
         if !self.config.enabled {
             return Ok(Vec::new());
@@ -237,7 +249,8 @@ impl SecurityMonitor {
                 source_ip,
                 format!("Message size: {} bytes", message.len()),
                 Some(message.chars().take(256).collect()),
-            ).await?;
+            )
+            .await?;
         }
 
         // Check for log injection attempts
@@ -248,7 +261,8 @@ impl SecurityMonitor {
                 source_ip,
                 "Log injection pattern detected".to_string(),
                 Some(crate::security_utils::sanitize_for_logging(message)),
-            ).await?;
+            )
+            .await?;
         }
 
         // Check for header injection
@@ -259,7 +273,8 @@ impl SecurityMonitor {
                 source_ip,
                 "Header injection pattern detected".to_string(),
                 Some(message.lines().next().unwrap_or("").to_string()),
-            ).await?;
+            )
+            .await?;
         }
 
         // Check for malformed SIP structure
@@ -270,7 +285,8 @@ impl SecurityMonitor {
                 source_ip,
                 "Malformed SIP message structure".to_string(),
                 Some(message.lines().take(3).collect::<Vec<_>>().join("\\n")),
-            ).await?;
+            )
+            .await?;
         }
 
         // Check for JWT algorithm confusion in Identity headers
@@ -281,7 +297,8 @@ impl SecurityMonitor {
                 source_ip,
                 "JWT algorithm confusion attempt detected".to_string(),
                 None, // Don't log JWT tokens
-            ).await?;
+            )
+            .await?;
         }
 
         // Check rate limiting
@@ -292,7 +309,8 @@ impl SecurityMonitor {
                 source_ip,
                 "Message rate limit exceeded".to_string(),
                 None,
-            ).await?;
+            )
+            .await?;
         }
 
         Ok(detected_threats)
@@ -307,7 +325,9 @@ impl SecurityMonitor {
             "\\n", "\\r", // Escaped newlines
         ];
 
-        injection_patterns.iter().any(|pattern| message.contains(pattern))
+        injection_patterns
+            .iter()
+            .any(|pattern| message.contains(pattern))
     }
 
     /// Check if message contains header injection patterns
@@ -319,22 +339,27 @@ impl SecurityMonitor {
     /// Check if SIP message is malformed
     fn is_malformed_sip(&self, message: &str) -> bool {
         let lines: Vec<&str> = message.lines().collect();
-        
+
         // Check if first line looks like a SIP request or response
         if lines.is_empty() {
             return true;
         }
 
         let first_line = lines[0];
-        
+
         // Valid SIP request methods
-        let valid_methods = ["INVITE", "ACK", "BYE", "CANCEL", "OPTIONS", "REGISTER", "PRACK", "UPDATE"];
-        
+        let valid_methods = [
+            "INVITE", "ACK", "BYE", "CANCEL", "OPTIONS", "REGISTER", "PRACK", "UPDATE",
+        ];
+
         // Check if it's a SIP request
-        if valid_methods.iter().any(|method| first_line.starts_with(method)) {
+        if valid_methods
+            .iter()
+            .any(|method| first_line.starts_with(method))
+        {
             return !first_line.contains("SIP/2.0");
         }
-        
+
         // Check if it's a SIP response
         if first_line.starts_with("SIP/2.0") {
             // Should have a status code
@@ -363,11 +388,12 @@ impl SecurityMonitor {
                 if jwt_part.len() > 10 {
                     // Decode JWT header to check algorithm
                     if let Some(header_part) = jwt_part.split('.').next() {
-                        use base64::{Engine as _, engine::general_purpose};
+                        use base64::{engine::general_purpose, Engine as _};
                         if let Ok(decoded) = general_purpose::STANDARD.decode(header_part) {
                             if let Ok(header_str) = String::from_utf8(decoded) {
-                                if header_str.contains("\"alg\":\"none\"") || 
-                                   header_str.contains("\"alg\":\"HS256\"") {
+                                if header_str.contains("\"alg\":\"none\"")
+                                    || header_str.contains("\"alg\":\"HS256\"")
+                                {
                                     return true;
                                 }
                             }
@@ -383,15 +409,17 @@ impl SecurityMonitor {
     async fn check_rate_limit(&self, source_ip: IpAddr) -> Result<bool> {
         let mut ip_stats = self.ip_stats.write().await;
         let now = Instant::now();
-        
-        let stats = ip_stats.entry(source_ip).or_insert_with(|| IpSecurityStats {
-            first_seen: now,
-            last_message: now,
-            ..Default::default()
-        });
+
+        let stats = ip_stats
+            .entry(source_ip)
+            .or_insert_with(|| IpSecurityStats {
+                first_seen: now,
+                last_message: now,
+                ..Default::default()
+            });
 
         stats.message_count += 1;
-        
+
         // Check messages per second
         if now.duration_since(stats.last_message) < Duration::from_secs(1) {
             if stats.message_count > self.config.max_messages_per_second {
@@ -414,12 +442,14 @@ impl SecurityMonitor {
     async fn update_ip_stats(&self, source_ip: IpAddr, event_type: &SecurityEventType) {
         let mut ip_stats = self.ip_stats.write().await;
         let now = Instant::now();
-        
-        let stats = ip_stats.entry(source_ip).or_insert_with(|| IpSecurityStats {
-            first_seen: now,
-            last_message: now,
-            ..Default::default()
-        });
+
+        let stats = ip_stats
+            .entry(source_ip)
+            .or_insert_with(|| IpSecurityStats {
+                first_seen: now,
+                last_message: now,
+                ..Default::default()
+            });
 
         *stats.threat_events.entry(event_type.clone()).or_insert(0) += 1;
         stats.last_message = now;
@@ -428,25 +458,31 @@ impl SecurityMonitor {
     /// Evaluate if an IP should be blocked based on threat score
     async fn evaluate_ip_for_blocking(&self, source_ip: IpAddr) -> Result<()> {
         let ip_stats = self.ip_stats.read().await;
-        
+
         if let Some(stats) = ip_stats.get(&source_ip) {
             let threat_score = self.calculate_threat_score(stats);
-            
+
             if threat_score >= self.config.threat_score_threshold {
                 drop(ip_stats); // Release read lock
-                
-                let block_until = Instant::now() + Duration::from_secs(self.config.block_duration_minutes * 60);
-                
+
+                let block_until =
+                    Instant::now() + Duration::from_secs(self.config.block_duration_minutes * 60);
+
                 {
                     let mut blocked_ips = self.blocked_ips.write().await;
                     blocked_ips.insert(source_ip, block_until);
                 }
 
-                warn!("🚫 BLOCKING IP {} for {} minutes (threat score: {})", 
-                    source_ip, self.config.block_duration_minutes, threat_score);
+                warn!(
+                    "🚫 BLOCKING IP {} for {} minutes (threat score: {})",
+                    source_ip, self.config.block_duration_minutes, threat_score
+                );
 
                 // Avoid recursion by directly logging without calling record_security_event
-                warn!("🚫 IP {} blocked due to high threat score: {}", source_ip, threat_score);
+                warn!(
+                    "🚫 IP {} blocked due to high threat score: {}",
+                    source_ip, threat_score
+                );
             }
         }
 
@@ -518,25 +554,25 @@ impl SecurityMonitor {
 
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(300)); // 5 minutes
-            
+
             loop {
                 interval.tick().await;
-                
+
                 let now = Instant::now();
-                
+
                 // Clean up expired IP blocks
                 {
                     let mut blocked = blocked_ips.write().await;
                     blocked.retain(|_ip, block_until| now < *block_until);
                 }
-                
+
                 // Clean up old security events
                 {
                     let mut events = security_events.write().await;
                     let cutoff = SystemTime::now() - Duration::from_secs(monitoring_window * 60);
                     events.retain(|e| e.timestamp > cutoff);
                 }
-                
+
                 debug!("Security monitor cleanup completed");
             }
         });
@@ -544,8 +580,7 @@ impl SecurityMonitor {
 }
 
 /// Security statistics for monitoring dashboard
-#[derive(Debug, Serialize, Deserialize)]
-#[derive(Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SecurityStats {
     pub total_monitored_ips: usize,
     pub currently_blocked_ips: usize,
@@ -566,17 +601,20 @@ mod tests {
         let monitor = SecurityMonitor::new(config);
 
         let test_ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100));
-        
+
         // Should not be blocked initially
         assert!(!monitor.is_ip_blocked(test_ip).await);
 
         // Record a security event
-        monitor.record_security_event(
-            SecurityEventType::LogInjection,
-            test_ip,
-            "Test log injection".to_string(),
-            None,
-        ).await.unwrap();
+        monitor
+            .record_security_event(
+                SecurityEventType::LogInjection,
+                test_ip,
+                "Test log injection".to_string(),
+                None,
+            )
+            .await
+            .unwrap();
 
         let stats = monitor.get_security_stats().await.unwrap();
         assert_eq!(stats.total_security_events, 1);
@@ -588,11 +626,14 @@ mod tests {
         let monitor = SecurityMonitor::new(config);
 
         let test_ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100));
-        
+
         // Test malformed SIP message
         let malformed_msg = "INVALID MESSAGE\r\n\r\n";
-        let threats = monitor.analyze_message(test_ip, malformed_msg).await.unwrap();
-        
+        let threats = monitor
+            .analyze_message(test_ip, malformed_msg)
+            .await
+            .unwrap();
+
         assert!(threats.contains(&SecurityEventType::MalformedMessage));
     }
 
@@ -605,11 +646,14 @@ mod tests {
         let monitor = SecurityMonitor::new(config);
 
         let test_ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100));
-        
+
         // Create oversized message
         let oversized_msg = "A".repeat(200);
-        let threats = monitor.analyze_message(test_ip, &oversized_msg).await.unwrap();
-        
+        let threats = monitor
+            .analyze_message(test_ip, &oversized_msg)
+            .await
+            .unwrap();
+
         assert!(threats.contains(&SecurityEventType::OversizedMessage));
     }
 }

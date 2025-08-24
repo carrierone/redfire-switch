@@ -4,12 +4,12 @@
  * Annex B: Comfort Noise Generation (CNG)
  */
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::sync::Arc;
-use tokio::sync::{RwLock, Mutex};
-use tracing::{debug, info, warn, error};
+use tokio::sync::{Mutex, RwLock};
+use tracing::{debug, error, info, warn};
 
 #[cfg(feature = "cuda")]
 use cudarc::driver::{CudaDevice, LaunchAsync, LaunchConfig};
@@ -17,10 +17,10 @@ use cudarc::driver::{CudaDevice, LaunchAsync, LaunchConfig};
 use cudarc::nvrtc::Ptx;
 
 #[cfg(feature = "rocm")]
-use hip_rs::{HipDevice, HipStream, HipMemory};
+use hip_rs::{HipDevice, HipMemory, HipStream};
 
-use crate::gpu_codec_accel::{GpuBuffer, GpuBackend, GpuCodecConfig};
-use crate::g729_codec::{G729Codec, G729_FRAME_SIZE, G729_SAMPLE_RATE, G729_ENCODED_SIZE};
+use crate::g729_codec::{G729Codec, G729_ENCODED_SIZE, G729_FRAME_SIZE, G729_SAMPLE_RATE};
+use crate::gpu_codec_accel::{GpuBackend, GpuBuffer, GpuCodecConfig};
 
 /// G.729 Annex A configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -284,23 +284,44 @@ struct GpuKernels {
 impl G729AnnexGpuProcessor {
     /// Create new GPU-accelerated G.729 Annex processor
     pub async fn new(config: G729AnnexConfig) -> Result<Self> {
-        let (cuda_device, rocm_device) = match config.gpu_config.backend {
+        #[cfg(feature = "cuda")]
+        let mut cuda_device = None;
+        #[cfg(not(feature = "cuda"))]
+        let cuda_device: Option<Arc<()>> = None;
+        
+        #[cfg(feature = "rocm")]  
+        let mut rocm_device = None;
+        #[cfg(not(feature = "rocm"))]
+        let rocm_device: Option<Arc<()>> = None;
+        
+        match config.gpu_config.backend {
             #[cfg(feature = "cuda")]
             GpuBackend::Cuda => {
                 let device = Arc::new(CudaDevice::new(config.gpu_config.device_id as usize)?);
-                info!("Initialized CUDA device {} for G.729 Annex processing", config.gpu_config.device_id);
-                (Some(device), None)
+                info!(
+                    "Initialized CUDA device {} for G.729 Annex processing",
+                    config.gpu_config.device_id
+                );
+                cuda_device = Some(device);
+                rocm_device = None;
             }
             #[cfg(feature = "rocm")]
             GpuBackend::Rocm => {
                 let device = Arc::new(HipDevice::new(config.gpu_config.device_id)?);
-                info!("Initialized ROCm device {} for G.729 Annex processing", config.gpu_config.device_id);
-                (None, Some(device))
+                info!(
+                    "Initialized ROCm device {} for G.729 Annex processing",
+                    config.gpu_config.device_id
+                );
+                cuda_device = None;
+                rocm_device = Some(device);
             }
             _ => {
-                return Err(anyhow!("GPU backend {:?} not supported", config.gpu_config.backend));
+                return Err(anyhow!(
+                    "GPU backend {:?} not supported",
+                    config.gpu_config.backend
+                ));
             }
-        };
+        }
 
         let mut processor = Self {
             config,
@@ -437,7 +458,9 @@ impl G729AnnexGpuProcessor {
 
             let ptx = cudarc::nvrtc::compile_ptx(vad_spectral_src)?;
             device.load_ptx(ptx, "vad_spectral", &["vad_spectral_kernel"])?;
-            let function = device.get_func("vad_spectral", "vad_spectral_kernel").unwrap();
+            let function = device
+                .get_func("vad_spectral", "vad_spectral_kernel")
+                .unwrap();
             kernels.vad_spectral_kernel = Some(function);
 
             // Comfort Noise Generation kernel
@@ -477,7 +500,9 @@ impl G729AnnexGpuProcessor {
 
             let ptx = cudarc::nvrtc::compile_ptx(cng_src)?;
             device.load_ptx(ptx, "cng_generation", &["cng_generation_kernel"])?;
-            let function = device.get_func("cng_generation", "cng_generation_kernel").unwrap();
+            let function = device
+                .get_func("cng_generation", "cng_generation_kernel")
+                .unwrap();
             kernels.cng_generation_kernel = Some(function);
 
             info!("Compiled CUDA kernels for G.729 Annex A/B processing");
@@ -515,21 +540,25 @@ impl G729AnnexGpuProcessor {
         audio_samples: &[i16],
     ) -> Result<G729AnnexFrame> {
         if audio_samples.len() != G729_FRAME_SIZE {
-            return Err(anyhow!("Invalid frame size: expected {}, got {}", 
-                              G729_FRAME_SIZE, audio_samples.len()));
+            return Err(anyhow!(
+                "Invalid frame size: expected {}, got {}",
+                G729_FRAME_SIZE,
+                audio_samples.len()
+            ));
         }
 
         let mut sessions = self.sessions.write().await;
-        let state = sessions.get_mut(session_id)
+        let state = sessions
+            .get_mut(session_id)
             .ok_or_else(|| anyhow!("Session {} not found", session_id))?;
 
         // Convert to float for processing
-        let audio_float: Vec<f32> = audio_samples.iter()
-            .map(|&x| x as f32 / 32768.0)
-            .collect();
+        let audio_float: Vec<f32> = audio_samples.iter().map(|&x| x as f32 / 32768.0).collect();
 
         // Perform VAD using GPU acceleration
-        let vad_result = self.gpu_voice_activity_detection(&audio_float, &mut state.vad_state).await?;
+        let vad_result = self
+            .gpu_voice_activity_detection(&audio_float, &mut state.vad_state)
+            .await?;
 
         // Update DTX state based on VAD result
         self.update_dtx_state(&mut state.dtx_state, vad_result, &self.config);
@@ -537,6 +566,7 @@ impl G729AnnexGpuProcessor {
         let frame_type = match (vad_result, state.dtx_state.active) {
             (VadResult::Voice, _) => G729FrameType::Speech,
             (VadResult::Hangover, false) => G729FrameType::Speech,
+            (VadResult::Hangover, true) => G729FrameType::Speech, // Hangover with DTX active
             (VadResult::Silence, true) => {
                 if state.dtx_state.sid_counter >= self.config.sid_update_period {
                     state.dtx_state.sid_counter = 0;
@@ -591,11 +621,13 @@ impl G729AnnexGpuProcessor {
         match self.config.gpu_config.backend {
             #[cfg(feature = "cuda")]
             GpuBackend::Cuda => {
-                self.cuda_voice_activity_detection(audio_samples, vad_state).await
+                self.cuda_voice_activity_detection(audio_samples, vad_state)
+                    .await
             }
             #[cfg(feature = "rocm")]
             GpuBackend::Rocm => {
-                self.rocm_voice_activity_detection(audio_samples, vad_state).await
+                self.rocm_voice_activity_detection(audio_samples, vad_state)
+                    .await
             }
             _ => Err(anyhow!("Unsupported GPU backend for VAD")),
         }
@@ -609,32 +641,35 @@ impl G729AnnexGpuProcessor {
     ) -> Result<VadResult> {
         if let Some(ref device) = self.cuda_device {
             let kernels = self.kernels.read().await;
-            
+
             if let Some(ref energy_kernel) = kernels.vad_energy_kernel {
                 // Allocate GPU buffers
                 let input_buffer = GpuBuffer::allocate(
                     audio_samples.len() * std::mem::size_of::<f32>(),
                     GpuBackend::Cuda,
-                    self.config.gpu_config.device_id
-                ).await?;
+                    self.config.gpu_config.device_id,
+                )
+                .await?;
 
                 let mut energy_buffer = GpuBuffer::allocate(
                     std::mem::size_of::<f32>(),
                     GpuBackend::Cuda,
-                    self.config.gpu_config.device_id
-                ).await?;
+                    self.config.gpu_config.device_id,
+                )
+                .await?;
 
                 let mut zcr_buffer = GpuBuffer::allocate(
                     std::mem::size_of::<f32>(),
                     GpuBackend::Cuda,
-                    self.config.gpu_config.device_id
-                ).await?;
+                    self.config.gpu_config.device_id,
+                )
+                .await?;
 
                 // Copy audio to GPU
                 let audio_bytes: &[u8] = unsafe {
                     std::slice::from_raw_parts(
                         audio_samples.as_ptr() as *const u8,
-                        audio_samples.len() * std::mem::size_of::<f32>()
+                        audio_samples.len() * std::mem::size_of::<f32>(),
                     )
                 };
                 input_buffer.copy_from_host(audio_bytes).await?;
@@ -648,11 +683,17 @@ impl G729AnnexGpuProcessor {
 
                 #[cfg(feature = "cuda")]
                 unsafe {
-                    energy_kernel.launch(
-                        config,
-                        (&input_buffer.cuda_ptr, &energy_buffer.cuda_ptr, 
-                         &zcr_buffer.cuda_ptr, audio_samples.len() as i32)
-                    ).await?;
+                    energy_kernel
+                        .launch(
+                            config,
+                            (
+                                &input_buffer.cuda_ptr,
+                                &energy_buffer.cuda_ptr,
+                                &zcr_buffer.cuda_ptr,
+                                audio_samples.len() as i32,
+                            ),
+                        )
+                        .await?;
                 }
 
                 // Read results back
@@ -662,11 +703,13 @@ impl G729AnnexGpuProcessor {
                 zcr_buffer.copy_to_host(&mut zcr_bytes).await?;
 
                 let frame_energy = f32::from_ne_bytes([
-                    energy_bytes[0], energy_bytes[1], energy_bytes[2], energy_bytes[3]
+                    energy_bytes[0],
+                    energy_bytes[1],
+                    energy_bytes[2],
+                    energy_bytes[3],
                 ]);
-                let zero_crossing_rate = f32::from_ne_bytes([
-                    zcr_bytes[0], zcr_bytes[1], zcr_bytes[2], zcr_bytes[3]
-                ]);
+                let zero_crossing_rate =
+                    f32::from_ne_bytes([zcr_bytes[0], zcr_bytes[1], zcr_bytes[2], zcr_bytes[3]]);
 
                 // Update VAD state and make decision
                 return self.make_vad_decision(frame_energy, zero_crossing_rate, vad_state);
@@ -706,7 +749,9 @@ impl G729AnnexGpuProcessor {
         }
 
         // Update noise estimate during silence
-        let min_energy = vad_state.energy_history.iter()
+        let min_energy = vad_state
+            .energy_history
+            .iter()
             .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
             .copied()
             .unwrap_or(frame_energy);
@@ -718,12 +763,13 @@ impl G729AnnexGpuProcessor {
         // VAD decision based on multiple criteria
         let energy_ratio = frame_energy / (vad_state.noise_estimate + 1e-10);
         let snr_db = 10.0 * energy_ratio.log10();
-        
+
         let adaptive_threshold = vad_state.snr_threshold * (1.0 + self.config.vad_sensitivity);
-        
-        let is_voice = snr_db > adaptive_threshold && 
-                      frame_energy > vad_state.min_energy_threshold &&
-                      zero_crossing_rate > 0.1 && zero_crossing_rate < 0.8;
+
+        let is_voice = snr_db > adaptive_threshold
+            && frame_energy > vad_state.min_energy_threshold
+            && zero_crossing_rate > 0.1
+            && zero_crossing_rate < 0.8;
 
         // Apply hangover logic
         if is_voice {
@@ -738,8 +784,15 @@ impl G729AnnexGpuProcessor {
     }
 
     /// Update DTX state based on VAD result
-    fn update_dtx_state(&self, dtx_state: &mut DtxState, vad_result: VadResult, config: &G729AnnexConfig) {
-        dtx_state.dtx_history.push_back(vad_result == VadResult::Silence);
+    fn update_dtx_state(
+        &self,
+        dtx_state: &mut DtxState,
+        vad_result: VadResult,
+        config: &G729AnnexConfig,
+    ) {
+        dtx_state
+            .dtx_history
+            .push_back(vad_result == VadResult::Silence);
         if dtx_state.dtx_history.len() > 10 {
             dtx_state.dtx_history.pop_front();
         }
@@ -765,10 +818,10 @@ impl G729AnnexGpuProcessor {
     fn generate_sid_frame(&self, audio_samples: &[f32], vad_state: &VadState) -> Result<Vec<u8>> {
         // Simplified SID frame generation
         // Real implementation would compute proper reflection coefficients
-        
+
         let energy = audio_samples.iter().map(|&x| x * x).sum::<f32>() / audio_samples.len() as f32;
         let energy_quantized = (energy.log10() * 10.0 + 100.0).clamp(0.0, 255.0) as u8;
-        
+
         // Simple reflection coefficients (would be computed from LPC analysis)
         let reflection_coeffs = [
             (vad_state.noise_estimate * 127.0) as u8,
@@ -786,8 +839,7 @@ impl G729AnnexGpuProcessor {
         let mut packed = Vec::with_capacity(2);
         packed.push(sid_frame.energy);
         packed.push(
-            (sid_frame.reflection_coeffs[0] >> 4) |
-            ((sid_frame.reflection_coeffs[1] >> 4) << 4)
+            (sid_frame.reflection_coeffs[0] >> 4) | ((sid_frame.reflection_coeffs[1] >> 4) << 4),
         );
 
         Ok(packed)
@@ -800,7 +852,8 @@ impl G729AnnexGpuProcessor {
         sid_frame: &SidFrame,
     ) -> Result<Vec<i16>> {
         let mut sessions = self.sessions.write().await;
-        let state = sessions.get_mut(session_id)
+        let state = sessions
+            .get_mut(session_id)
             .ok_or_else(|| anyhow!("Session {} not found", session_id))?;
 
         if !self.config.annex_b_enabled {
@@ -812,10 +865,13 @@ impl G729AnnexGpuProcessor {
         state.cng_state.cng_energy = 10.0_f32.powf(state.cng_state.cng_energy);
 
         // Generate noise using GPU
-        let noise_samples = self.gpu_generate_comfort_noise(&mut state.cng_state).await?;
+        let noise_samples = self
+            .gpu_generate_comfort_noise(&mut state.cng_state)
+            .await?;
 
         // Convert to 16-bit PCM
-        let pcm_samples: Vec<i16> = noise_samples.iter()
+        let pcm_samples: Vec<i16> = noise_samples
+            .iter()
             .map(|&x| (x * 32767.0).clamp(-32768.0, 32767.0) as i16)
             .collect();
 
@@ -826,13 +882,9 @@ impl G729AnnexGpuProcessor {
     async fn gpu_generate_comfort_noise(&self, cng_state: &mut CngState) -> Result<Vec<f32>> {
         match self.config.gpu_config.backend {
             #[cfg(feature = "cuda")]
-            GpuBackend::Cuda => {
-                self.cuda_generate_comfort_noise(cng_state).await
-            }
+            GpuBackend::Cuda => self.cuda_generate_comfort_noise(cng_state).await,
             #[cfg(feature = "rocm")]
-            GpuBackend::Rocm => {
-                self.rocm_generate_comfort_noise(cng_state).await
-            }
+            GpuBackend::Rocm => self.rocm_generate_comfort_noise(cng_state).await,
             _ => Err(anyhow!("Unsupported GPU backend for CNG")),
         }
     }
@@ -841,20 +893,22 @@ impl G729AnnexGpuProcessor {
     async fn cuda_generate_comfort_noise(&self, cng_state: &mut CngState) -> Result<Vec<f32>> {
         if let Some(ref device) = self.cuda_device {
             let kernels = self.kernels.read().await;
-            
+
             if let Some(ref cng_kernel) = kernels.cng_generation_kernel {
                 // Allocate GPU buffers
                 let mut output_buffer = GpuBuffer::allocate(
                     G729_FRAME_SIZE * std::mem::size_of::<f32>(),
                     GpuBackend::Cuda,
-                    self.config.gpu_config.device_id
-                ).await?;
+                    self.config.gpu_config.device_id,
+                )
+                .await?;
 
                 let mut rng_buffer = GpuBuffer::allocate(
                     std::mem::size_of::<u32>(),
                     GpuBackend::Cuda,
-                    self.config.gpu_config.device_id
-                ).await?;
+                    self.config.gpu_config.device_id,
+                )
+                .await?;
 
                 // Copy RNG seed to GPU
                 let seed_bytes = cng_state.rng_seed.to_ne_bytes();
@@ -863,7 +917,7 @@ impl G729AnnexGpuProcessor {
                 // Launch CNG kernel
                 let threads_per_block = 256;
                 let blocks = (G729_FRAME_SIZE + threads_per_block - 1) / threads_per_block;
-                
+
                 let config = LaunchConfig {
                     grid_dim: (blocks as u32, 1, 1),
                     block_dim: (threads_per_block as u32, 1, 1),
@@ -872,11 +926,18 @@ impl G729AnnexGpuProcessor {
 
                 #[cfg(feature = "cuda")]
                 unsafe {
-                    cng_kernel.launch(
-                        config,
-                        (&cng_state.spectral_envelope.as_ptr(), &output_buffer.cuda_ptr,
-                         &rng_buffer.cuda_ptr, cng_state.cng_energy, G729_FRAME_SIZE as i32)
-                    ).await?;
+                    cng_kernel
+                        .launch(
+                            config,
+                            (
+                                &cng_state.spectral_envelope.as_ptr(),
+                                &output_buffer.cuda_ptr,
+                                &rng_buffer.cuda_ptr,
+                                cng_state.cng_energy,
+                                G729_FRAME_SIZE as i32,
+                            ),
+                        )
+                        .await?;
                 }
 
                 // Read results back
@@ -893,8 +954,10 @@ impl G729AnnexGpuProcessor {
                 let mut updated_seed_bytes = vec![0u8; 4];
                 rng_buffer.copy_to_host(&mut updated_seed_bytes).await?;
                 cng_state.rng_seed = u32::from_ne_bytes([
-                    updated_seed_bytes[0], updated_seed_bytes[1], 
-                    updated_seed_bytes[2], updated_seed_bytes[3]
+                    updated_seed_bytes[0],
+                    updated_seed_bytes[1],
+                    updated_seed_bytes[2],
+                    updated_seed_bytes[3],
                 ]);
 
                 return Ok(noise_samples);
@@ -914,7 +977,7 @@ impl G729AnnexGpuProcessor {
     pub async fn get_statistics(&self) -> G729AnnexStats {
         let sessions = self.sessions.read().await;
         let active_sessions = sessions.len();
-        
+
         let mut total_frames = 0;
         let mut speech_frames = 0;
         let mut silence_frames = 0;
@@ -929,7 +992,7 @@ impl G729AnnexGpuProcessor {
             active_sessions: active_sessions as u32,
             total_frames,
             speech_frames,
-            silence_frames, 
+            silence_frames,
             sid_frames,
             bandwidth_savings_percent: if total_frames > 0 {
                 (silence_frames as f32 / total_frames as f32) * 100.0
@@ -976,7 +1039,7 @@ mod tests {
         let mut vad_state = VadState::new();
         assert_eq!(vad_state.energy_history.len(), 0);
         assert_eq!(vad_state.hangover_counter, 0);
-        
+
         vad_state.reset();
         assert_eq!(vad_state.energy_history.len(), 0);
     }
@@ -986,15 +1049,15 @@ mod tests {
         let mut state = G729AnnexState::new();
         assert_eq!(state.frame_count, 0);
         assert_eq!(state.last_frame_type, G729FrameType::Speech);
-        
+
         state.reset();
         assert_eq!(state.frame_count, 0);
     }
 
-    #[tokio::test] 
+    #[tokio::test]
     async fn test_sid_frame_generation() {
         let config = G729AnnexConfig::default();
-        
+
         // Skip GPU tests if not available
         if !config.gpu_config.enabled {
             return;
@@ -1009,9 +1072,10 @@ mod tests {
         let processor = processor.unwrap();
         let audio_samples = vec![0.1f32; G729_FRAME_SIZE];
         let vad_state = VadState::new();
-        
-        let sid_frame = processor.generate_sid_frame(&audio_samples, &vad_state).unwrap();
+
+        let sid_frame = processor
+            .generate_sid_frame(&audio_samples, &vad_state)
+            .unwrap();
         assert_eq!(sid_frame.len(), 2); // SID frame is 2 bytes
     }
 }
-"

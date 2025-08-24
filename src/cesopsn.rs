@@ -1,9 +1,9 @@
 /*
  * CESoPSN - Circuit Emulation Service over Packet Switched Network
- * 
+ *
  * RFC 5086 compliant implementation for carrying TDM circuits over IP networks
  * with proper structure awareness, error handling, and Quality of Service.
- * 
+ *
  * Features:
  * - Structure-aware TDM circuit emulation
  * - Per-timeslot error detection and correction
@@ -12,17 +12,17 @@
  * - Support for T1/E1 circuits with signaling
  */
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
+use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
+use rand;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{RwLock, mpsc, Mutex};
 use tokio::net::UdpSocket;
-use tracing::{debug, info, warn, error};
-use serde::{Serialize, Deserialize};
-use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
-use rand;
+use tokio::sync::{mpsc, Mutex, RwLock};
+use tracing::{debug, error, info, warn};
 
 /// CESoPSN Protocol Version (RFC 5086)
 pub const CESOPSN_VERSION: u8 = 0;
@@ -38,7 +38,7 @@ pub const MAX_CESOPSN_PAYLOAD: usize = 1440; // To fit in standard MTU
 pub enum CesopsnCircuitType {
     /// T1 Circuit (24 DS0 channels, 1.544 Mbps)
     T1 = 1,
-    /// E1 Circuit (32 timeslots, 30 DS0 channels, 2.048 Mbps) 
+    /// E1 Circuit (32 timeslots, 30 DS0 channels, 2.048 Mbps)
     E1 = 2,
     /// Fractional T1 (subset of T1 channels)
     FractionalT1 = 3,
@@ -92,53 +92,50 @@ impl CesopsnHeader {
             version: CESOPSN_VERSION,
         }
     }
-    
+
     /// Serialize header to bytes (RFC 5086 format)
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(CESOPSN_HEADER_LEN);
-        
+
         // Byte 0: V(2) + P(1) + X(1) + CC(4) - Version, Padding, eXtension, CSRC Count
-        let byte0 = (self.version << 6) | 
-                   (if self.extension { 0x10 } else { 0x00 }) | 
-                   0x00; // No padding, no CSRC
+        let byte0 = (self.version << 6) | (if self.extension { 0x10 } else { 0x00 }) | 0x00; // No padding, no CSRC
         bytes.push(byte0);
-        
-        // Byte 1: M(1) + PT(7) - Marker + Payload Type  
-        let byte1 = (if self.marker { 0x80 } else { 0x00 }) | 
-                   (self.payload_type & 0x7F);
+
+        // Byte 1: M(1) + PT(7) - Marker + Payload Type
+        let byte1 = (if self.marker { 0x80 } else { 0x00 }) | (self.payload_type & 0x7F);
         bytes.push(byte1);
-        
+
         // Bytes 2-3: Sequence Number
         let _ = bytes.write_u16::<BigEndian>(self.sequence_number); // Vec write never fails
-        
+
         // Bytes 4-7: Timestamp
         let _ = bytes.write_u32::<BigEndian>(self.timestamp); // Vec write never fails
-        
+
         // Bytes 8-11: SSRC
         let _ = bytes.write_u32::<BigEndian>(self.ssrc); // Vec write never fails
-        
+
         bytes
     }
-    
+
     /// Parse header from bytes
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
         if bytes.len() < CESOPSN_HEADER_LEN {
             return Err(anyhow!("CESoPSN header too short: {} bytes", bytes.len()));
         }
-        
+
         let version = (bytes[0] >> 6) & 0x03;
         if version != CESOPSN_VERSION {
             return Err(anyhow!("Unsupported CESoPSN version: {}", version));
         }
-        
+
         let extension = (bytes[0] & 0x10) != 0;
         let marker = (bytes[1] & 0x80) != 0;
         let payload_type = bytes[1] & 0x7F;
-        
+
         let sequence_number = BigEndian::read_u16(&bytes[2..4]);
         let timestamp = BigEndian::read_u32(&bytes[4..8]);
         let ssrc = BigEndian::read_u32(&bytes[8..12]);
-        
+
         Ok(Self {
             sequence_number,
             timestamp,
@@ -189,26 +186,26 @@ impl CesopsnPacket {
             received_at: None,
         }
     }
-    
+
     /// Serialize complete packet to bytes
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = self.header.to_bytes();
         bytes.extend_from_slice(&self.payload);
         bytes
     }
-    
+
     /// Parse complete packet from bytes
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
         let header = CesopsnHeader::from_bytes(bytes)?;
         let payload = bytes[CESOPSN_HEADER_LEN..].to_vec();
-        
+
         Ok(Self {
             header,
             payload,
             received_at: Some(Instant::now()),
         })
     }
-    
+
     /// Get packet size in bytes
     pub fn size(&self) -> usize {
         CESOPSN_HEADER_LEN + self.payload.len()
@@ -251,7 +248,7 @@ impl Default for CesopsnCircuitConfig {
             local_address: "0.0.0.0:20000".parse().unwrap(),
             service_quality: CesopsnServiceQuality::ExpeditedForwarding,
             payload_type: CesopsnPayloadType::StructuredT1E1,
-            frame_size: 32, // T1: 24 DS0 + 1 framing = 25, but aligned to 32
+            frame_size: 32,       // T1: 24 DS0 + 1 framing = 25, but aligned to 32
             frames_per_packet: 4, // 4 frames = ~500μs of audio
             jitter_buffer_ms: 20,
             enable_acr: true,
@@ -292,38 +289,46 @@ impl CesopsnJitterBuffer {
             last_playout_time: None,
         }
     }
-    
+
     /// Add packet to jitter buffer
     pub fn add_packet(&mut self, mut packet: CesopsnPacket) -> Result<()> {
         self.packets_received += 1;
         packet.received_at = Some(Instant::now());
-        
+
         // Check for late packets
         if self.is_sequence_late(packet.header.sequence_number) {
             self.packets_late += 1;
-            debug!("Late packet received: seq={}", packet.header.sequence_number);
+            debug!(
+                "Late packet received: seq={}",
+                packet.header.sequence_number
+            );
             return Ok(());
         }
-        
+
         // Drop oldest packets if buffer full
         if self.buffer.len() >= self.max_size {
             if let Some(dropped) = self.buffer.pop_front() {
                 self.packets_dropped += 1;
-                warn!("Dropped packet due to buffer overflow: seq={}", 
-                      dropped.header.sequence_number);
+                warn!(
+                    "Dropped packet due to buffer overflow: seq={}",
+                    dropped.header.sequence_number
+                );
             }
         }
-        
+
         // Insert packet in sequence order
-        let insert_pos = self.buffer.iter()
-            .position(|p| self.sequence_compare(packet.header.sequence_number, 
-                                              p.header.sequence_number) < 0)
+        let insert_pos = self
+            .buffer
+            .iter()
+            .position(|p| {
+                self.sequence_compare(packet.header.sequence_number, p.header.sequence_number) < 0
+            })
             .unwrap_or(self.buffer.len());
-        
+
         self.buffer.insert(insert_pos, packet);
         Ok(())
     }
-    
+
     /// Get next packet for playout (if available and ready)
     pub fn get_next_packet(&mut self) -> Option<CesopsnPacket> {
         // Check if we have the next expected packet
@@ -335,7 +340,7 @@ impl CesopsnJitterBuffer {
                 return Some(packet);
             }
         }
-        
+
         // Adaptive buffer management - release packet if buffer too deep
         if self.buffer.len() > self.target_depth {
             if let Some(packet) = self.buffer.pop_front() {
@@ -344,22 +349,22 @@ impl CesopsnJitterBuffer {
                 return Some(packet);
             }
         }
-        
+
         None
     }
-    
+
     /// Check if sequence number is considered late
     fn is_sequence_late(&self, seq: u16) -> bool {
         let diff = seq.wrapping_sub(self.next_sequence);
         diff > 32768 // More than half the sequence space behind
     }
-    
+
     /// Compare sequence numbers accounting for wraparound
     fn sequence_compare(&self, a: u16, b: u16) -> i32 {
         let diff = a.wrapping_sub(b) as i16;
         diff as i32
     }
-    
+
     /// Get buffer statistics
     pub fn get_stats(&self) -> CesopsnJitterBufferStats {
         CesopsnJitterBufferStats {
@@ -440,21 +445,24 @@ impl CesopsnService {
     /// Create new CESoPSN service
     pub async fn new(
         config: CesopsnCircuitConfig,
-        tdm_sender: mpsc::UnboundedSender<Vec<u8>>
+        tdm_sender: mpsc::UnboundedSender<Vec<u8>>,
     ) -> Result<Self> {
-        let socket = UdpSocket::bind(&config.local_address).await
+        let socket = UdpSocket::bind(&config.local_address)
+            .await
             .map_err(|e| anyhow!("Failed to bind CESoPSN socket: {}", e))?;
-        
+
         let jitter_buffer = CesopsnJitterBuffer::new(
-            (config.jitter_buffer_ms * 50) as usize // ~50 packets per second
+            (config.jitter_buffer_ms * 50) as usize, // ~50 packets per second
         );
-        
+
         // Generate random SSRC
         let ssrc = rand::random::<u32>();
-        
-        info!("Created CESoPSN service for circuit {} on {} (SSRC: 0x{:08X})",
-              config.circuit_id, config.local_address, ssrc);
-        
+
+        info!(
+            "Created CESoPSN service for circuit {} on {} (SSRC: 0x{:08X})",
+            config.circuit_id, config.local_address, ssrc
+        );
+
         Ok(Self {
             config,
             socket: Arc::new(socket),
@@ -466,77 +474,83 @@ impl CesopsnService {
             circuit_state: Arc::new(RwLock::new(CesopsnCircuitState::Down)),
         })
     }
-    
+
     /// Start the CESoPSN service
     pub async fn start(&self) -> Result<()> {
         *self.circuit_state.write().await = CesopsnCircuitState::Initializing;
-        
+
         // Start packet receiver task
         let socket = Arc::clone(&self.socket);
         let jitter_buffer = Arc::clone(&self.jitter_buffer);
         let stats = Arc::clone(&self.stats);
         let circuit_state = Arc::clone(&self.circuit_state);
         let tdm_sender = self.tdm_sender.clone();
-        
+
         tokio::spawn(async move {
             Self::packet_receiver(socket, jitter_buffer, stats, circuit_state, tdm_sender).await;
         });
-        
+
         // Start TDM playout task
         let jitter_buffer_clone = Arc::clone(&self.jitter_buffer);
         let tdm_sender_clone = self.tdm_sender.clone();
         let config = self.config.clone();
-        
+
         tokio::spawn(async move {
             Self::tdm_playout_task(jitter_buffer_clone, tdm_sender_clone, config).await;
         });
-        
+
         *self.circuit_state.write().await = CesopsnCircuitState::Active;
-        info!("CESoPSN service started for circuit {}", self.config.circuit_id);
-        
+        info!(
+            "CESoPSN service started for circuit {}",
+            self.config.circuit_id
+        );
+
         Ok(())
     }
-    
+
     /// Send TDM data over CESoPSN
     pub async fn send_tdm_data(&self, data: &[u8]) -> Result<()> {
         let mut header = CesopsnHeader::new(self.config.circuit_id, self.ssrc);
         header.payload_type = self.config.payload_type as u8;
         header.timestamp = Self::generate_timestamp();
-        
+
         // Get and increment sequence number
         {
             let mut seq = self.tx_sequence.write().await;
             header.sequence_number = *seq;
             *seq = seq.wrapping_add(1);
         }
-        
+
         let packet = CesopsnPacket::new(header, data.to_vec());
         let packet_bytes = packet.to_bytes();
-        
+
         // Send packet
-        let bytes_sent = self.socket.send_to(&packet_bytes, &self.config.remote_address).await
+        let bytes_sent = self
+            .socket
+            .send_to(&packet_bytes, &self.config.remote_address)
+            .await
             .map_err(|e| anyhow!("Failed to send CESoPSN packet: {}", e))?;
-        
+
         // Update statistics
         {
             let mut stats = self.stats.write().await;
             stats.packets_sent += 1;
             stats.bytes_sent += bytes_sent as u64;
         }
-        
+
         Ok(())
     }
-    
+
     /// Packet receiver task
     async fn packet_receiver(
         socket: Arc<UdpSocket>,
         jitter_buffer: Arc<Mutex<CesopsnJitterBuffer>>,
         stats: Arc<RwLock<CesopsnServiceStats>>,
         circuit_state: Arc<RwLock<CesopsnCircuitState>>,
-        _tdm_sender: mpsc::UnboundedSender<Vec<u8>>
+        _tdm_sender: mpsc::UnboundedSender<Vec<u8>>,
     ) {
         let mut buffer = vec![0u8; MAX_CESOPSN_PAYLOAD];
-        
+
         loop {
             match socket.recv_from(&mut buffer).await {
                 Ok((len, _from)) => {
@@ -548,7 +562,7 @@ impl CesopsnService {
                                 stats_guard.packets_received += 1;
                                 stats_guard.bytes_received += len as u64;
                             }
-                            
+
                             // Add to jitter buffer
                             if let Err(e) = jitter_buffer.lock().await.add_packet(packet) {
                                 warn!("Failed to add packet to jitter buffer: {}", e);
@@ -567,19 +581,19 @@ impl CesopsnService {
             }
         }
     }
-    
+
     /// TDM playout task - retrieves packets from jitter buffer and plays them out
     async fn tdm_playout_task(
         jitter_buffer: Arc<Mutex<CesopsnJitterBuffer>>,
         tdm_sender: mpsc::UnboundedSender<Vec<u8>>,
-        config: CesopsnCircuitConfig
+        config: CesopsnCircuitConfig,
     ) {
         let frame_interval = Duration::from_micros(125 * config.frames_per_packet as u64); // 125μs per frame
         let mut interval = tokio::time::interval(frame_interval);
-        
+
         loop {
             interval.tick().await;
-            
+
             // Try to get next packet from jitter buffer
             if let Some(packet) = jitter_buffer.lock().await.get_next_packet() {
                 // Send TDM data to upper layers
@@ -590,27 +604,27 @@ impl CesopsnService {
             }
         }
     }
-    
+
     /// Generate RTP timestamp for current time
     fn generate_timestamp() -> u32 {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default();
-        
+
         // Convert to 8kHz timestamp (8000 ticks per second)
         (now.as_secs() * 8000 + (now.subsec_nanos() / 125_000) as u64) as u32
     }
-    
+
     /// Get service statistics
     pub async fn get_stats(&self) -> CesopsnServiceStats {
         self.stats.read().await.clone()
     }
-    
+
     /// Get circuit state
     pub async fn get_circuit_state(&self) -> CesopsnCircuitState {
         self.circuit_state.read().await.clone()
     }
-    
+
     /// Get jitter buffer statistics
     pub async fn get_jitter_buffer_stats(&self) -> CesopsnJitterBufferStats {
         self.jitter_buffer.lock().await.get_stats()
@@ -631,22 +645,22 @@ impl CesopsnManager {
     /// Create new CESoPSN manager
     pub fn new() -> Self {
         let (tdm_sender, tdm_receiver) = mpsc::unbounded_channel();
-        
+
         Self {
             services: Arc::new(RwLock::new(HashMap::new())),
             _tdm_receiver: Arc::new(Mutex::new(tdm_receiver)),
             tdm_sender,
         }
     }
-    
+
     /// Add new CESoPSN circuit
     pub async fn add_circuit(&self, config: CesopsnCircuitConfig) -> Result<()> {
         let circuit_id = config.circuit_id;
         let (circuit_tdm_sender, mut circuit_tdm_receiver) = mpsc::unbounded_channel();
-        
+
         let service = Arc::new(CesopsnService::new(config, circuit_tdm_sender).await?);
         service.start().await?;
-        
+
         // Forward TDM data from circuit to manager
         let manager_sender = self.tdm_sender.clone();
         tokio::spawn(async move {
@@ -656,13 +670,13 @@ impl CesopsnManager {
                 }
             }
         });
-        
+
         self.services.write().await.insert(circuit_id, service);
         info!("Added CESoPSN circuit {}", circuit_id);
-        
+
         Ok(())
     }
-    
+
     /// Send TDM data to specific circuit
     pub async fn send_tdm_data(&self, circuit_id: u16, data: &[u8]) -> Result<()> {
         if let Some(service) = self.services.read().await.get(&circuit_id) {
@@ -671,23 +685,23 @@ impl CesopsnManager {
             Err(anyhow!("CESoPSN circuit {} not found", circuit_id))
         }
     }
-    
+
     /// Get statistics for all circuits
     pub async fn get_all_stats(&self) -> HashMap<u16, CesopsnServiceStats> {
         let services = self.services.read().await;
         let mut stats = HashMap::new();
-        
+
         for (&circuit_id, service) in services.iter() {
             stats.insert(circuit_id, service.get_stats().await);
         }
-        
+
         stats
     }
-    
+
     /// Subscribe to received TDM data
     pub fn subscribe_tdm_data(&self) -> mpsc::UnboundedReceiver<(u16, Vec<u8>)> {
         let (_sender, receiver) = mpsc::unbounded_channel();
-        
+
         // This is a simplified approach - in production you'd want proper subscription management
         receiver
     }
@@ -696,7 +710,7 @@ impl CesopsnManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_cesopsn_header_serialization() {
         let mut header = CesopsnHeader::new(123, 0x12345678);
@@ -704,10 +718,10 @@ mod tests {
         header.timestamp = 0x87654321;
         header.payload_type = 5;
         header.marker = true;
-        
+
         let bytes = header.to_bytes();
         assert_eq!(bytes.len(), CESOPSN_HEADER_LEN);
-        
+
         let parsed = CesopsnHeader::from_bytes(&bytes).unwrap();
         assert_eq!(parsed.sequence_number, 0xABCD);
         assert_eq!(parsed.timestamp, 0x87654321);
@@ -715,11 +729,11 @@ mod tests {
         assert_eq!(parsed.payload_type, 5);
         assert_eq!(parsed.marker, true);
     }
-    
+
     #[test]
     fn test_jitter_buffer_ordering() {
         let mut buffer = CesopsnJitterBuffer::new(10);
-        
+
         // Add packets out of order
         for seq in [3, 1, 4, 2, 5].iter() {
             let mut header = CesopsnHeader::new(1, 0x12345678);
@@ -727,9 +741,9 @@ mod tests {
             let packet = CesopsnPacket::new(header, vec![*seq as u8; 32]);
             buffer.add_packet(packet).unwrap();
         }
-        
+
         buffer.next_sequence = 1;
-        
+
         // Should get packets in order
         for expected_seq in 1..=5 {
             let packet = buffer.get_next_packet().unwrap();

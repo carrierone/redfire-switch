@@ -1,25 +1,25 @@
 /*
  * J-STD-025 U.S. Lawful Intercept Implementation
  * ANSI-41 GSM and ANSI-136 GSM Compatibility Standard
- * 
+ *
  * This module implements J-STD-025 compliant lawful intercept for U.S. jurisdiction,
  * including call detail records for billing, accounting, and regulatory compliance.
- * 
+ *
  * Standards Compliance:
  * - J-STD-025: U.S. Lawful Intercept Standard (CALEA compliance)
  * - ANSI-41 GSM and ANSI-136 GSM Compatibility
- * - ATIS-0300025: Call Detail Recording Format  
+ * - ATIS-0300025: Call Detail Recording Format
  * - Telcordia GR-1100: Billing Requirements
  * - CALEA: Communications Assistance for Law Enforcement Act
  */
 
-use anyhow::{Result, anyhow};
-use chrono::{DateTime, Utc, Duration};
-use serde::{Serialize, Deserialize};
+use anyhow::{anyhow, Result};
+use chrono::{DateTime, Duration, Utc};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
 use std::net::IpAddr;
-use tracing::{debug, info, warn, error};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 /// J-STD-025 Call Detail Record Types
@@ -179,7 +179,7 @@ pub struct JStd025Cdr {
     pub call_duration: Option<u64>,
     /// Billable duration in seconds
     pub billable_duration: Option<u64>,
-    
+
     // Subscriber Information
     /// Calling party number (A-number)
     pub calling_number: String,
@@ -193,7 +193,7 @@ pub struct JStd025Cdr {
     pub imei: Option<String>,
     /// Mobile Station ISDN Number
     pub msisdn: Option<String>,
-    
+
     // Network Information
     /// Originating switch ID
     pub originating_switch: String,
@@ -203,7 +203,7 @@ pub struct JStd025Cdr {
     pub trunk_group_id: Option<String>,
     /// Circuit identification code
     pub circuit_id: Option<String>,
-    
+
     // Call Classification
     /// Service type
     pub service_type: ServiceType,
@@ -211,7 +211,7 @@ pub struct JStd025Cdr {
     pub call_result: CallResult,
     /// Call direction (0=outgoing, 1=incoming, 2=transit)
     pub call_direction: u8,
-    
+
     // Billing Information
     /// Charging information
     pub charging_info: Option<ChargingInfo>,
@@ -219,17 +219,17 @@ pub struct JStd025Cdr {
     pub account_code: Option<String>,
     /// Customer ID
     pub customer_id: Option<String>,
-    
+
     // Location Information
     /// Originating location
     pub originating_location: Option<LocationInfo>,
     /// Terminating location
     pub terminating_location: Option<LocationInfo>,
-    
+
     // Quality Metrics
     /// Quality of service metrics
     pub qos_metrics: Option<QoSMetrics>,
-    
+
     // Supplementary Services
     /// Call forwarding indicator
     pub call_forwarding: bool,
@@ -239,7 +239,7 @@ pub struct JStd025Cdr {
     pub conference_call: bool,
     /// Three-way calling indicator
     pub three_way_calling: bool,
-    
+
     // Fraud and Security
     /// Fraud flags
     pub fraud_flags: Vec<String>,
@@ -247,8 +247,8 @@ pub struct JStd025Cdr {
     pub auth_result: Option<String>,
     /// STIR/SHAKEN verification status
     pub stir_shaken_status: Option<String>,
-    
-    // J-STD-025 Lawful Intercept (CALEA Compliance) 
+
+    // J-STD-025 Lawful Intercept (CALEA Compliance)
     /// Warrant IDs for U.S. lawful intercept under CALEA
     pub warrant_ids: Vec<Uuid>,
     /// LEA (Law Enforcement Agency) identifiers  
@@ -257,7 +257,7 @@ pub struct JStd025Cdr {
     pub calea_intercept_type: Option<String>,
     /// Intercept priority level
     pub intercept_priority: Option<u8>,
-    
+
     // Additional Fields
     /// Custom attributes for operator-specific needs
     pub custom_attributes: HashMap<String, String>,
@@ -314,159 +314,162 @@ impl JStd025Cdr {
             record_version: "J-STD-025-1.0".to_string(),
         }
     }
-    
+
     /// Mark call as answered
     pub fn mark_answered(&mut self) {
         self.call_answer_time = Some(Utc::now());
     }
-    
+
     /// Mark call as ended and calculate duration
     pub fn mark_ended(&mut self, result: CallResult) {
         let end_time = Utc::now();
         self.call_end_time = Some(end_time);
         self.call_result = result;
-        
+
         // Calculate total duration with overflow protection
         let total_duration_seconds = (end_time - self.call_start_time).num_seconds();
-        self.call_duration = Some(
-            if total_duration_seconds < 0 {
-                warn!("Negative call duration detected, setting to 0");
-                0
-            } else {
-                total_duration_seconds as u64
-            }
-        );
-        
+        self.call_duration = Some(if total_duration_seconds < 0 {
+            warn!("Negative call duration detected, setting to 0");
+            0
+        } else {
+            total_duration_seconds as u64
+        });
+
         // Calculate billable duration (from answer to end, or 0 if never answered)
         if let Some(answer_time) = self.call_answer_time {
             let billable_duration_seconds = (end_time - answer_time).num_seconds();
-            self.billable_duration = Some(
-                if billable_duration_seconds < 0 {
-                    warn!("Negative billable duration detected, setting to 0");
-                    0
-                } else {
-                    billable_duration_seconds as u64
-                }
-            );
+            self.billable_duration = Some(if billable_duration_seconds < 0 {
+                warn!("Negative billable duration detected, setting to 0");
+                0
+            } else {
+                billable_duration_seconds as u64
+            });
         } else {
             // Call was never answered, billable duration is 0
             self.billable_duration = Some(0);
         }
     }
-    
+
     /// Add fraud flag
     pub fn add_fraud_flag(&mut self, flag: String) {
         if !self.fraud_flags.contains(&flag) {
             self.fraud_flags.push(flag);
         }
     }
-    
+
     /// Set charging information
     pub fn set_charging_info(&mut self, charging_info: ChargingInfo) {
         self.charging_info = Some(charging_info);
     }
-    
+
     /// Set quality metrics
     pub fn set_qos_metrics(&mut self, qos_metrics: QoSMetrics) {
         self.qos_metrics = Some(qos_metrics);
     }
-    
+
     /// Export as TAP3 format (simplified)
     pub fn to_tap3_format(&self) -> Result<String> {
         // Simplified TAP3 record generation
         // In production, this would generate proper ASN.1 encoded TAP3
         let mut tap3_record = HashMap::new();
-        
+
         tap3_record.insert("recordType".to_string(), "CallEventDetail".to_string());
         tap3_record.insert("recordId".to_string(), self.record_id.to_string());
-        tap3_record.insert("callStartTime".to_string(), self.call_start_time.to_rfc3339());
+        tap3_record.insert(
+            "callStartTime".to_string(),
+            self.call_start_time.to_rfc3339(),
+        );
         tap3_record.insert("callingNumber".to_string(), self.calling_number.clone());
         tap3_record.insert("calledNumber".to_string(), self.called_number.clone());
-        
+
         if let Some(duration) = self.billable_duration {
             tap3_record.insert("billableDuration".to_string(), duration.to_string());
         }
-        
+
         if let Some(ref charging) = self.charging_info {
             tap3_record.insert("totalCharge".to_string(), charging.total_charge.to_string());
             tap3_record.insert("currency".to_string(), charging.currency_code.clone());
         }
-        
+
         serde_json::to_string(&tap3_record)
             .map_err(|e| anyhow!("Failed to serialize TAP3 record: {}", e))
     }
-    
+
     /// Export as CIBER format
     pub fn to_ciber_format(&self) -> Result<String> {
         // CIBER (Common IXC Billing Exchange Roamer) format
         let mut ciber_fields = Vec::new();
-        
+
         // Record type
         ciber_fields.push(format!("{:02}", self.cdr_type as u8));
-        
+
         // Call start time (YYYYMMDDHHMISS)
         ciber_fields.push(self.call_start_time.format("%Y%m%d%H%M%S").to_string());
-        
+
         // Calling number
         ciber_fields.push(format!("{:15}", self.calling_number));
-        
+
         // Called number
         ciber_fields.push(format!("{:15}", self.called_number));
-        
+
         // Duration (seconds)
         ciber_fields.push(format!("{:08}", self.billable_duration.unwrap_or(0)));
-        
+
         // Call result
         ciber_fields.push(format!("{:02}", self.call_result as u8));
-        
+
         // Originating switch
         ciber_fields.push(format!("{:20}", self.originating_switch));
-        
+
         // Charge amount (in cents)
-        let charge_cents = self.charging_info
+        let charge_cents = self
+            .charging_info
             .as_ref()
             .map(|c| (c.total_charge * 100.0) as u64)
             .unwrap_or(0);
         ciber_fields.push(format!("{:010}", charge_cents));
-        
+
         Ok(ciber_fields.join("|"))
     }
-    
+
     /// Validate CDR completeness for billing
     pub fn validate_for_billing(&self) -> Result<()> {
         if self.calling_number.is_empty() {
             return Err(anyhow!("Calling number is required"));
         }
-        
+
         if self.called_number.is_empty() {
             return Err(anyhow!("Called number is required"));
         }
-        
+
         if self.call_end_time.is_none() {
             return Err(anyhow!("Call end time is required for billing"));
         }
-        
+
         if self.call_result == CallResult::Normal && self.billable_duration.is_none() {
             return Err(anyhow!("Billable duration is required for completed calls"));
         }
-        
+
         if self.charging_info.is_none() && self.call_result == CallResult::Normal {
             warn!("No charging information available for billable call");
         }
-        
+
         Ok(())
     }
 }
 
 impl fmt::Display for JStd025Cdr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "CDR[{}]: {} -> {} ({:?}) Duration: {}s Result: {:?}",
-               self.record_id,
-               self.calling_number,
-               self.called_number,
-               self.service_type,
-               self.billable_duration.unwrap_or(0),
-               self.call_result)
+        write!(
+            f,
+            "CDR[{}]: {} -> {} ({:?}) Duration: {}s Result: {:?}",
+            self.record_id,
+            self.calling_number,
+            self.called_number,
+            self.service_type,
+            self.billable_duration.unwrap_or(0),
+            self.call_result
+        )
     }
 }
 
@@ -517,20 +520,23 @@ impl Default for CdrEngineConfig {
 pub trait CdrStorage {
     /// Store a CDR record
     fn store_cdr(&mut self, cdr: &JStd025Cdr) -> Result<()>;
-    
+
     /// Retrieve CDR records by criteria
     fn retrieve_cdrs(&self, criteria: &CdrSearchCriteria) -> Result<Vec<JStd025Cdr>>;
-    
+
     /// Generate billing report
     fn generate_billing_report(&self, criteria: &BillingReportCriteria) -> Result<BillingReport>;
-    
+
     /// Archive old CDRs
     fn archive_cdrs(&mut self, older_than: DateTime<Utc>) -> Result<u64>;
-    
+
     /// Query CDRs for J-STD-025 lawful intercept (CALEA compliance)
-    fn query_cdrs_for_intercept(&self, target_number: &str, 
-                               start_time: DateTime<Utc>, 
-                               end_time: DateTime<Utc>) -> Result<Vec<JStd025Cdr>>;
+    fn query_cdrs_for_intercept(
+        &self,
+        target_number: &str,
+        start_time: DateTime<Utc>,
+        end_time: DateTime<Utc>,
+    ) -> Result<Vec<JStd025Cdr>>;
 }
 
 /// CDR Search Criteria
@@ -603,23 +609,28 @@ impl JStd025CdrEngine {
             config,
         }
     }
-    
+
     /// Start a new call and create CDR
-    pub fn start_call(&mut self, call_id: String, cdr_type: CdrType, 
-                     calling_number: String, called_number: String) -> Result<()> {
+    pub fn start_call(
+        &mut self,
+        call_id: String,
+        cdr_type: CdrType,
+        calling_number: String,
+        called_number: String,
+    ) -> Result<()> {
         let mut cdr = JStd025Cdr::new(cdr_type, calling_number, called_number);
-        
+
         // Set additional fields based on configuration
         if let Some(ref charging) = self.create_default_charging_info() {
             cdr.set_charging_info(charging.clone());
         }
-        
+
         self.active_cdrs.insert(call_id.clone(), cdr);
         debug!("Started CDR tracking for call: {}", call_id);
-        
+
         Ok(())
     }
-    
+
     /// Mark call as answered
     pub fn answer_call(&mut self, call_id: &str) -> Result<()> {
         if let Some(cdr) = self.active_cdrs.get_mut(call_id) {
@@ -628,25 +639,25 @@ impl JStd025CdrEngine {
         }
         Ok(())
     }
-    
+
     /// End call and finalize CDR
     pub fn end_call(&mut self, call_id: &str, result: CallResult) -> Result<()> {
         if let Some(mut cdr) = self.active_cdrs.remove(call_id) {
             cdr.mark_ended(result);
-            
+
             // Validate CDR before storing
             if let Err(e) = cdr.validate_for_billing() {
                 warn!("CDR validation failed for call {}: {}", call_id, e);
             }
-            
+
             // Store CDR
             self.storage.store_cdr(&cdr)?;
             info!("Finalized and stored CDR for call: {}", call_id);
         }
-        
+
         Ok(())
     }
-    
+
     /// Update CDR with quality metrics
     pub fn update_qos_metrics(&mut self, call_id: &str, metrics: QoSMetrics) -> Result<()> {
         if let Some(cdr) = self.active_cdrs.get_mut(call_id) {
@@ -654,7 +665,7 @@ impl JStd025CdrEngine {
         }
         Ok(())
     }
-    
+
     /// Add fraud flag to active call
     pub fn add_fraud_flag(&mut self, call_id: &str, flag: String) -> Result<()> {
         if let Some(cdr) = self.active_cdrs.get_mut(call_id) {
@@ -663,46 +674,63 @@ impl JStd025CdrEngine {
         }
         Ok(())
     }
-    
+
     /// Get CDR records for lawful intercept (J-STD-025 compliance)
     /// This method supports court-ordered disclosure of call records
-    pub fn get_intercept_records(&self, target_number: &str, warrant_id: Uuid, 
-                               start_time: DateTime<Utc>, end_time: DateTime<Utc>) -> Result<Vec<JStd025Cdr>> {
-        info!("J-STD-025 Lawful Intercept Request - Warrant: {} for target: {} (period: {} to {})", 
-              warrant_id, target_number, start_time, end_time);
-              
+    pub fn get_intercept_records(
+        &self,
+        target_number: &str,
+        warrant_id: Uuid,
+        start_time: DateTime<Utc>,
+        end_time: DateTime<Utc>,
+    ) -> Result<Vec<JStd025Cdr>> {
+        info!(
+            "J-STD-025 Lawful Intercept Request - Warrant: {} for target: {} (period: {} to {})",
+            warrant_id, target_number, start_time, end_time
+        );
+
         // Query storage for CDRs matching the target number and time range
-        let records = self.storage.query_cdrs_for_intercept(
-            target_number, 
-            start_time, 
-            end_time
-        )?;
-        
+        let records = self
+            .storage
+            .query_cdrs_for_intercept(target_number, start_time, end_time)?;
+
         // Log lawful intercept activity for audit trail
-        info!("J-STD-025 Lawful Intercept: Provided {} CDR records for warrant {}", 
-              records.len(), warrant_id);
-              
+        info!(
+            "J-STD-025 Lawful Intercept: Provided {} CDR records for warrant {}",
+            records.len(),
+            warrant_id
+        );
+
         Ok(records)
     }
-    
+
     /// Check if a target number requires J-STD-025 intercept monitoring
     pub fn is_intercept_target(&self, calling_number: &str, called_number: &str) -> bool {
         // Check if either party is subject to lawful intercept
         // This would integrate with warrant management system
-        self.config.intercept_targets.iter().any(|target| target == calling_number) || 
-        self.config.intercept_targets.iter().any(|target| target == called_number)
+        self.config
+            .intercept_targets
+            .iter()
+            .any(|target| target == calling_number)
+            || self
+                .config
+                .intercept_targets
+                .iter()
+                .any(|target| target == called_number)
     }
-    
+
     /// Mark CDR for lawful intercept monitoring (J-STD-025)
     pub fn mark_for_intercept(&mut self, call_id: &str, warrant_id: Uuid) -> Result<()> {
         if let Some(cdr) = self.active_cdrs.get_mut(call_id) {
             cdr.warrant_ids.push(warrant_id);
-            info!("J-STD-025: Marked call {} for lawful intercept under warrant {}", 
-                  call_id, warrant_id);
+            info!(
+                "J-STD-025: Marked call {} for lawful intercept under warrant {}",
+                call_id, warrant_id
+            );
         }
         Ok(())
     }
-    
+
     /// Create default charging information
     fn create_default_charging_info(&self) -> Option<ChargingInfo> {
         Some(ChargingInfo {
@@ -716,12 +744,15 @@ impl JStd025CdrEngine {
             discount_percentage: 0.0,
         })
     }
-    
+
     /// Generate billing report
-    pub fn generate_billing_report(&self, criteria: BillingReportCriteria) -> Result<BillingReport> {
+    pub fn generate_billing_report(
+        &self,
+        criteria: BillingReportCriteria,
+    ) -> Result<BillingReport> {
         self.storage.generate_billing_report(&criteria)
     }
-    
+
     /// Get active CDR count
     pub fn active_cdr_count(&self) -> usize {
         self.active_cdrs.len()
@@ -731,86 +762,86 @@ impl JStd025CdrEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_cdr_creation() {
         let cdr = JStd025Cdr::new(
             CdrType::MOC,
             "+15551234567".to_string(),
-            "+15559876543".to_string()
+            "+15559876543".to_string(),
         );
-        
+
         assert_eq!(cdr.cdr_type, CdrType::MOC);
         assert_eq!(cdr.calling_number, "+15551234567");
         assert_eq!(cdr.called_number, "+15559876543");
         assert_eq!(cdr.call_result, CallResult::Normal);
     }
-    
+
     #[test]
     fn test_cdr_lifecycle() {
         let mut cdr = JStd025Cdr::new(
             CdrType::MOC,
             "+15551234567".to_string(),
-            "+15559876543".to_string()
+            "+15559876543".to_string(),
         );
-        
+
         // Mark as answered
         cdr.mark_answered();
         assert!(cdr.call_answer_time.is_some());
-        
+
         // Mark as ended
         cdr.mark_ended(CallResult::Normal);
         assert!(cdr.call_end_time.is_some());
         assert!(cdr.call_duration.is_some());
         assert!(cdr.billable_duration.is_some());
     }
-    
+
     #[test]
     fn test_ciber_format() {
         let mut cdr = JStd025Cdr::new(
             CdrType::MOC,
             "+15551234567".to_string(),
-            "+15559876543".to_string()
+            "+15559876543".to_string(),
         );
-        
+
         cdr.mark_answered();
         cdr.mark_ended(CallResult::Normal);
-        
+
         let ciber_output = cdr.to_ciber_format().unwrap();
         assert!(ciber_output.contains("+15551234567"));
         assert!(ciber_output.contains("+15559876543"));
     }
-    
+
     #[test]
     fn test_cdr_validation() {
         let mut cdr = JStd025Cdr::new(
             CdrType::MOC,
             "+15551234567".to_string(),
-            "+15559876543".to_string()
+            "+15559876543".to_string(),
         );
-        
+
         // Should fail without end time
         assert!(cdr.validate_for_billing().is_err());
-        
+
         // Should pass after marking as ended
         cdr.mark_ended(CallResult::Normal);
         assert!(cdr.validate_for_billing().is_ok());
     }
-    
+
     #[test]
     fn test_fraud_flags() {
         let mut cdr = JStd025Cdr::new(
             CdrType::MOC,
             "+15551234567".to_string(),
-            "+15559876543".to_string()
+            "+15559876543".to_string(),
         );
-        
+
         cdr.add_fraud_flag("SUSPICIOUS_PATTERN".to_string());
         cdr.add_fraud_flag("HIGH_VOLUME".to_string());
-        
+
         assert_eq!(cdr.fraud_flags.len(), 2);
         assert!(cdr.fraud_flags.contains(&"SUSPICIOUS_PATTERN".to_string()));
-        
+
         // Adding same flag again should not duplicate
         cdr.add_fraud_flag("SUSPICIOUS_PATTERN".to_string());
         assert_eq!(cdr.fraud_flags.len(), 2);

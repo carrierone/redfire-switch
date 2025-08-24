@@ -3,19 +3,19 @@
  * Handles RTP packet forwarding, codec translation, and media session management
  */
 
-use redfire_codec_engine::{CodecService, AudioCodec as CodecAudioCodec, AudioFrame, CodecConfig};
 use crate::rtp::{RtpPacket, RtpStats};
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use dashmap::DashMap;
+use redfire_codec_engine::{AudioCodec as CodecAudioCodec, AudioFrame, CodecConfig, CodecService};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::net::UdpSocket;
-use tokio::sync::{RwLock, mpsc};
+use tokio::sync::{mpsc, RwLock};
 use tokio::time::timeout;
-use tracing::{debug, info, warn, error, instrument};
+use tracing::{debug, error, info, instrument, warn};
 
 /// RTP proxy configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,8 +56,8 @@ impl Default for RtpProxyConfig {
 /// Media session direction
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MediaDirection {
-    Ingress,  // Incoming media
-    Egress,   // Outgoing media
+    Ingress, // Incoming media
+    Egress,  // Outgoing media
 }
 
 /// Media session state
@@ -85,6 +85,20 @@ pub struct MediaEndpoint {
     pub jitter_buffer: JitterBuffer,
 }
 
+impl Default for MediaEndpoint {
+    fn default() -> Self {
+        Self {
+            remote_addr: "0.0.0.0:0".parse().unwrap(),
+            local_addr: "0.0.0.0:0".parse().unwrap(),
+            codec: AudioCodec::G711Ulaw,
+            ssrc: 0,
+            last_sequence: 0,
+            last_timestamp: 0,
+            jitter_buffer: JitterBuffer::default(),
+        }
+    }
+}
+
 /// Audio codec enum for RTP proxy (matches codec module)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AudioCodec {
@@ -93,6 +107,22 @@ pub enum AudioCodec {
     G729,
     G722,
     Pcm16,
+}
+
+impl From<redfire_codec_engine::AudioCodec> for AudioCodec {
+    fn from(codec: redfire_codec_engine::AudioCodec) -> Self {
+        match codec {
+            redfire_codec_engine::AudioCodec::G711Ulaw => AudioCodec::G711Ulaw,
+            redfire_codec_engine::AudioCodec::G711Alaw => AudioCodec::G711Alaw,
+            redfire_codec_engine::AudioCodec::G729 => AudioCodec::G729,
+            redfire_codec_engine::AudioCodec::G729AnnexA => AudioCodec::G729,
+            redfire_codec_engine::AudioCodec::G729AnnexB => AudioCodec::G729,
+            redfire_codec_engine::AudioCodec::Pcm16 => AudioCodec::Pcm16,
+            redfire_codec_engine::AudioCodec::G722 => AudioCodec::G722,
+            redfire_codec_engine::AudioCodec::G7222 => AudioCodec::G722, // Map G.722.2 to G.722
+            redfire_codec_engine::AudioCodec::Opus => AudioCodec::Pcm16, // Map Opus to PCM16
+        }
+    }
 }
 
 impl From<AudioCodec> for CodecAudioCodec {
@@ -147,6 +177,16 @@ pub struct CodecTranslation {
     pub session_id: String,
 }
 
+impl Default for CodecTranslation {
+    fn default() -> Self {
+        Self {
+            from_codec: AudioCodec::G711Ulaw,
+            to_codec: AudioCodec::G711Ulaw,
+            session_id: String::new(),
+        }
+    }
+}
+
 /// Jitter buffer for packet reordering and delay compensation
 #[derive(Debug, Clone)]
 pub struct JitterBuffer {
@@ -155,6 +195,18 @@ pub struct JitterBuffer {
     max_delay: Duration,
     next_sequence: u16,
     initialized: bool,
+}
+
+impl Default for JitterBuffer {
+    fn default() -> Self {
+        Self {
+            packets: HashMap::new(),
+            max_size: 100,
+            max_delay: Duration::from_millis(200),
+            next_sequence: 0,
+            initialized: false,
+        }
+    }
 }
 
 impl JitterBuffer {
@@ -190,15 +242,14 @@ impl JitterBuffer {
     }
 
     fn cleanup_old_packets(&mut self, now: Instant) {
-        self.packets.retain(|_, (_, timestamp)| {
-            now.duration_since(*timestamp) < self.max_delay
-        });
+        self.packets
+            .retain(|_, (_, timestamp)| now.duration_since(*timestamp) < self.max_delay);
 
         // If buffer is too large, remove oldest packets
         if self.packets.len() > self.max_size {
             let mut to_remove: Vec<u16> = self.packets.keys().cloned().collect();
             to_remove.sort();
-            
+
             let excess = self.packets.len() - self.max_size;
             for seq in to_remove.into_iter().take(excess) {
                 self.packets.remove(&seq);
@@ -261,7 +312,7 @@ impl PortAllocator {
 
     fn allocate_port(&mut self, session_id: &str) -> Option<u16> {
         let start_port = self.next_port;
-        
+
         loop {
             if !self.allocated.contains_key(&self.next_port) {
                 let port = self.next_port;
@@ -296,7 +347,7 @@ impl RtpProxyService {
     pub async fn new(config: RtpProxyConfig) -> Result<Self> {
         let codec_config = CodecConfig::default();
         let codec_service = Arc::new(CodecService::new(codec_config).await?);
-        
+
         let port_allocator = Arc::new(RwLock::new(PortAllocator::new(config.port_range)));
 
         Ok(Self {
@@ -321,16 +372,18 @@ impl RtpProxyService {
     ) -> Result<(SocketAddr, SocketAddr)> {
         // Allocate ports for RTP
         let mut port_allocator = self.port_allocator.write().await;
-        let ingress_port = port_allocator.allocate_port(&session_id)
+        let ingress_port = port_allocator
+            .allocate_port(&session_id)
             .ok_or_else(|| anyhow!("No available ports for RTP session"))?;
-        let egress_port = port_allocator.allocate_port(&session_id)
+        let egress_port = port_allocator
+            .allocate_port(&session_id)
             .ok_or_else(|| anyhow!("No available ports for RTP session"))?;
         drop(port_allocator);
 
         // Bind UDP sockets
         let ingress_addr = SocketAddr::new("0.0.0.0".parse()?, ingress_port);
         let egress_addr = SocketAddr::new("0.0.0.0".parse()?, egress_port);
-        
+
         let ingress_socket = Arc::new(UdpSocket::bind(ingress_addr).await?);
         let egress_socket = Arc::new(UdpSocket::bind(egress_addr).await?);
 
@@ -344,13 +397,15 @@ impl RtpProxyService {
         // Set up codec translation if needed
         let codec_translation = if self.config.codec_translation && ingress_codec != egress_codec {
             // Start codec translation session
-            self.codec_service.start_session(
-                format!("{}-codec", session_id),
-                ingress_codec.into(),
-                egress_codec.into(),
-                ingress_codec.sample_rate(),
-                1, // Mono
-            ).await?;
+            self.codec_service
+                .start_session(
+                    format!("{}-codec", session_id),
+                    ingress_codec.into(),
+                    egress_codec.into(),
+                    ingress_codec.sample_rate(),
+                    1, // Mono
+                )
+                .await?;
 
             Some(CodecTranslation {
                 from_codec: ingress_codec,
@@ -399,11 +454,15 @@ impl RtpProxyService {
         self.sessions.insert(session_id.clone(), session);
 
         // Start packet forwarding tasks
-        self.start_forwarding_task(session_id.clone(), MediaDirection::Ingress, ingress_socket).await;
-        self.start_forwarding_task(session_id.clone(), MediaDirection::Egress, egress_socket).await;
+        self.start_forwarding_task(session_id.clone(), MediaDirection::Ingress, ingress_socket)
+            .await;
+        self.start_forwarding_task(session_id.clone(), MediaDirection::Egress, egress_socket)
+            .await;
 
-        info!("Started RTP proxy session {} for call {}: {} <-> {}", 
-              session_id, call_id, ingress_local, egress_local);
+        info!(
+            "Started RTP proxy session {} for call {}: {} <-> {}",
+            session_id, call_id, ingress_local, egress_local
+        );
 
         Ok((ingress_local, egress_local))
     }
@@ -421,12 +480,14 @@ impl RtpProxyService {
 
         tokio::spawn(async move {
             let mut buffer = vec![0u8; 2048];
-            
+
             loop {
                 match timeout(
                     Duration::from_secs(config.rtp_timeout),
-                    socket.recv_from(&mut buffer)
-                ).await {
+                    socket.recv_from(&mut buffer),
+                )
+                .await
+                {
                     Ok(Ok((len, from_addr))) => {
                         if let Err(e) = Self::handle_rtp_packet(
                             &sessions,
@@ -437,7 +498,9 @@ impl RtpProxyService {
                             from_addr,
                             &socket,
                             &config,
-                        ).await {
+                        )
+                        .await
+                        {
                             warn!("Error handling RTP packet: {}", e);
                         }
                     }
@@ -471,7 +534,8 @@ impl RtpProxyService {
         let mut rtp_packet = RtpPacket::parse(packet_data)?;
 
         // Get session
-        let mut session = sessions.get_mut(session_id)
+        let mut session = sessions
+            .get_mut(session_id)
             .ok_or_else(|| anyhow!("Session {} not found", session_id))?;
 
         // Update session activity
@@ -487,20 +551,27 @@ impl RtpProxyService {
         let (endpoint, target_socket) = match direction {
             MediaDirection::Ingress => {
                 session.stats.ingress_stats.update_received(&rtp_packet);
-                let packets = session.ingress_endpoint.jitter_buffer.add_packet(rtp_packet.clone());
+                let packets = session
+                    .ingress_endpoint
+                    .jitter_buffer
+                    .add_packet(rtp_packet.clone());
                 let target_addr = session.egress_endpoint.remote_addr;
                 (target_addr, &session.egress_endpoint.local_addr)
             }
             MediaDirection::Egress => {
                 session.stats.egress_stats.update_received(&rtp_packet);
-                let packets = session.egress_endpoint.jitter_buffer.add_packet(rtp_packet.clone());
+                let packets = session
+                    .egress_endpoint
+                    .jitter_buffer
+                    .add_packet(rtp_packet.clone());
                 let target_addr = session.ingress_endpoint.remote_addr;
                 (target_addr, &session.ingress_endpoint.local_addr)
             }
         };
 
         // Forward packets (may be multiple due to jitter buffer)
-        for packet in [rtp_packet].iter() { // Simplified - should use jitter buffer output
+        for packet in [rtp_packet].iter() {
+            // Simplified - should use jitter buffer output
             let forwarded_packet = if let Some(ref translation) = session.codec_translation {
                 // Transcode packet
                 Self::transcode_packet(codec_service, translation, packet.clone()).await?
@@ -515,8 +586,12 @@ impl RtpProxyService {
                 warn!("Failed to forward RTP packet: {}", e);
             } else {
                 match direction {
-                    MediaDirection::Ingress => session.stats.egress_stats.update_sent(&forwarded_packet),
-                    MediaDirection::Egress => session.stats.ingress_stats.update_sent(&forwarded_packet),
+                    MediaDirection::Ingress => {
+                        session.stats.egress_stats.update_sent(&forwarded_packet)
+                    }
+                    MediaDirection::Egress => {
+                        session.stats.ingress_stats.update_sent(&forwarded_packet)
+                    }
                 }
             }
         }
@@ -541,7 +616,9 @@ impl RtpProxyService {
         };
 
         // Transcode
-        let transcoded = codec_service.transcode_frame(&translation.session_id, audio_frame).await?;
+        let transcoded = codec_service
+            .transcode_frame(&translation.session_id, audio_frame)
+            .await?;
 
         // Update packet
         packet.payload = transcoded.data;
@@ -562,8 +639,10 @@ impl RtpProxyService {
             let volume = packet.payload[1] & 0x3F;
             let duration = u16::from_be_bytes([packet.payload[2], packet.payload[3]]);
 
-            debug!("DTMF event: digit={}, end={}, volume={}, duration={}", 
-                   event, end_flag, volume, duration);
+            debug!(
+                "DTMF event: digit={}, end={}, volume={}, duration={}",
+                event, end_flag, volume, duration
+            );
 
             session.stats.dtmf_events += 1;
         }
@@ -573,14 +652,19 @@ impl RtpProxyService {
 
     /// End media session
     pub async fn end_session(&self, session_id: &str) -> Result<MediaSessionStats> {
-        let session = self.sessions.remove(session_id)
+        let session = self
+            .sessions
+            .remove(session_id)
             .ok_or_else(|| anyhow!("Session {} not found", session_id))?;
 
         let (_, session) = session;
 
         // Clean up codec translation session
         if let Some(ref translation) = session.codec_translation {
-            let _ = self.codec_service.end_session(&translation.session_id).await;
+            let _ = self
+                .codec_service
+                .end_session(&translation.session_id)
+                .await;
         }
 
         // Clean up sockets
@@ -592,19 +676,27 @@ impl RtpProxyService {
         port_allocator.deallocate_port(session.ingress_endpoint.local_addr.port());
         port_allocator.deallocate_port(session.egress_endpoint.local_addr.port());
 
-        info!("Ended RTP proxy session {} for call {}", session_id, session.call_id);
+        info!(
+            "Ended RTP proxy session {} for call {}",
+            session_id, session.call_id
+        );
 
         Ok(session.stats)
     }
 
     /// Get session statistics
     pub fn get_session_stats(&self, session_id: &str) -> Option<MediaSessionStats> {
-        self.sessions.get(session_id).map(|session| session.stats.clone())
+        self.sessions
+            .get(session_id)
+            .map(|session| session.stats.clone())
     }
 
     /// Get all active sessions
     pub fn get_active_sessions(&self) -> Vec<String> {
-        self.sessions.iter().map(|entry| entry.key().clone()).collect()
+        self.sessions
+            .iter()
+            .map(|entry| entry.key().clone())
+            .collect()
     }
 
     /// Clean up expired sessions
@@ -612,7 +704,8 @@ impl RtpProxyService {
         let timeout_duration = Duration::from_secs(self.config.rtp_timeout);
         let now = Instant::now();
 
-        let expired_sessions: Vec<String> = self.sessions
+        let expired_sessions: Vec<String> = self
+            .sessions
             .iter()
             .filter_map(|entry| {
                 let session = entry.value();
@@ -639,19 +732,19 @@ mod tests {
     #[test]
     fn test_jitter_buffer() {
         let mut buffer = JitterBuffer::new(10, 100);
-        
+
         let packet1 = RtpPacket::new(0, 100, 1000, 1, vec![1, 2, 3]);
         let packet2 = RtpPacket::new(0, 101, 1020, 1, vec![4, 5, 6]);
         let packet3 = RtpPacket::new(0, 102, 1040, 1, vec![7, 8, 9]);
-        
+
         // First packet should be delivered immediately
         let result1 = buffer.add_packet(packet1);
         assert_eq!(result1.len(), 1);
-        
+
         // Second packet in sequence
         let result2 = buffer.add_packet(packet2);
         assert_eq!(result2.len(), 1);
-        
+
         // Third packet in sequence
         let result3 = buffer.add_packet(packet3);
         assert_eq!(result3.len(), 1);
@@ -660,19 +753,19 @@ mod tests {
     #[test]
     fn test_jitter_buffer_reordering() {
         let mut buffer = JitterBuffer::new(10, 100);
-        
+
         let packet1 = RtpPacket::new(0, 100, 1000, 1, vec![1, 2, 3]);
         let packet3 = RtpPacket::new(0, 102, 1040, 1, vec![7, 8, 9]);
         let packet2 = RtpPacket::new(0, 101, 1020, 1, vec![4, 5, 6]);
-        
+
         // First packet
         let result1 = buffer.add_packet(packet1);
         assert_eq!(result1.len(), 1);
-        
+
         // Out of order packet (102 before 101)
         let result2 = buffer.add_packet(packet3);
         assert_eq!(result2.len(), 0); // Should be buffered
-        
+
         // Missing packet arrives
         let result3 = buffer.add_packet(packet2);
         assert_eq!(result3.len(), 2); // Should deliver both 101 and 102
@@ -681,14 +774,14 @@ mod tests {
     #[tokio::test]
     async fn test_port_allocator() {
         let mut allocator = PortAllocator::new((10000, 10010));
-        
+
         let port1 = allocator.allocate_port("session1").unwrap();
         let port2 = allocator.allocate_port("session2").unwrap();
-        
+
         assert_ne!(port1, port2);
         assert!(port1 >= 10000 && port1 <= 10010);
         assert!(port2 >= 10000 && port2 <= 10010);
-        
+
         allocator.deallocate_port(port1);
         let port3 = allocator.allocate_port("session3").unwrap();
         // Should reuse the deallocated port eventually

@@ -3,7 +3,7 @@
  * RFC 3550 compliant RTP packet handling for media transport
  */
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use serde::{Deserialize, Serialize};
 use std::io::{Cursor, Write};
@@ -119,7 +119,13 @@ pub struct AppDefinedPacket {
 
 impl RtpPacket {
     /// Create a new RTP packet
-    pub fn new(payload_type: u8, sequence_number: u16, timestamp: u32, ssrc: u32, payload: Vec<u8>) -> Self {
+    pub fn new(
+        payload_type: u8,
+        sequence_number: u16,
+        timestamp: u32,
+        ssrc: u32,
+        payload: Vec<u8>,
+    ) -> Self {
         Self {
             version: 2,
             padding: false,
@@ -144,7 +150,7 @@ impl RtpPacket {
         }
 
         let mut cursor = Cursor::new(data);
-        
+
         // First byte: V(2), P(1), X(1), CC(4)
         let first_byte = cursor.read_u8()?;
         let version = (first_byte >> 6) & 0x03;
@@ -178,7 +184,11 @@ impl RtpPacket {
             let length = cursor.read_u16::<BigEndian>()?;
             let mut ext_data = vec![0u8; (length * 4) as usize];
             std::io::Read::read_exact(&mut cursor, &mut ext_data)?;
-            Some(RtpExtension { profile, length, data: ext_data })
+            Some(RtpExtension {
+                profile,
+                length,
+                data: ext_data,
+            })
         } else {
             None
         };
@@ -236,10 +246,10 @@ impl RtpPacket {
         buffer.reserve(size);
 
         // First byte: V(2), P(1), X(1), CC(4)
-        let first_byte = (self.version << 6) | 
-                        ((self.padding as u8) << 5) |
-                        ((self.extension as u8) << 4) |
-                        (self.csrc_count & 0x0F);
+        let first_byte = (self.version << 6)
+            | ((self.padding as u8) << 5)
+            | ((self.extension as u8) << 4)
+            | (self.csrc_count & 0x0F);
         buffer.write_u8(first_byte)?;
 
         // Second byte: M(1), PT(7)
@@ -297,12 +307,12 @@ impl RtpPacket {
         let since_epoch = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default();
-        
+
         // NTP epoch starts Jan 1, 1900, Unix epoch starts Jan 1, 1970
         // Difference is 70 years = 2208988800 seconds
         let ntp_seconds = since_epoch.as_secs() + 2208988800;
         let ntp_fraction = ((since_epoch.subsec_nanos() as u64) << 32) / 1_000_000_000;
-        
+
         (ntp_seconds << 32) | ntp_fraction
     }
 
@@ -311,7 +321,7 @@ impl RtpPacket {
         let ntp_seconds = (ntp_timestamp >> 32) as f64;
         let ntp_fraction = (ntp_timestamp & 0xFFFFFFFF) as f64 / (1u64 << 32) as f64;
         let time_seconds = ntp_seconds + ntp_fraction;
-        
+
         // Convert to RTP timestamp units
         (time_seconds * sample_rate as f64) as u32
     }
@@ -344,14 +354,14 @@ impl RtpStats {
     pub fn update_received(&mut self, packet: &RtpPacket) {
         self.packets_received += 1;
         self.bytes_received += packet.payload.len() as u64;
-        
+
         // Calculate packet loss
         let expected_seq = self.last_sequence_number.wrapping_add(1);
         if packet.sequence_number != expected_seq && self.packets_received > 1 {
             let gap = packet.sequence_number.wrapping_sub(expected_seq);
             self.packets_lost += gap as u64;
         }
-        
+
         self.last_sequence_number = packet.sequence_number;
         self.last_timestamp = packet.timestamp;
     }
@@ -373,7 +383,7 @@ mod tests {
     fn test_rtp_packet_creation() {
         let payload = vec![1, 2, 3, 4, 5];
         let packet = RtpPacket::new(0, 1234, 567890, 0x12345678, payload.clone());
-        
+
         assert_eq!(packet.version, 2);
         assert_eq!(packet.payload_type, 0);
         assert_eq!(packet.sequence_number, 1234);
@@ -387,10 +397,10 @@ mod tests {
     fn test_rtp_packet_serialization() {
         let payload = vec![0xDE, 0xAD, 0xBE, 0xEF];
         let packet = RtpPacket::new(96, 12345, 987654321, 0xABCDEF00, payload);
-        
+
         let serialized = packet.serialize().unwrap();
         let parsed = RtpPacket::parse(&serialized).unwrap();
-        
+
         assert_eq!(packet, parsed);
     }
 
@@ -399,10 +409,10 @@ mod tests {
         let mut packet = RtpPacket::new(0, 1, 2, 3, vec![1, 2, 3]);
         packet.csrc = vec![0x11111111, 0x22222222];
         packet.csrc_count = 2;
-        
+
         let serialized = packet.serialize().unwrap();
         let parsed = RtpPacket::parse(&serialized).unwrap();
-        
+
         assert_eq!(packet.csrc, parsed.csrc);
         assert_eq!(packet.csrc_count, parsed.csrc_count);
     }
@@ -413,11 +423,11 @@ mod tests {
         let packet1 = RtpPacket::new(0, 100, 1000, 1, vec![1, 2, 3]);
         let packet2 = RtpPacket::new(0, 101, 1020, 1, vec![4, 5, 6]);
         let packet3 = RtpPacket::new(0, 103, 1060, 1, vec![7, 8, 9]); // Gap at 102
-        
+
         stats.update_received(&packet1);
         stats.update_received(&packet2);
         stats.update_received(&packet3);
-        
+
         assert_eq!(stats.packets_received, 3);
         assert_eq!(stats.packets_lost, 1); // Sequence 102 was lost
         assert_eq!(stats.bytes_received, 9);
@@ -428,7 +438,7 @@ mod tests {
     fn test_invalid_rtp_packet() {
         let short_data = vec![1, 2, 3]; // Too short
         assert!(RtpPacket::parse(&short_data).is_err());
-        
+
         let wrong_version = vec![0x40, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3]; // Version 1
         assert!(RtpPacket::parse(&wrong_version).is_err());
     }

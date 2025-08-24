@@ -1,9 +1,9 @@
 /*
  * CESoPSN NI-2 Integration
- * 
+ *
  * Integrates RFC 5086 CESoPSN with NI-2 signaling and DTMF processing
  * for complete TDM circuit emulation over packet networks.
- * 
+ *
  * Features:
  * - CESoPSN transport for TDM circuits
  * - NI-2 D-channel signaling extraction/insertion
@@ -12,26 +12,26 @@
  * - QoS management and monitoring
  */
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{RwLock, mpsc, broadcast};
+use tokio::sync::{broadcast, mpsc, RwLock};
 use tokio::time::interval;
-use tracing::{debug, info, warn, error};
-use serde::{Serialize, Deserialize};
+use tracing::{debug, error, info, warn};
 
-use crate::cesopsn::{
-    CesopsnManager, CesopsnService, CesopsnCircuitConfig, CesopsnCircuitType,
-    CesopsnServiceQuality, CesopsnPayloadType, CesopsnServiceStats
-};
-use crate::tdmoe_ni2_signaling::{
-    TdmoeNi2Signaling, Ni2Event, Ni2SideType, Ni2CallState, Ni2CallContext
-};
-use crate::q931_messages::{IsdnVariant, IsdnSideType, IsdnConfig};
-use crate::dtmf_processor::DtmfProcessor;
 use crate::buffer_pool::{AudioBufferPool, ChannelIdCache};
+use crate::cesopsn::{
+    CesopsnCircuitConfig, CesopsnCircuitType, CesopsnManager, CesopsnPayloadType, CesopsnService,
+    CesopsnServiceQuality, CesopsnServiceStats,
+};
 use crate::codec_optimized::OptimizedCodecProcessor;
+use crate::dtmf_processor::DtmfProcessor;
+use crate::q931_messages::{IsdnConfig, IsdnSideType, IsdnVariant};
+use crate::tdmoe_ni2_signaling::{
+    Ni2CallContext, Ni2CallState, Ni2Event, Ni2SideType, TdmoeNi2Signaling,
+};
 
 /// PCM Codec Type for voice encoding
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -173,15 +173,15 @@ impl CesopsnNi2Integration {
         let cesopsn_manager = Arc::new(CesopsnManager::new());
         let dtmf_processor = Arc::new(DtmfProcessor::new());
         let (event_sender, _) = broadcast::channel(1000);
-        
+
         // Initialize performance optimization components
         let audio_pool = Arc::new(AudioBufferPool::new());
         audio_pool.preallocate_all();
         let channel_cache = Arc::new(ChannelIdCache::new());
         let codec_processor = Arc::new(OptimizedCodecProcessor::new());
-        
+
         info!("Created CESoPSN NI-2 Integration Service with optimized codec processing");
-        
+
         Ok(Self {
             cesopsn_manager,
             ni2_processors: Arc::new(RwLock::new(HashMap::new())),
@@ -195,21 +195,26 @@ impl CesopsnNi2Integration {
             processor_handle: None,
         })
     }
-    
+
     /// Add CESoPSN circuit with NI-2 integration
     pub async fn add_circuit(&mut self, config: CesopsnNi2CircuitConfig) -> Result<()> {
         let circuit_id = config.cesopsn_config.circuit_id;
-        
+
         // Add CESoPSN circuit
-        self.cesopsn_manager.add_circuit(config.cesopsn_config.clone()).await?;
-        
+        self.cesopsn_manager
+            .add_circuit(config.cesopsn_config.clone())
+            .await?;
+
         // Create NI-2 signaling processor for this circuit
         let ni2_processor = Arc::new(TdmoeNi2Signaling::new_with_side(Ni2SideType::User)?);
-        self.ni2_processors.write().await.insert(circuit_id, ni2_processor);
-        
+        self.ni2_processors
+            .write()
+            .await
+            .insert(circuit_id, ni2_processor);
+
         // Initialize channel states
         let mut channel_states = HashMap::new();
-        
+
         // Setup voice channels
         for &channel_num in &config.voice_channels {
             let state = CesopsnChannelState {
@@ -220,7 +225,7 @@ impl CesopsnNi2Integration {
                 audio_buffer: Vec::new(),
             };
             channel_states.insert(channel_num, state);
-            
+
             // Add DTMF detector for voice channels
             if config.enable_dtmf_detection {
                 let channel_id = self.channel_cache.get_or_create(circuit_id, channel_num);
@@ -229,7 +234,7 @@ impl CesopsnNi2Integration {
                 self.dtmf_processor.detector().add_channel(channel_id_num)?;
             }
         }
-        
+
         // Setup D-channel if present
         if let Some(d_channel) = config.d_channel_timeslot {
             let state = CesopsnChannelState {
@@ -241,10 +246,16 @@ impl CesopsnNi2Integration {
             };
             channel_states.insert(d_channel, state);
         }
-        
-        self.channel_states.write().await.insert(circuit_id, channel_states);
-        self.circuit_configs.write().await.insert(circuit_id, config.clone());
-        
+
+        self.channel_states
+            .write()
+            .await
+            .insert(circuit_id, channel_states);
+        self.circuit_configs
+            .write()
+            .await
+            .insert(circuit_id, config.clone());
+
         // Preallocate cached channel IDs for this circuit
         let max_channels = match config.cesopsn_config.circuit_type {
             CesopsnCircuitType::T1 => 24,
@@ -252,18 +263,20 @@ impl CesopsnNi2Integration {
             _ => config.voice_channels.len().max(32) as u8,
         };
         self.channel_cache.preallocate(circuit_id, max_channels);
-        
-        info!("Added CESoPSN NI-2 circuit {} ({}) with {} channels preallocation", 
-              circuit_id, config.description, max_channels);
-        
+
+        info!(
+            "Added CESoPSN NI-2 circuit {} ({}) with {} channels preallocation",
+            circuit_id, config.description, max_channels
+        );
+
         // Start TDM processing if this is the first circuit
         if self.processor_handle.is_none() {
             self.start_tdm_processing().await?;
         }
-        
+
         Ok(())
     }
-    
+
     /// Start TDM data processing
     async fn start_tdm_processing(&mut self) -> Result<()> {
         let cesopsn_manager = Arc::clone(&self.cesopsn_manager);
@@ -275,7 +288,7 @@ impl CesopsnNi2Integration {
         let audio_pool = Arc::clone(&self.audio_pool);
         let channel_cache = Arc::clone(&self.channel_cache);
         let codec_processor = Arc::clone(&self.codec_processor);
-        
+
         let handle = tokio::spawn(async move {
             Self::tdm_processing_task(
                 cesopsn_manager,
@@ -286,16 +299,17 @@ impl CesopsnNi2Integration {
                 event_sender,
                 audio_pool,
                 channel_cache,
-                codec_processor
-            ).await;
+                codec_processor,
+            )
+            .await;
         });
-        
+
         self.processor_handle = Some(handle);
         info!("Started CESoPSN TDM processing task");
-        
+
         Ok(())
     }
-    
+
     /// TDM data processing task with performance optimization
     async fn tdm_processing_task(
         cesopsn_manager: Arc<CesopsnManager>,
@@ -306,10 +320,10 @@ impl CesopsnNi2Integration {
         event_sender: broadcast::Sender<CesopsnNi2Event>,
         audio_pool: Arc<AudioBufferPool>,
         channel_cache: Arc<ChannelIdCache>,
-        codec_processor: Arc<OptimizedCodecProcessor>
+        codec_processor: Arc<OptimizedCodecProcessor>,
     ) {
         let mut tdm_receiver = cesopsn_manager.subscribe_tdm_data();
-        
+
         while let Some((circuit_id, tdm_data)) = tdm_receiver.recv().await {
             if let Err(e) = Self::process_tdm_frame(
                 circuit_id,
@@ -321,13 +335,18 @@ impl CesopsnNi2Integration {
                 &event_sender,
                 &audio_pool,
                 &channel_cache,
-                &codec_processor
-            ).await {
-                warn!("Error processing TDM frame for circuit {}: {}", circuit_id, e);
+                &codec_processor,
+            )
+            .await
+            {
+                warn!(
+                    "Error processing TDM frame for circuit {}: {}",
+                    circuit_id, e
+                );
             }
         }
     }
-    
+
     /// Process single TDM frame with optimized buffer management and fast codec conversion
     async fn process_tdm_frame(
         circuit_id: u16,
@@ -339,37 +358,53 @@ impl CesopsnNi2Integration {
         event_sender: &broadcast::Sender<CesopsnNi2Event>,
         audio_pool: &Arc<AudioBufferPool>,
         channel_cache: &Arc<ChannelIdCache>,
-        codec_processor: &Arc<OptimizedCodecProcessor>
+        codec_processor: &Arc<OptimizedCodecProcessor>,
     ) -> Result<()> {
         // Get essential config data without cloning the whole struct
         let (frame_size, voice_channels, d_channel_timeslot, pcm_codec, enable_dtmf) = {
             let configs = circuit_configs.read().await;
-            let config = configs.get(&circuit_id)
+            let config = configs
+                .get(&circuit_id)
                 .ok_or_else(|| anyhow!("Circuit {} not configured", circuit_id))?;
-            
+
             let frame_size = match config.cesopsn_config.circuit_type {
                 CesopsnCircuitType::T1 => 24, // 24 DS0 channels
                 CesopsnCircuitType::E1 => 32, // 32 timeslots
                 CesopsnCircuitType::FractionalT1 | CesopsnCircuitType::FractionalE1 => {
-                    config.voice_channels.len() + if config.d_channel_timeslot.is_some() { 1 } else { 0 }
+                    config.voice_channels.len()
+                        + if config.d_channel_timeslot.is_some() {
+                            1
+                        } else {
+                            0
+                        }
                 }
             };
-            
-            (frame_size, config.voice_channels.clone(), config.d_channel_timeslot, config.pcm_codec, config.enable_dtmf_detection)
+
+            (
+                frame_size,
+                config.voice_channels.clone(),
+                config.d_channel_timeslot,
+                config.pcm_codec,
+                config.enable_dtmf_detection,
+            )
         };
-        
+
         if tdm_data.len() < frame_size {
-            return Err(anyhow!("TDM frame too short: {} < {}", tdm_data.len(), frame_size));
+            return Err(anyhow!(
+                "TDM frame too short: {} < {}",
+                tdm_data.len(),
+                frame_size
+            ));
         }
-        
+
         // Get a reusable audio buffer for DTMF processing
         let mut audio_buffer = audio_pool.get_f32_buffer();
         audio_buffer.resize(1, 0.0);
-        
+
         // Process each channel in the TDM frame
         for (timeslot, &sample) in tdm_data.iter().take(frame_size).enumerate() {
             let channel_num = (timeslot + 1) as u8;
-            
+
             // Check if this is a voice channel
             if voice_channels.contains(&channel_num) && enable_dtmf {
                 // Convert PCM to linear PCM using optimized codec processor
@@ -378,57 +413,58 @@ impl CesopsnNi2Integration {
                     PcmCodec::ALaw => codec_processor.alaw_to_linear_fast(sample) as f32,
                 } / 32768.0; // Normalize to [-1.0, 1.0]
                 audio_buffer[0] = linear_sample;
-                
+
                 // Use cached channel ID to avoid string allocations
                 let channel_id = channel_cache.get_or_create(circuit_id, channel_num);
-                
+
                 // Process for DTMF detection using the pooled buffer
                 let channel_id_num: u32 = channel_id.parse().unwrap_or(channel_num as u32);
-                
+
                 // Convert f32 audio samples to u8 bytes for DTMF processing
                 let mut audio_bytes: Vec<u8> = Vec::with_capacity(audio_buffer.len());
                 for &sample in audio_buffer.iter() {
                     audio_bytes.push((sample * 127.0 + 128.0) as u8);
                 }
-                
-                if let Err(e) = dtmf_processor.detector()
-                    .process_audio(channel_id_num, &audio_bytes) {
+
+                if let Err(e) = dtmf_processor
+                    .detector()
+                    .process_audio(channel_id_num, &audio_bytes)
+                {
                     debug!("DTMF processing error for {}: {}", channel_id, e);
                 }
             }
-            
+
             // Check if this is the D-channel
             if Some(channel_num) == d_channel_timeslot {
                 // Extract NI-2 signaling from D-channel
-                Self::process_d_channel_data(
-                    circuit_id,
-                    &[sample],
-                    &ni2_processors,
-                    event_sender
-                ).await?;
+                Self::process_d_channel_data(circuit_id, &[sample], &ni2_processors, event_sender)
+                    .await?;
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Process D-channel signaling data
     async fn process_d_channel_data(
         circuit_id: u16,
         d_data: &[u8],
         ni2_processors: &Arc<RwLock<HashMap<u16, Arc<TdmoeNi2Signaling>>>>,
-        event_sender: &broadcast::Sender<CesopsnNi2Event>
+        event_sender: &broadcast::Sender<CesopsnNi2Event>,
     ) -> Result<()> {
         let ni2_processor = {
             let processors = ni2_processors.read().await;
             processors.get(&circuit_id).cloned()
         };
-        
+
         if let Some(processor) = ni2_processor {
             let channel_id = format!("D-{}", circuit_id);
-            
+
             // Process D-channel message (simplified - real implementation would need HDLC framing)
-            if let Err(e) = processor.process_d_channel_message(&channel_id, d_data).await {
+            if let Err(e) = processor
+                .process_d_channel_message(&channel_id, d_data)
+                .await
+            {
                 debug!("D-channel processing error: {}", e);
             } else {
                 // Notify about NI-2 message
@@ -440,33 +476,51 @@ impl CesopsnNi2Integration {
                 let _ = event_sender.send(event);
             }
         }
-        
+
         Ok(())
     }
-    
+
     // PCM conversion methods removed - using OptimizedCodecProcessor instead
-    
+
     // All PCM conversion methods moved to OptimizedCodecProcessor for better performance
-    
+
     /// Generate DTMF tone to specific circuit channel
-    pub async fn generate_dtmf(&self, circuit_id: u16, channel: u8, digit: char, duration_ms: u32) -> Result<()> {
+    pub async fn generate_dtmf(
+        &self,
+        circuit_id: u16,
+        channel: u8,
+        digit: char,
+        duration_ms: u32,
+    ) -> Result<()> {
         let config = {
             let configs = self.circuit_configs.read().await;
-            configs.get(&circuit_id).cloned()
+            configs
+                .get(&circuit_id)
+                .cloned()
                 .ok_or_else(|| anyhow!("Circuit {} not found", circuit_id))?
         };
-        
+
         if !config.enable_dtmf_generation {
-            return Err(anyhow!("DTMF generation disabled for circuit {}", circuit_id));
+            return Err(anyhow!(
+                "DTMF generation disabled for circuit {}",
+                circuit_id
+            ));
         }
-        
+
         if !config.voice_channels.contains(&channel) {
-            return Err(anyhow!("Channel {} is not a voice channel on circuit {}", channel, circuit_id));
+            return Err(anyhow!(
+                "Channel {} is not a voice channel on circuit {}",
+                channel,
+                circuit_id
+            ));
         }
-        
+
         // Generate DTMF samples
-        let samples = self.dtmf_processor.generator().generate_digit(digit, duration_ms)?;
-        
+        let samples = self
+            .dtmf_processor
+            .generator()
+            .generate_digit(digit, duration_ms)?;
+
         // Convert to PCM and create TDM frame
         let mut tdm_frame = vec![0u8; 24]; // T1 frame
         for (i, &sample) in samples.iter().enumerate() {
@@ -481,10 +535,12 @@ impl CesopsnNi2Integration {
                 };
             }
         }
-        
+
         // Send via CESoPSN
-        self.cesopsn_manager.send_tdm_data(circuit_id, &tdm_frame).await?;
-        
+        self.cesopsn_manager
+            .send_tdm_data(circuit_id, &tdm_frame)
+            .await?;
+
         // Notify about DTMF generation
         let event = CesopsnNi2Event::DtmfGenerated {
             circuit_id,
@@ -493,55 +549,58 @@ impl CesopsnNi2Integration {
             duration: Duration::from_millis(duration_ms as u64),
         };
         let _ = self.event_sender.send(event);
-        
-        info!("Generated DTMF '{}' on circuit {} channel {} for {}ms", 
-              digit, circuit_id, channel, duration_ms);
-        
+
+        info!(
+            "Generated DTMF '{}' on circuit {} channel {} for {}ms",
+            digit, circuit_id, channel, duration_ms
+        );
+
         Ok(())
     }
-    
+
     /// Get circuit statistics
     pub async fn get_circuit_stats(&self, circuit_id: u16) -> Result<CesopsnCircuitStats> {
         let cesopsn_stats = self.cesopsn_manager.get_all_stats().await;
-        let cesopsn_stat = cesopsn_stats.get(&circuit_id)
+        let cesopsn_stat = cesopsn_stats
+            .get(&circuit_id)
             .ok_or_else(|| anyhow!("Circuit {} not found", circuit_id))?;
-        
+
         let ni2_processor = {
             let processors = self.ni2_processors.read().await;
             processors.get(&circuit_id).cloned()
         };
-        
+
         let ni2_calls = if let Some(processor) = ni2_processor {
             processor.get_active_calls().await.len()
         } else {
             0
         };
-        
+
         Ok(CesopsnCircuitStats {
             circuit_id,
             cesopsn_stats: cesopsn_stats.clone(),
             ni2_active_calls: ni2_calls,
-            dtmf_events_detected: 0, // Would track from DTMF processor
+            dtmf_events_detected: 0,  // Would track from DTMF processor
             dtmf_events_generated: 0, // Would track from generation requests
         })
     }
-    
+
     /// Subscribe to integration events
     pub fn subscribe_events(&self) -> broadcast::Receiver<CesopsnNi2Event> {
         self.event_sender.subscribe()
     }
-    
+
     /// Get all circuit statistics
     pub async fn get_all_circuit_stats(&self) -> HashMap<u16, CesopsnCircuitStats> {
         let mut all_stats = HashMap::new();
         let configs = self.circuit_configs.read().await;
-        
+
         for &circuit_id in configs.keys() {
             if let Ok(stats) = self.get_circuit_stats(circuit_id).await {
                 all_stats.insert(circuit_id, stats);
             }
         }
-        
+
         all_stats
     }
 }
@@ -560,11 +619,11 @@ pub struct CesopsnCircuitStats {
 mod tests {
     use super::*;
     use std::net::SocketAddr;
-    
+
     #[tokio::test]
     async fn test_cesopsn_ni2_integration() {
         let mut integration = CesopsnNi2Integration::new().await.unwrap();
-        
+
         let config = CesopsnNi2CircuitConfig {
             cesopsn_config: CesopsnCircuitConfig {
                 circuit_id: 1,
@@ -582,14 +641,14 @@ mod tests {
             description: "Test T1 Circuit".to_string(),
             ..Default::default()
         };
-        
+
         integration.add_circuit(config).await.unwrap();
-        
+
         // Test would continue with actual packet exchange...
         // This is a basic structure test
         assert_eq!(integration.circuit_configs.read().await.len(), 1);
     }
-    
+
     #[test]
     #[ignore = "μ-Law conversion test - see codec_optimized for systematic issues"]
     fn test_ulaw_conversion() {
@@ -598,7 +657,7 @@ mod tests {
         let linear = 1000i16;
         let ulaw = codec_processor.linear_to_ulaw_fast(linear);
         let converted = codec_processor.ulaw_to_linear_fast(ulaw);
-        
+
         // Should be approximately the same (within quantization error)
         assert!((linear - converted).abs() < 100);
     }

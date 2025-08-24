@@ -1,6 +1,6 @@
 /*
  * G.729 External Assembly Test Binary
- * 
+ *
  * Simple binary to test G.729 external assembly functionality
  */
 

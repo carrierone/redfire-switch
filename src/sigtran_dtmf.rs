@@ -15,15 +15,15 @@
  * - TCAP Invoke components
  */
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
+use byteorder::{BigEndian, ByteOrder, ReadBytesExt, WriteBytesExt};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::io::Cursor;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{RwLock, mpsc};
-use tracing::{debug, info, warn, error};
-use serde::{Serialize, Deserialize};
-use byteorder::{BigEndian, ByteOrder, WriteBytesExt, ReadBytesExt};
-use std::io::Cursor;
+use tokio::sync::{mpsc, RwLock};
+use tracing::{debug, error, info, warn};
 
 use crate::dtmf_processor::{DtmfEvent, DtmfSource};
 
@@ -201,10 +201,7 @@ impl Default for SigtranDtmfConfig {
         Self {
             max_digits: 20,
             collection_timeout: 30,
-            supported_protocols: vec![
-                SigtranProtocol::M3ua,
-                SigtranProtocol::Sua,
-            ],
+            supported_protocols: vec![SigtranProtocol::M3ua, SigtranProtocol::Sua],
             default_encoding: GenericDigitsEncoding::Ia5Character,
         }
     }
@@ -219,11 +216,14 @@ impl SigtranDtmfProcessor {
             config,
         }
     }
-    
+
     /// Process incoming Sigtran DTMF message
     pub async fn process_incoming_message(&self, message: SigtranDtmfMessage) -> Result<()> {
-        debug!("Processing Sigtran DTMF message: {:?}", message.message_type);
-        
+        debug!(
+            "Processing Sigtran DTMF message: {:?}",
+            message.message_type
+        );
+
         match message.message_type {
             SigtranDtmfMessageType::IsupGenericDigits => {
                 self.process_isup_generic_digits(&message).await?;
@@ -238,17 +238,20 @@ impl SigtranDtmfProcessor {
                 self.process_inap_collected_info(&message).await?;
             }
             _ => {
-                debug!("Unhandled Sigtran DTMF message type: {:?}", message.message_type);
+                debug!(
+                    "Unhandled Sigtran DTMF message type: {:?}",
+                    message.message_type
+                );
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Process ISUP Generic Digits parameter
     async fn process_isup_generic_digits(&self, message: &SigtranDtmfMessage) -> Result<()> {
         let digits = self.decode_digits(&message.digits, message.encoding)?;
-        
+
         // Generate DTMF events for each digit
         for (i, digit) in digits.chars().enumerate() {
             let dtmf_event = DtmfEvent::DigitDetected {
@@ -258,39 +261,41 @@ impl SigtranDtmfProcessor {
                 confidence: 0.9, // High confidence from SS7
                 source: DtmfSource::Sigtran,
             };
-            
+
             if let Err(e) = self.event_sender.send(dtmf_event) {
                 warn!("Failed to send DTMF event from Sigtran: {}", e);
             } else {
                 debug!("Sigtran DTMF digit '{}' detected (position {})", digit, i);
             }
         }
-        
+
         // Generate sequence complete event
         let sequence_event = DtmfEvent::SequenceComplete {
             sequence: digits.clone(),
             total_duration: Duration::from_millis(digits.len() as u64 * 100),
             source: DtmfSource::Sigtran,
         };
-        
+
         if let Err(e) = self.event_sender.send(sequence_event) {
             warn!("Failed to send DTMF sequence complete event: {}", e);
         }
-        
-        info!("Sigtran ISUP Generic Digits processed: '{}' (CIC: {:?})", 
-              digits, message.cic);
-        
+
+        info!(
+            "Sigtran ISUP Generic Digits processed: '{}' (CIC: {:?})",
+            digits, message.cic
+        );
+
         Ok(())
     }
-    
+
     /// Process ISUP User-to-User Information
     async fn process_isup_user_to_user(&self, message: &SigtranDtmfMessage) -> Result<()> {
         // UUI can contain DTMF digits in various formats
         let digits = &message.digits;
-        
+
         // Try to extract DTMF digits from UUI content
         let extracted_digits = self.extract_dtmf_from_uui(digits)?;
-        
+
         if !extracted_digits.is_empty() {
             for digit in extracted_digits.chars() {
                 let dtmf_event = DtmfEvent::DigitDetected {
@@ -300,27 +305,27 @@ impl SigtranDtmfProcessor {
                     confidence: 0.8, // Moderate confidence from UUI
                     source: DtmfSource::Sigtran,
                 };
-                
+
                 if let Err(e) = self.event_sender.send(dtmf_event) {
                     warn!("Failed to send DTMF event from UUI: {}", e);
                 }
             }
-            
+
             info!("Sigtran UUI DTMF processed: '{}'", extracted_digits);
         }
-        
+
         Ok(())
     }
-    
+
     /// Process TCAP Return Result with collected digits
     async fn process_tcap_return_result(&self, message: &SigtranDtmfMessage) -> Result<()> {
         if let Some(transaction_id) = message.transaction_id {
             let mut transactions = self.active_transactions.write().await;
-            
+
             if let Some(transaction) = transactions.get_mut(&transaction_id) {
                 transaction.collected_digits.push_str(&message.digits);
                 transaction.state = TransactionState::CollectionComplete;
-                
+
                 // Generate DTMF events
                 for digit in message.digits.chars() {
                     let dtmf_event = DtmfEvent::DigitDetected {
@@ -330,24 +335,26 @@ impl SigtranDtmfProcessor {
                         confidence: 0.95, // Very high confidence from TCAP
                         source: DtmfSource::Sigtran,
                     };
-                    
+
                     if let Err(e) = self.event_sender.send(dtmf_event) {
                         warn!("Failed to send DTMF event from TCAP: {}", e);
                     }
                 }
-                
-                info!("TCAP digit collection completed: '{}' (TxID: {})", 
-                      transaction.collected_digits, transaction_id);
+
+                info!(
+                    "TCAP digit collection completed: '{}' (TxID: {})",
+                    transaction.collected_digits, transaction_id
+                );
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Process INAP CollectedInformation
     async fn process_inap_collected_info(&self, message: &SigtranDtmfMessage) -> Result<()> {
         let digits = &message.digits;
-        
+
         // INAP CollectedInformation contains the final collected digits
         for digit in digits.chars() {
             let dtmf_event = DtmfEvent::DigitDetected {
@@ -357,27 +364,27 @@ impl SigtranDtmfProcessor {
                 confidence: 0.95, // Very high confidence from INAP
                 source: DtmfSource::Sigtran,
             };
-            
+
             if let Err(e) = self.event_sender.send(dtmf_event) {
                 warn!("Failed to send DTMF event from INAP: {}", e);
             }
         }
-        
+
         let sequence_event = DtmfEvent::SequenceComplete {
             sequence: digits.clone(),
             total_duration: Duration::from_millis(digits.len() as u64 * 100),
             source: DtmfSource::Sigtran,
         };
-        
+
         if let Err(e) = self.event_sender.send(sequence_event) {
             warn!("Failed to send INAP sequence complete event: {}", e);
         }
-        
+
         info!("INAP CollectedInformation processed: '{}'", digits);
-        
+
         Ok(())
     }
-    
+
     /// Generate outgoing Sigtran DTMF message
     pub async fn generate_outgoing_message(
         &self,
@@ -395,76 +402,89 @@ impl SigtranDtmfProcessor {
             transaction_id: None,
             parameters: HashMap::new(),
         };
-        
-        info!("Generated Sigtran DTMF message: {:?} with digits '{}'", 
-              message_type, digits);
-        
+
+        info!(
+            "Generated Sigtran DTMF message: {:?} with digits '{}'",
+            message_type, digits
+        );
+
         Ok(message)
     }
-    
+
     /// Create ISUP Generic Digits parameter
-    pub fn create_isup_generic_digits(&self, digits: &str, digits_type: GenericDigitsType) -> Result<Vec<u8>> {
+    pub fn create_isup_generic_digits(
+        &self,
+        digits: &str,
+        digits_type: GenericDigitsType,
+    ) -> Result<Vec<u8>> {
         let mut data = Vec::new();
-        
+
         // Parameter header
         data.push(IsupParameterType::GenericDigits as u8);
-        
+
         // Encode digits based on configuration
         let encoded_digits = self.encode_digits(digits, self.config.default_encoding)?;
-        
+
         // Parameter length
         data.push((encoded_digits.len() + 1) as u8); // +1 for type/encoding byte
-        
+
         // Type of digits and encoding scheme
         let type_encoding = ((digits_type as u8) << 4) | (self.config.default_encoding as u8);
         data.push(type_encoding);
-        
+
         // Encoded digits
         data.extend(encoded_digits);
-        
+
         Ok(data)
     }
-    
+
     /// Create TCAP Invoke for digit collection
-    pub fn create_tcap_invoke_collect_digits(&self, transaction_id: u32, max_digits: u8) -> Result<Vec<u8>> {
+    pub fn create_tcap_invoke_collect_digits(
+        &self,
+        transaction_id: u32,
+        max_digits: u8,
+    ) -> Result<Vec<u8>> {
         let mut data = Vec::new();
-        
+
         // TCAP component tag
         data.push(TcapComponentType::Invoke as u8);
-        
+
         // Component length (will be calculated)
         let length_pos = data.len();
         data.push(0); // Placeholder
-        
+
         // Invoke ID
         data.push(0x02); // INTEGER tag
         data.push(0x01); // Length
         data.push((transaction_id & 0xFF) as u8);
-        
+
         // Operation code
         data.push(0x02); // INTEGER tag
         data.push(0x01); // Length
         data.push(InapOperationCode::PromptAndCollectUserInformation as u8);
-        
+
         // Parameters (simplified)
         data.push(0x30); // SEQUENCE tag
         data.push(0x03); // Length
         data.push(0x02); // INTEGER tag (max digits)
         data.push(0x01); // Length
         data.push(max_digits);
-        
+
         // Update length
         data[length_pos] = (data.len() - length_pos - 1) as u8;
-        
+
         Ok(data)
     }
-    
+
     /// Decode digits from various encodings
     fn decode_digits(&self, encoded: &str, encoding: GenericDigitsEncoding) -> Result<String> {
         match encoding {
             GenericDigitsEncoding::Ia5Character => {
                 // Already ASCII/IA5
-                Ok(encoded.chars().filter(|c| c.is_ascii_digit() || "ABCD*#".contains(*c)).collect())
+                Ok(encoded
+                    .chars()
+                    .filter(|c| c.is_ascii_digit() || "ABCD*#".contains(*c))
+                    .collect())
             }
             GenericDigitsEncoding::BcdEven | GenericDigitsEncoding::BcdOdd => {
                 self.decode_bcd(encoded.as_bytes())
@@ -475,30 +495,26 @@ impl SigtranDtmfProcessor {
             }
         }
     }
-    
+
     /// Encode digits to specified format
     fn encode_digits(&self, digits: &str, encoding: GenericDigitsEncoding) -> Result<Vec<u8>> {
         match encoding {
-            GenericDigitsEncoding::Ia5Character => {
-                Ok(digits.as_bytes().to_vec())
-            }
+            GenericDigitsEncoding::Ia5Character => Ok(digits.as_bytes().to_vec()),
             GenericDigitsEncoding::BcdEven | GenericDigitsEncoding::BcdOdd => {
                 self.encode_bcd(digits, encoding == GenericDigitsEncoding::BcdOdd)
             }
-            GenericDigitsEncoding::BinaryCoded => {
-                self.encode_binary(digits)
-            }
+            GenericDigitsEncoding::BinaryCoded => self.encode_binary(digits),
         }
     }
-    
+
     /// Decode BCD digits
     fn decode_bcd(&self, bytes: &[u8]) -> Result<String> {
         let mut digits = String::new();
-        
+
         for &byte in bytes {
             let high_nibble = (byte >> 4) & 0x0F;
             let low_nibble = byte & 0x0F;
-            
+
             if high_nibble <= 9 {
                 digits.push((b'0' + high_nibble) as char);
             } else if high_nibble == 0x0A {
@@ -508,7 +524,7 @@ impl SigtranDtmfProcessor {
             } else if high_nibble >= 0x0C && high_nibble <= 0x0F {
                 digits.push((b'A' + (high_nibble - 0x0C)) as char);
             }
-            
+
             if low_nibble <= 9 {
                 digits.push((b'0' + low_nibble) as char);
             } else if low_nibble == 0x0A {
@@ -519,15 +535,15 @@ impl SigtranDtmfProcessor {
                 digits.push((b'A' + (low_nibble - 0x0C)) as char);
             }
         }
-        
+
         Ok(digits)
     }
-    
+
     /// Encode digits as BCD
     fn encode_bcd(&self, digits: &str, odd_length: bool) -> Result<Vec<u8>> {
         let mut bytes = Vec::new();
         let chars: Vec<char> = digits.chars().collect();
-        
+
         for i in (0..chars.len()).step_by(2) {
             let high_nibble = self.char_to_bcd_nibble(chars[i])?;
             let low_nibble = if i + 1 < chars.len() {
@@ -537,13 +553,13 @@ impl SigtranDtmfProcessor {
             } else {
                 0x00
             };
-            
+
             bytes.push((high_nibble << 4) | low_nibble);
         }
-        
+
         Ok(bytes)
     }
-    
+
     /// Convert character to BCD nibble
     fn char_to_bcd_nibble(&self, c: char) -> Result<u8> {
         match c {
@@ -555,30 +571,31 @@ impl SigtranDtmfProcessor {
             _ => Err(anyhow!("Invalid BCD digit: {}", c)),
         }
     }
-    
+
     /// Decode binary format (custom implementation)
     fn decode_binary(&self, encoded: &str) -> Result<String> {
         // Implementation depends on specific binary encoding used
         // This is a placeholder for custom binary formats
         Ok(encoded.to_string())
     }
-    
+
     /// Encode as binary format (custom implementation)
     fn encode_binary(&self, digits: &str) -> Result<Vec<u8>> {
         // Implementation depends on specific binary encoding used
         // This is a placeholder for custom binary formats
         Ok(digits.as_bytes().to_vec())
     }
-    
+
     /// Extract DTMF digits from UUI content
     fn extract_dtmf_from_uui(&self, uui_content: &str) -> Result<String> {
         // UUI can contain various formats. This is a simplified extraction.
         // In practice, you'd parse the specific UUI format being used.
-        Ok(uui_content.chars()
-           .filter(|c| c.is_ascii_digit() || "ABCD*#".contains(*c))
-           .collect())
+        Ok(uui_content
+            .chars()
+            .filter(|c| c.is_ascii_digit() || "ABCD*#".contains(*c))
+            .collect())
     }
-    
+
     /// Start digit collection transaction
     pub async fn start_digit_collection(&self, protocol: SigtranProtocol, cic: Option<u32>) -> u32 {
         let transaction_id = self.generate_transaction_id().await;
@@ -590,55 +607,58 @@ impl SigtranDtmfProcessor {
             collected_digits: String::new(),
             state: TransactionState::DigitCollectionActive,
         };
-        
+
         let mut transactions = self.active_transactions.write().await;
         transactions.insert(transaction_id, transaction);
-        
-        info!("Started Sigtran digit collection transaction: {} (CIC: {:?})", 
-              transaction_id, cic);
-        
+
+        info!(
+            "Started Sigtran digit collection transaction: {} (CIC: {:?})",
+            transaction_id, cic
+        );
+
         transaction_id
     }
-    
+
     /// Generate unique transaction ID
     async fn generate_transaction_id(&self) -> u32 {
         use std::sync::atomic::{AtomicU32, Ordering};
         static TRANSACTION_COUNTER: AtomicU32 = AtomicU32::new(1);
         TRANSACTION_COUNTER.fetch_add(1, Ordering::SeqCst)
     }
-    
+
     /// Clean up expired transactions
     pub async fn cleanup_expired_transactions(&self) {
         let mut transactions = self.active_transactions.write().await;
         let now = Instant::now();
         let timeout = Duration::from_secs(self.config.collection_timeout.into());
         let mut to_remove = Vec::new();
-        
+
         for (transaction_id, transaction) in transactions.iter() {
             if now.duration_since(transaction.start_time) > timeout {
                 to_remove.push(*transaction_id);
             }
         }
-        
+
         for transaction_id in to_remove {
             transactions.remove(&transaction_id);
             warn!("Cleaned up expired Sigtran transaction: {}", transaction_id);
         }
     }
-    
+
     /// Get transaction statistics
     pub async fn get_transaction_stats(&self) -> Vec<SigtranTransactionStats> {
         let transactions = self.active_transactions.read().await;
-        transactions.values().map(|tx| {
-            SigtranTransactionStats {
+        transactions
+            .values()
+            .map(|tx| SigtranTransactionStats {
                 transaction_id: tx.transaction_id,
                 protocol: tx.protocol,
                 cic: tx.cic,
                 start_time: tx.start_time,
                 collected_digits: tx.collected_digits.clone(),
                 state: format!("{:?}", tx.state),
-            }
-        }).collect()
+            })
+            .collect()
     }
 }
 
@@ -658,13 +678,13 @@ pub struct SigtranTransactionStats {
 mod tests {
     use super::*;
     use tokio::sync::mpsc;
-    
+
     #[tokio::test]
     async fn test_sigtran_dtmf_processor() {
         let (event_sender, mut event_receiver) = mpsc::unbounded_channel();
         let config = SigtranDtmfConfig::default();
         let processor = SigtranDtmfProcessor::new(event_sender, config);
-        
+
         // Test ISUP Generic Digits
         let message = SigtranDtmfMessage {
             protocol: SigtranProtocol::M3ua,
@@ -675,9 +695,9 @@ mod tests {
             transaction_id: None,
             parameters: HashMap::new(),
         };
-        
+
         processor.process_incoming_message(message).await.unwrap();
-        
+
         // Should receive multiple DTMF events
         for expected_digit in "12345".chars() {
             let event = event_receiver.recv().await.unwrap();
@@ -689,54 +709,60 @@ mod tests {
                 _ => panic!("Expected DigitDetected event"),
             }
         }
-        
+
         // Should also receive sequence complete event
         let seq_event = event_receiver.recv().await.unwrap();
         match seq_event {
-            DtmfEvent::SequenceComplete { sequence, source, .. } => {
+            DtmfEvent::SequenceComplete {
+                sequence, source, ..
+            } => {
                 assert_eq!(sequence, "12345");
                 assert_eq!(source, DtmfSource::Sigtran);
             }
             _ => panic!("Expected SequenceComplete event"),
         }
     }
-    
+
     #[test]
     fn test_bcd_encoding() {
         let config = SigtranDtmfConfig::default();
         let (event_sender, _) = mpsc::unbounded_channel();
         let processor = SigtranDtmfProcessor::new(event_sender, config);
-        
+
         // Test BCD encoding
         let encoded = processor.encode_bcd("123*#A", false).unwrap();
         assert_eq!(encoded.len(), 3); // 6 digits = 3 bytes
-        
+
         // Test BCD decoding
         let decoded = processor.decode_bcd(&encoded).unwrap();
         assert_eq!(decoded, "123*#A");
     }
-    
+
     #[test]
     fn test_isup_parameter_creation() {
         let config = SigtranDtmfConfig::default();
         let (event_sender, _) = mpsc::unbounded_channel();
         let processor = SigtranDtmfProcessor::new(event_sender, config);
-        
-        let param = processor.create_isup_generic_digits("123", GenericDigitsType::DtmfDigits).unwrap();
+
+        let param = processor
+            .create_isup_generic_digits("123", GenericDigitsType::DtmfDigits)
+            .unwrap();
         assert!(!param.is_empty());
         assert_eq!(param[0], IsupParameterType::GenericDigits as u8);
     }
-    
+
     #[tokio::test]
     async fn test_transaction_management() {
         let (event_sender, _) = mpsc::unbounded_channel();
         let config = SigtranDtmfConfig::default();
         let processor = SigtranDtmfProcessor::new(event_sender, config);
-        
+
         // Start transaction
-        let tx_id = processor.start_digit_collection(SigtranProtocol::M3ua, Some(123)).await;
+        let tx_id = processor
+            .start_digit_collection(SigtranProtocol::M3ua, Some(123))
+            .await;
         assert!(tx_id > 0);
-        
+
         // Check transaction exists
         let stats = processor.get_transaction_stats().await;
         assert_eq!(stats.len(), 1);

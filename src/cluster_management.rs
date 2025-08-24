@@ -4,15 +4,15 @@
  */
 
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
-use tokio::sync::RwLock;
-use tokio::net::{UdpSocket, TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tracing::{info, warn, error, debug};
-use serde::{Deserialize, Serialize};
+use tokio::net::{TcpListener, TcpStream, UdpSocket};
+use tokio::sync::RwLock;
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 /// Node role in the cluster
@@ -167,11 +167,7 @@ pub struct ClusterMetrics {
 }
 
 impl ClusterManager {
-    pub async fn new(
-        config: ClusterConfig,
-        local_ip: IpAddr,
-        sip_port: u16,
-    ) -> Result<Self> {
+    pub async fn new(config: ClusterConfig, local_ip: IpAddr, sip_port: u16) -> Result<Self> {
         if !config.enabled {
             info!("🏢 Cluster management disabled - running in single-node mode");
         }
@@ -208,13 +204,20 @@ impl ClusterManager {
         };
 
         let socket = UdpSocket::bind(format!("{}:{}", local_ip, config.cluster_bind_port)).await?;
-        info!("🏢 Cluster node {} listening on {}:{}", 
-              local_node.node_name, local_ip, config.cluster_bind_port);
+        info!(
+            "🏢 Cluster node {} listening on {}:{}",
+            local_node.node_name, local_ip, config.cluster_bind_port
+        );
 
         // Setup TCP listener for call state synchronization
         let tcp_listener = if config.call_state_sync_enabled {
-            let listener = TcpListener::bind(format!("{}:{}", local_ip, config.cluster_bind_port + 1)).await?;
-            info!("📞 Call state sync listening on TCP {}:{}", local_ip, config.cluster_bind_port + 1);
+            let listener =
+                TcpListener::bind(format!("{}:{}", local_ip, config.cluster_bind_port + 1)).await?;
+            info!(
+                "📞 Call state sync listening on TCP {}:{}",
+                local_ip,
+                config.cluster_bind_port + 1
+            );
             Some(Arc::new(listener))
         } else {
             None
@@ -251,7 +254,10 @@ impl ClusterManager {
             return Ok(());
         }
 
-        info!("🏢 Starting cluster management for node {}", self.local_node.node_name);
+        info!(
+            "🏢 Starting cluster management for node {}",
+            self.local_node.node_name
+        );
 
         // Start heartbeat system
         self.start_heartbeat_system().await;
@@ -278,7 +284,11 @@ impl ClusterManager {
     }
 
     /// Synchronize call state across cluster
-    pub async fn sync_call_state(&self, call_id: &str, session_data: CallSessionData) -> Result<()> {
+    pub async fn sync_call_state(
+        &self,
+        call_id: &str,
+        session_data: CallSessionData,
+    ) -> Result<()> {
         if !self.config.enabled || !self.config.call_state_sync_enabled {
             return Ok(());
         }
@@ -325,7 +335,8 @@ impl ClusterManager {
         // Check if failed node was primary
         let was_primary = {
             let nodes = self.cluster_nodes.read().await;
-            nodes.get(failed_node_id)
+            nodes
+                .get(failed_node_id)
                 .map(|n| n.role == NodeRole::Primary)
                 .unwrap_or(false)
         };
@@ -352,12 +363,14 @@ impl ClusterManager {
         let metrics = self.cluster_metrics.read().await;
         let is_primary = *self.is_primary.read().await;
 
-        let active_nodes: Vec<_> = nodes.values()
+        let active_nodes: Vec<_> = nodes
+            .values()
             .filter(|n| n.status == NodeStatus::Active)
             .cloned()
             .collect();
 
-        let total_calls = active_nodes.iter()
+        let total_calls = active_nodes
+            .iter()
             .map(|n| n.load_metrics.active_calls)
             .sum();
 
@@ -367,7 +380,10 @@ impl ClusterManager {
             cluster_healthy,
             total_nodes: nodes.len(),
             active_nodes: active_nodes.len(),
-            failed_nodes: nodes.values().filter(|n| n.status == NodeStatus::Failed).count(),
+            failed_nodes: nodes
+                .values()
+                .filter(|n| n.status == NodeStatus::Failed)
+                .count(),
             local_node_role: self.local_node.role.clone(),
             is_local_primary: is_primary,
             total_cluster_calls: total_calls,
@@ -386,7 +402,8 @@ impl ClusterManager {
         let last_heartbeat_sent = Arc::clone(&self.last_heartbeat_sent);
 
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(config.heartbeat_interval_seconds));
+            let mut interval =
+                tokio::time::interval(Duration::from_secs(config.heartbeat_interval_seconds));
 
             loop {
                 interval.tick().await;
@@ -398,7 +415,8 @@ impl ClusterManager {
 
                 if let Ok(serialized) = serde_json::to_vec(&heartbeat) {
                     // Broadcast heartbeat to cluster
-                    let broadcast_addr: std::net::SocketAddr = "255.255.255.255:7946".parse().unwrap();
+                    let broadcast_addr: std::net::SocketAddr =
+                        "255.255.255.255:7946".parse().unwrap();
                     if let Err(e) = socket.send_to(&serialized, broadcast_addr).await {
                         error!("Failed to send heartbeat: {}", e);
                     } else {
@@ -423,11 +441,13 @@ impl ClusterManager {
             loop {
                 match socket.recv_from(&mut buffer).await {
                     Ok((len, from)) => {
-                        if let Ok(message) = serde_json::from_slice::<ClusterMessage>(&buffer[..len]) {
+                        if let Ok(message) =
+                            serde_json::from_slice::<ClusterMessage>(&buffer[..len])
+                        {
                             match message {
                                 ClusterMessage::Heartbeat { node, timestamp } => {
                                     debug!("💓 Received heartbeat from {}", node.node_name);
-                                    
+
                                     let mut nodes = cluster_nodes.write().await;
                                     let mut updated_node = node;
                                     updated_node.last_heartbeat = timestamp;
@@ -470,19 +490,24 @@ impl ClusterManager {
                     match listener.accept().await {
                         Ok((mut stream, addr)) => {
                             debug!("📞 Call state sync connection from {}", addr);
-                            
+
                             let call_states = Arc::clone(&call_states);
                             tokio::spawn(async move {
                                 let mut buffer = vec![0u8; 65536];
-                                
+
                                 while let Ok(len) = stream.read(&mut buffer).await {
                                     if len == 0 {
                                         break;
                                     }
-                                    
-                                    if let Ok(sync_data) = serde_json::from_slice::<CallStateSync>(&buffer[..len]) {
-                                        debug!("📞 Received call state sync for {}", sync_data.call_id);
-                                        
+
+                                    if let Ok(sync_data) =
+                                        serde_json::from_slice::<CallStateSync>(&buffer[..len])
+                                    {
+                                        debug!(
+                                            "📞 Received call state sync for {}",
+                                            sync_data.call_id
+                                        );
+
                                         let mut states = call_states.write().await;
                                         states.insert(sync_data.call_id.clone(), sync_data);
                                     }
@@ -521,8 +546,10 @@ impl ClusterManager {
                 for node in nodes.values_mut() {
                     if let Ok(elapsed) = now.duration_since(node.last_heartbeat) {
                         if elapsed > timeout_threshold && node.status == NodeStatus::Active {
-                            warn!("🚨 Node {} appears to have failed (last heartbeat: {:?} ago)", 
-                                  node.node_name, elapsed);
+                            warn!(
+                                "🚨 Node {} appears to have failed (last heartbeat: {:?} ago)",
+                                node.node_name, elapsed
+                            );
                             node.status = NodeStatus::Failed;
                             failed_nodes += 1;
                         } else if node.status == NodeStatus::Active {
@@ -539,7 +566,10 @@ impl ClusterManager {
                     metrics.failed_nodes = failed_nodes;
                 }
 
-                debug!("📊 Cluster health check: {} active, {} failed nodes", active_nodes, failed_nodes);
+                debug!(
+                    "📊 Cluster health check: {} active, {} failed nodes",
+                    active_nodes, failed_nodes
+                );
             }
         });
     }
@@ -573,19 +603,21 @@ impl ClusterManager {
                 interval.tick().await;
 
                 let nodes = cluster_nodes.read().await;
-                let active_nodes: Vec<_> = nodes.values()
+                let active_nodes: Vec<_> = nodes
+                    .values()
                     .filter(|n| n.status == NodeStatus::Active && n.capabilities.can_be_primary)
                     .collect();
 
                 if !active_nodes.is_empty() {
                     // Simple leader election: node with lowest ID becomes primary
-                    let leader = active_nodes.iter()
+                    let leader = active_nodes
+                        .iter()
                         .min_by(|a, b| a.node_id.cmp(&b.node_id))
                         .unwrap();
 
                     let should_be_primary = leader.node_id == local_node_id;
                     let mut current_primary = is_primary.write().await;
-                    
+
                     if *current_primary != should_be_primary {
                         *current_primary = should_be_primary;
                         if should_be_primary {
@@ -605,10 +637,13 @@ impl ClusterManager {
 
         // Elect new primary
         let nodes = self.cluster_nodes.read().await;
-        let candidates: Vec<_> = nodes.values()
-            .filter(|n| n.status == NodeStatus::Active && 
-                       n.capabilities.can_be_primary &&
-                       n.node_id != self.local_node.node_id)
+        let candidates: Vec<_> = nodes
+            .values()
+            .filter(|n| {
+                n.status == NodeStatus::Active
+                    && n.capabilities.can_be_primary
+                    && n.node_id != self.local_node.node_id
+            })
             .collect();
 
         if let Some(new_primary) = candidates.iter().min_by(|a, b| a.node_id.cmp(&b.node_id)) {
@@ -632,11 +667,11 @@ impl ClusterManager {
     /// Broadcast call state sync to cluster
     async fn broadcast_call_state_sync(&self, sync_data: CallStateSync) -> Result<()> {
         let nodes = self.cluster_nodes.read().await;
-        
+
         for node in nodes.values() {
             if node.status == NodeStatus::Active && node.node_id != self.local_node.node_id {
                 let addr = format!("{}:{}", node.ip_address, node.cluster_port + 1);
-                
+
                 if let Ok(mut stream) = TcpStream::connect(addr).await {
                     if let Ok(serialized) = serde_json::to_vec(&sync_data) {
                         if let Err(e) = stream.write_all(&serialized).await {
@@ -705,11 +740,9 @@ mod tests {
     async fn test_cluster_manager_creation() {
         crate::security_utils::init_security();
         let config = ClusterConfig::default();
-        let cluster = ClusterManager::new(
-            config, 
-            IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 
-            5060
-        ).await.unwrap();
+        let cluster = ClusterManager::new(config, IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 5060)
+            .await
+            .unwrap();
 
         assert_eq!(cluster.local_node.sip_port, 5060);
         assert!(cluster.local_node.capabilities.supports_stir_shaken);
@@ -722,11 +755,9 @@ mod tests {
         config.enabled = true;
         config.call_state_sync_enabled = true;
 
-        let cluster = ClusterManager::new(
-            config, 
-            IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 
-            5060
-        ).await.unwrap();
+        let cluster = ClusterManager::new(config, IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 5060)
+            .await
+            .unwrap();
 
         let session_data = CallSessionData {
             call_id: "test-call-123".to_string(),
@@ -742,7 +773,10 @@ mod tests {
             custom_headers: HashMap::new(),
         };
 
-        cluster.sync_call_state("test-call-123", session_data).await.unwrap();
+        cluster
+            .sync_call_state("test-call-123", session_data)
+            .await
+            .unwrap();
 
         let call_states = cluster.call_states.read().await;
         assert!(call_states.contains_key("test-call-123"));
@@ -752,11 +786,9 @@ mod tests {
     async fn test_cluster_status() {
         crate::security_utils::init_security();
         let config = ClusterConfig::default();
-        let cluster = ClusterManager::new(
-            config, 
-            IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 
-            5060
-        ).await.unwrap();
+        let cluster = ClusterManager::new(config, IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 5060)
+            .await
+            .unwrap();
 
         let status = cluster.get_cluster_status().await.unwrap();
         assert_eq!(status.total_nodes, 0); // No other nodes discovered yet

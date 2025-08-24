@@ -1,28 +1,28 @@
 /*
  * RedFire Switch Compliance Framework
  * Integrates J-STD-025 CDR and ETSI LI functionality with B2BUA call flow
- * 
+ *
  * This module provides a unified interface for compliance and regulatory
  * requirements including call detail recording and lawful intercept.
  */
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::Arc;
-use tokio::sync::{RwLock, mpsc};
-use tracing::{debug, info, warn, error};
+use tokio::sync::{mpsc, RwLock};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
-use crate::j_std_025::{
-    JStd025CdrEngine, JStd025Cdr, CdrType, CallResult, ServiceType, 
-    ChargingInfo, QoSMetrics, CdrEngineConfig
-};
 use crate::etsi_li::{
-    EtsiLiController, LiWarrant, Hi2Record, Hi3ContentRecord, 
-    Hi2EventType, TargetIdentifierType, InterceptType, LiControllerConfig
+    EtsiLiController, Hi2EventType, Hi2Record, Hi3ContentRecord, InterceptType, LiControllerConfig,
+    LiWarrant, TargetIdentifierType,
+};
+use crate::j_std_025::{
+    CallResult, CdrEngineConfig, CdrType, ChargingInfo, JStd025Cdr, JStd025CdrEngine, QoSMetrics,
+    ServiceType,
 };
 
 /// Compliance Framework Configuration
@@ -199,7 +199,7 @@ impl ComplianceFramework {
     /// Create new compliance framework
     pub fn new(config: ComplianceConfig) -> Result<Self> {
         let (event_sender, event_receiver) = mpsc::unbounded_channel();
-        
+
         // Initialize CDR engine if enabled
         let cdr_engine = if config.cdr_enabled {
             // In a real implementation, this would use a proper storage backend
@@ -209,7 +209,7 @@ impl ComplianceFramework {
         } else {
             None
         };
-        
+
         // Initialize LI controller if enabled
         let li_controller = if config.li_enabled {
             let controller = EtsiLiController::new(config.li_config.clone());
@@ -217,7 +217,7 @@ impl ComplianceFramework {
         } else {
             None
         };
-        
+
         let framework = Self {
             config,
             cdr_engine,
@@ -234,27 +234,27 @@ impl ComplianceFramework {
                 last_updated: Utc::now(),
             })),
         };
-        
+
         Ok(framework)
     }
-    
+
     /// Start compliance processing
     pub async fn start(&self) -> Result<()> {
         info!("Starting Compliance Framework");
-        
+
         // Take event receiver
         let receiver = {
             let mut receiver_opt = self.event_receiver.write().await;
             receiver_opt.take()
         };
-        
+
         if let Some(mut receiver) = receiver {
             let active_calls = Arc::clone(&self.active_calls);
             let cdr_engine = self.cdr_engine.clone();
             let li_controller = self.li_controller.clone();
             let stats = Arc::clone(&self.stats);
             let config = self.config.clone();
-            
+
             // Spawn event processing task
             tokio::spawn(async move {
                 while let Some(event) = receiver.recv().await {
@@ -264,8 +264,10 @@ impl ComplianceFramework {
                         &cdr_engine,
                         &li_controller,
                         &stats,
-                        &config
-                    ).await {
+                        &config,
+                    )
+                    .await
+                    {
                         error!("Error processing compliance event: {}", e);
                         let mut stats_guard = stats.write().await;
                         stats_guard.compliance_errors += 1;
@@ -273,11 +275,11 @@ impl ComplianceFramework {
                 }
             });
         }
-        
+
         info!("Compliance Framework started successfully");
         Ok(())
     }
-    
+
     /// Process call event
     async fn process_event(
         event: &CallEvent,
@@ -288,15 +290,16 @@ impl ComplianceFramework {
         config: &ComplianceConfig,
     ) -> Result<()> {
         debug!("Processing compliance event: {:?}", event.event_type);
-        
+
         // Update call state with proper race condition handling
         let (call_state, is_new_call) = {
             let mut calls = active_calls.write().await;
             let is_new = !calls.contains_key(&event.call_id);
-            
+
             // Get or create call state entry
-            let call_state = calls.entry(event.call_id.clone()).or_insert_with(|| {
-                CallState {
+            let call_state = calls
+                .entry(event.call_id.clone())
+                .or_insert_with(|| CallState {
                     call_id: event.call_id.clone(),
                     calling_number: event.calling_number.clone(),
                     called_number: event.called_number.clone(),
@@ -307,9 +310,8 @@ impl ComplianceFramework {
                     intercept_warrants: Vec::new(),
                     cdr_created: false,
                     quality_metrics: event.rtp_stats.clone(),
-                }
-            });
-            
+                });
+
             // Validate state transitions to prevent race conditions
             let valid_transition = match (call_state.current_state, event.event_type) {
                 // Valid state transitions
@@ -331,12 +333,14 @@ impl ComplianceFramework {
                 (_, CallEventType::CallAttempt) if is_new => true,
                 // Invalid transitions
                 _ => {
-                    warn!("Invalid state transition from {:?} to {:?} for call {}", 
-                          call_state.current_state, event.event_type, event.call_id);
+                    warn!(
+                        "Invalid state transition from {:?} to {:?} for call {}",
+                        call_state.current_state, event.event_type, event.call_id
+                    );
                     false
                 }
             };
-            
+
             // Only update state if transition is valid
             if valid_transition {
                 // Update state based on event
@@ -363,24 +367,24 @@ impl ComplianceFramework {
                     }
                     _ => {}
                 }
-                
+
                 // Update quality metrics
                 if let Some(ref rtp_stats) = event.rtp_stats {
                     call_state.quality_metrics = Some(rtp_stats.clone());
                 }
             }
-            
+
             (call_state.clone(), is_new)
         };
-        
+
         // Check for lawful intercept if enabled
         if let Some(ref li_ctrl) = li_controller {
             let calling_warrants = li_ctrl.should_intercept(&event.calling_number).await?;
             let called_warrants = li_ctrl.should_intercept(&event.called_number).await?;
-            
+
             let mut all_warrants = calling_warrants;
             all_warrants.extend(called_warrants);
-            
+
             if !all_warrants.is_empty() {
                 // Update call state with intercept warrants
                 {
@@ -389,30 +393,34 @@ impl ComplianceFramework {
                         state.intercept_warrants = all_warrants.clone();
                     }
                 }
-                
+
                 // Generate HI2 record
                 let hi2_record = Self::create_hi2_record(event, &call_state)?;
-                li_ctrl.capture_hi2(all_warrants.clone(), hi2_record).await?;
-                
+                li_ctrl
+                    .capture_hi2(all_warrants.clone(), hi2_record)
+                    .await?;
+
                 // Capture HI3 content if applicable
                 if matches!(event.event_type, CallEventType::MediaStarted) {
                     if let Some(ref rtp_stats) = event.rtp_stats {
                         let hi3_record = Self::create_hi3_record(event, &call_state, rtp_stats)?;
-                        li_ctrl.capture_hi3(all_warrants.clone(), hi3_record).await?;
+                        li_ctrl
+                            .capture_hi3(all_warrants.clone(), hi3_record)
+                            .await?;
                     }
                 }
-                
+
                 // Update statistics
                 let mut stats_guard = stats.write().await;
                 stats_guard.li_events_captured += 1;
                 stats_guard.active_intercepts = all_warrants.len() as u64;
             }
         }
-        
+
         // Process CDR if enabled
         if let Some(ref cdr_eng) = cdr_engine {
             let mut engine = cdr_eng.write().await;
-            
+
             match event.event_type {
                 CallEventType::CallAttempt => {
                     if is_new_call {
@@ -421,14 +429,14 @@ impl ComplianceFramework {
                         } else {
                             CdrType::MTC // Mobile Terminated
                         };
-                        
+
                         engine.start_call(
                             event.call_id.clone(),
                             cdr_type,
                             event.calling_number.clone(),
-                            event.called_number.clone()
+                            event.called_number.clone(),
                         )?;
-                        
+
                         // Mark CDR as created
                         let mut calls = active_calls.write().await;
                         if let Some(state) = calls.get_mut(&event.call_id) {
@@ -442,17 +450,17 @@ impl ComplianceFramework {
                 CallEventType::CallEnded => {
                     let result = Self::determine_call_result(event, &call_state);
                     engine.end_call(&event.call_id, result)?;
-                    
+
                     // Update quality metrics if available
                     if let Some(ref rtp_stats) = call_state.quality_metrics {
                         let qos_metrics = Self::convert_rtp_to_qos(rtp_stats);
                         engine.update_qos_metrics(&event.call_id, qos_metrics)?;
                     }
-                    
+
                     // Remove from active calls
                     let mut calls = active_calls.write().await;
                     calls.remove(&event.call_id);
-                    
+
                     // Update statistics
                     let mut stats_guard = stats.write().await;
                     stats_guard.cdrs_generated += 1;
@@ -460,7 +468,7 @@ impl ComplianceFramework {
                 _ => {}
             }
         }
-        
+
         // Update general statistics
         {
             let mut stats_guard = stats.write().await;
@@ -469,31 +477,32 @@ impl ComplianceFramework {
             }
             stats_guard.last_updated = Utc::now();
         }
-        
+
         Ok(())
     }
-    
+
     /// Submit call event for compliance processing
     pub fn submit_call_event(&self, event: CallEvent) -> Result<()> {
-        self.event_sender.send(event)
+        self.event_sender
+            .send(event)
             .map_err(|e| anyhow!("Failed to submit call event: {}", e))
     }
-    
+
     /// Create HI2 record from call event
     fn create_hi2_record(event: &CallEvent, call_state: &CallState) -> Result<Hi2Record> {
-        use crate::etsi_li::{PartyInformation, ServiceInformation, NetworkInformation};
-        
+        use crate::etsi_li::{NetworkInformation, PartyInformation, ServiceInformation};
+
         let event_type = match event.event_type {
             CallEventType::CallAttempt => Hi2EventType::CallAttempt,
             CallEventType::CallAnswered => Hi2EventType::CallConnected,
             CallEventType::CallEnded => Hi2EventType::CallReleased,
             _ => Hi2EventType::CallAttempt,
         };
-        
+
         // Ensure we have a valid warrant - creating fake warrant IDs violates legal compliance
         let warrant_id = call_state.intercept_warrants.first().copied()
             .ok_or_else(|| anyhow!("No valid warrant ID for HI2 record - cannot create lawful intercept record without warrant"))?;
-            
+
         Ok(Hi2Record {
             record_id: Uuid::new_v4(),
             warrant_id,
@@ -530,19 +539,22 @@ impl ComplianceFramework {
             additional_info: HashMap::new(),
         })
     }
-    
+
     /// Create HI3 content record
-    fn create_hi3_record(event: &CallEvent, call_state: &CallState, 
-                        rtp_stats: &RtpStatistics) -> Result<Hi3ContentRecord> {
-        use crate::etsi_li::{ContentType, ContentMetadata};
-        
+    fn create_hi3_record(
+        event: &CallEvent,
+        call_state: &CallState,
+        rtp_stats: &RtpStatistics,
+    ) -> Result<Hi3ContentRecord> {
+        use crate::etsi_li::{ContentMetadata, ContentType};
+
         // Ensure we have a valid warrant for content intercept
         let warrant_id = call_state.intercept_warrants.first().copied()
             .ok_or_else(|| anyhow!("No valid warrant ID for HI3 content record - cannot intercept content without warrant"))?;
-        
+
         // In a real implementation, this would contain actual audio content
         let mock_audio_content = b"MOCK_AUDIO_CONTENT".to_vec();
-        
+
         Ok(Hi3ContentRecord {
             record_id: Uuid::new_v4(),
             warrant_id,
@@ -560,7 +572,7 @@ impl ComplianceFramework {
             sequence_number: 1,
         })
     }
-    
+
     /// Determine call result from event and state
     fn determine_call_result(event: &CallEvent, call_state: &CallState) -> CallResult {
         if let Some(response_code) = event.sip_response_code {
@@ -578,7 +590,7 @@ impl ComplianceFramework {
             CallResult::SystemFailure
         }
     }
-    
+
     /// Convert RTP statistics to QoS metrics
     fn convert_rtp_to_qos(rtp_stats: &RtpStatistics) -> QoSMetrics {
         let packet_loss_rate = if rtp_stats.packets_sent > 0 {
@@ -586,7 +598,7 @@ impl ComplianceFramework {
         } else {
             0.0
         };
-        
+
         QoSMetrics {
             mos_score: rtp_stats.mos_score,
             packet_loss: Some(packet_loss_rate),
@@ -596,19 +608,19 @@ impl ComplianceFramework {
             bit_rate: None, // Could be calculated from bytes and duration
         }
     }
-    
+
     /// Get compliance statistics
     pub async fn get_statistics(&self) -> ComplianceStatistics {
         let stats = self.stats.read().await;
         stats.clone()
     }
-    
+
     /// Get active call count
     pub async fn get_active_call_count(&self) -> usize {
         let calls = self.active_calls.read().await;
         calls.len()
     }
-    
+
     /// Convert event type to call state for validation
     fn event_to_state(event_type: CallEventType) -> Option<CallStateEnum> {
         match event_type {
@@ -631,9 +643,7 @@ struct MemoryCdrStorage {
 
 impl MemoryCdrStorage {
     fn new() -> Self {
-        Self {
-            cdrs: Vec::new(),
-        }
+        Self { cdrs: Vec::new() }
     }
 }
 
@@ -643,14 +653,20 @@ impl crate::j_std_025::CdrStorage for MemoryCdrStorage {
         debug!("Stored CDR: {}", cdr.record_id);
         Ok(())
     }
-    
-    fn retrieve_cdrs(&self, _criteria: &crate::j_std_025::CdrSearchCriteria) -> Result<Vec<JStd025Cdr>> {
+
+    fn retrieve_cdrs(
+        &self,
+        _criteria: &crate::j_std_025::CdrSearchCriteria,
+    ) -> Result<Vec<JStd025Cdr>> {
         Ok(self.cdrs.clone())
     }
-    
-    fn generate_billing_report(&self, _criteria: &crate::j_std_025::BillingReportCriteria) -> Result<crate::j_std_025::BillingReport> {
+
+    fn generate_billing_report(
+        &self,
+        _criteria: &crate::j_std_025::BillingReportCriteria,
+    ) -> Result<crate::j_std_025::BillingReport> {
         use crate::j_std_025::BillingReport;
-        
+
         Ok(BillingReport {
             report_id: Uuid::new_v4(),
             generation_time: Utc::now(),
@@ -658,10 +674,14 @@ impl crate::j_std_025::CdrStorage for MemoryCdrStorage {
             period_end: Utc::now(),
             customer_id: None,
             total_calls: self.cdrs.len() as u64,
-            total_duration: self.cdrs.iter()
+            total_duration: self
+                .cdrs
+                .iter()
                 .filter_map(|cdr| cdr.billable_duration)
                 .sum::<u64>(),
-            total_charges: self.cdrs.iter()
+            total_charges: self
+                .cdrs
+                .iter()
                 .filter_map(|cdr| cdr.charging_info.as_ref())
                 .map(|c| c.total_charge)
                 .sum::<f64>(),
@@ -670,26 +690,31 @@ impl crate::j_std_025::CdrStorage for MemoryCdrStorage {
             fraud_alerts: Vec::new(),
         })
     }
-    
+
     fn archive_cdrs(&mut self, older_than: DateTime<Utc>) -> Result<u64> {
         let initial_count = self.cdrs.len();
         self.cdrs.retain(|cdr| cdr.record_timestamp > older_than);
         let archived_count = initial_count - self.cdrs.len();
         Ok(archived_count as u64)
     }
-    
-    fn query_cdrs_for_intercept(&self, target_number: &str, 
-                               start_time: DateTime<Utc>, 
-                               end_time: DateTime<Utc>) -> Result<Vec<JStd025Cdr>> {
-        let matching_cdrs = self.cdrs.iter()
+
+    fn query_cdrs_for_intercept(
+        &self,
+        target_number: &str,
+        start_time: DateTime<Utc>,
+        end_time: DateTime<Utc>,
+    ) -> Result<Vec<JStd025Cdr>> {
+        let matching_cdrs = self
+            .cdrs
+            .iter()
             .filter(|cdr| {
-                (cdr.calling_number == target_number || cdr.called_number == target_number) &&
-                cdr.call_start_time >= start_time &&
-                cdr.call_start_time <= end_time
+                (cdr.calling_number == target_number || cdr.called_number == target_number)
+                    && cdr.call_start_time >= start_time
+                    && cdr.call_start_time <= end_time
             })
             .cloned()
             .collect();
-        
+
         Ok(matching_cdrs)
     }
 }
@@ -697,17 +722,17 @@ impl crate::j_std_025::CdrStorage for MemoryCdrStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[tokio::test]
     async fn test_compliance_framework_creation() {
         let config = ComplianceConfig::default();
         let framework = ComplianceFramework::new(config).unwrap();
-        
+
         let stats = framework.get_statistics().await;
         assert_eq!(stats.total_calls, 0);
         assert_eq!(stats.cdrs_generated, 0);
     }
-    
+
     #[tokio::test]
     async fn test_call_event_processing() {
         let config = ComplianceConfig {
@@ -715,10 +740,10 @@ mod tests {
             li_enabled: false,
             ..Default::default()
         };
-        
+
         let framework = ComplianceFramework::new(config).unwrap();
         framework.start().await.unwrap();
-        
+
         // Submit call attempt event
         let call_event = CallEvent {
             call_id: "test_call_001".to_string(),
@@ -734,15 +759,15 @@ mod tests {
             sip_headers: HashMap::new(),
             rtp_stats: None,
         };
-        
+
         framework.submit_call_event(call_event).unwrap();
-        
+
         // Give some time for processing
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-        
+
         assert_eq!(framework.get_active_call_count().await, 1);
     }
-    
+
     #[test]
     fn test_call_result_determination() {
         let call_state = CallState {
@@ -757,7 +782,7 @@ mod tests {
             cdr_created: false,
             quality_metrics: None,
         };
-        
+
         let event = CallEvent {
             call_id: "test".to_string(),
             event_type: CallEventType::CallEnded,
@@ -772,7 +797,7 @@ mod tests {
             sip_headers: HashMap::new(),
             rtp_stats: None,
         };
-        
+
         let result = ComplianceFramework::determine_call_result(&event, &call_state);
         assert_eq!(result, CallResult::Normal);
     }

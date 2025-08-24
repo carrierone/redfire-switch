@@ -4,14 +4,12 @@
  */
 
 use anyhow::Result;
-use base64::{Engine as _, engine::general_purpose};
-use redfire_codec_engine::{
-    AudioCodec, CodecService, CodecConfig, AudioFrame, TranscodedFrame
-};
+use base64::{engine::general_purpose, Engine as _};
+use redfire_codec_engine::{AudioCodec, AudioFrame, CodecConfig, CodecService, TranscodedFrame};
 use serde_json::{json, Value};
 use std::sync::Arc;
 use std::time::Instant;
-use tracing::{info, warn, error, debug};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 pub struct CodecTools {
@@ -22,7 +20,7 @@ pub struct CodecTools {
 impl CodecTools {
     pub async fn new(gpu_enabled: bool, _gpu_device: u32) -> Result<Self> {
         info!("Initializing codec tools (GPU: {})", gpu_enabled);
-        
+
         let service = if gpu_enabled {
             #[cfg(any(feature = "cuda", feature = "rocm"))]
             {
@@ -32,7 +30,10 @@ impl CodecTools {
                         Arc::new(service)
                     }
                     Err(e) => {
-                        warn!("Failed to initialize GPU service, falling back to CPU: {}", e);
+                        warn!(
+                            "Failed to initialize GPU service, falling back to CPU: {}",
+                            e
+                        );
                         Arc::new(redfire_codec_engine::create_default_service().await?)
                     }
                 }
@@ -45,49 +46,60 @@ impl CodecTools {
         } else {
             Arc::new(redfire_codec_engine::create_default_service().await?)
         };
-        
+
         Ok(Self {
             service,
             gpu_enabled,
         })
     }
-    
+
     pub async fn transcode_audio(&self, args: Value) -> Result<Value> {
-        let input_data = args["input_data"].as_str()
+        let input_data = args["input_data"]
+            .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing input_data"))?;
-        
-        let source_codec = args["source_codec"].as_str()
+
+        let source_codec = args["source_codec"]
+            .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing source_codec"))?;
-        
-        let target_codec = args["target_codec"].as_str()
+
+        let target_codec = args["target_codec"]
+            .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing target_codec"))?;
-        
+
         let sample_rate = args["sample_rate"].as_u64().unwrap_or(8000) as u32;
-        
+
         // Parse codec enums
         let src_codec = self.parse_codec(source_codec)?;
         let dst_codec = self.parse_codec(target_codec)?;
-        
+
         // Decode base64 input
-        let input_bytes = general_purpose::STANDARD.decode(input_data)
+        let input_bytes = general_purpose::STANDARD
+            .decode(input_data)
             .map_err(|e| anyhow::anyhow!("Invalid base64: {}", e))?;
-        
-        debug!("Transcoding {} bytes from {:?} to {:?}", input_bytes.len(), src_codec, dst_codec);
-        
+
+        debug!(
+            "Transcoding {} bytes from {:?} to {:?}",
+            input_bytes.len(),
+            src_codec,
+            dst_codec
+        );
+
         let start_time = Instant::now();
-        
+
         // Create a temporary session for this transcoding operation
         let session_id = format!("mcp_transcode_{}", Uuid::new_v4());
-        
+
         // Start transcoding session
-        self.service.start_session(
-            session_id.clone(),
-            src_codec,
-            dst_codec,
-            sample_rate,
-            1, // mono
-        ).await?;
-        
+        self.service
+            .start_session(
+                session_id.clone(),
+                src_codec,
+                dst_codec,
+                sample_rate,
+                1, // mono
+            )
+            .await?;
+
         // Create audio frame from input bytes
         let input_frame = AudioFrame {
             codec: src_codec,
@@ -97,23 +109,33 @@ impl CodecTools {
             channels: 1,
             sequence: 0,
         };
-        
+
         // Transcode the frame
-        let transcoded_frame = self.service.transcode_frame(&session_id, input_frame).await?;
-        
+        let transcoded_frame = self
+            .service
+            .transcode_frame(&session_id, input_frame)
+            .await?;
+
         // End the session
         if let Err(e) = self.service.end_session(&session_id).await {
-            warn!("Failed to cleanly end transcoding session {}: {}", session_id, e);
+            warn!(
+                "Failed to cleanly end transcoding session {}: {}",
+                session_id, e
+            );
         }
-        
+
         let duration = start_time.elapsed();
-        
+
         // Encode output to base64
         let output_b64 = general_purpose::STANDARD.encode(&transcoded_frame.data);
-        
-        info!("Transcoded {} bytes to {} bytes in {:?}", 
-              input_bytes.len(), transcoded_frame.data.len(), duration);
-        
+
+        info!(
+            "Transcoded {} bytes to {} bytes in {:?}",
+            input_bytes.len(),
+            transcoded_frame.data.len(),
+            duration
+        );
+
         Ok(json!({
             "success": true,
             "output_data": output_b64,
@@ -126,10 +148,10 @@ impl CodecTools {
             "gpu_used": self.gpu_enabled
         }))
     }
-    
+
     pub async fn get_codec_info(&self, args: Value) -> Result<Value> {
         let specific_codec = args["codec"].as_str();
-        
+
         let mut codecs = json!({
             "G711_ULAW": {
                 "name": "G.711 μ-law",
@@ -139,7 +161,7 @@ impl CodecTools {
                 "description": "ITU-T G.711 μ-law PCM encoding"
             },
             "G711_ALAW": {
-                "name": "G.711 A-law", 
+                "name": "G.711 A-law",
                 "sample_rate": 8000,
                 "bit_rate": 64000,
                 "frame_size": 160,
@@ -181,7 +203,7 @@ impl CodecTools {
                 "description": "IETF Opus versatile audio codec"
             }
         });
-        
+
         if let Some(codec) = specific_codec {
             if let Some(info) = codecs.get(codec) {
                 return Ok(json!({
@@ -194,7 +216,7 @@ impl CodecTools {
                 return Err(anyhow::anyhow!("Unknown codec: {}", codec));
             }
         }
-        
+
         Ok(json!({
             "supported_codecs": codecs,
             "gpu_enabled": self.gpu_enabled,
@@ -202,42 +224,43 @@ impl CodecTools {
             "universal_gpu_transcoding": true
         }))
     }
-    
+
     pub async fn benchmark_transcoding(&self, args: Value) -> Result<Value> {
-        let source_codec = args["source_codec"].as_str()
+        let source_codec = args["source_codec"]
+            .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing source_codec"))?;
-        
-        let target_codec = args["target_codec"].as_str()
+
+        let target_codec = args["target_codec"]
+            .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing target_codec"))?;
-        
+
         let iterations = args["iterations"].as_u64().unwrap_or(100) as usize;
-        
+
         let src_codec = self.parse_codec(source_codec)?;
         let dst_codec = self.parse_codec(target_codec)?;
-        
-        info!("Running benchmark: {:?} -> {:?} ({} iterations)", src_codec, dst_codec, iterations);
-        
+
+        info!(
+            "Running benchmark: {:?} -> {:?} ({} iterations)",
+            src_codec, dst_codec, iterations
+        );
+
         // Generate test audio data (1 second of sine wave)
         let test_data = self.generate_test_audio(src_codec, 8000);
-        
+
         let mut cpu_times = Vec::new();
-        
+
         // Benchmark using session-based approach
         let start = Instant::now();
         for i in 0..iterations {
             let iter_start = Instant::now();
-            
+
             // Create session for this iteration
             let session_id = format!("benchmark_{}_{}", Uuid::new_v4(), i);
-            
-            self.service.start_session(
-                session_id.clone(),
-                src_codec,
-                dst_codec,
-                8000,
-                1,
-            ).await?;
-            
+
+            self.service
+                .start_session(session_id.clone(), src_codec, dst_codec, 8000, 1)
+                .await?;
+
             // Create audio frame
             let input_frame = AudioFrame {
                 codec: src_codec,
@@ -247,23 +270,26 @@ impl CodecTools {
                 channels: 1,
                 sequence: 0,
             };
-            
+
             // Transcode
-            let _ = self.service.transcode_frame(&session_id, input_frame).await?;
-            
+            let _ = self
+                .service
+                .transcode_frame(&session_id, input_frame)
+                .await?;
+
             // Clean up
             if let Err(e) = self.service.end_session(&session_id).await {
                 warn!("Failed to end benchmark session {}: {}", session_id, e);
             }
-            
+
             cpu_times.push(iter_start.elapsed().as_micros() as u64);
         }
         let cpu_total = start.elapsed();
-        
+
         let cpu_avg = cpu_times.iter().sum::<u64>() / cpu_times.len() as u64;
         let cpu_min = *cpu_times.iter().min().unwrap();
         let cpu_max = *cpu_times.iter().max().unwrap();
-        
+
         let result = json!({
             "source_codec": source_codec,
             "target_codec": target_codec,
@@ -278,10 +304,10 @@ impl CodecTools {
             },
             "gpu_enabled": self.gpu_enabled
         });
-        
+
         Ok(result)
     }
-    
+
     fn parse_codec(&self, codec_str: &str) -> Result<AudioCodec> {
         match codec_str {
             "G711_ULAW" => Ok(AudioCodec::G711Ulaw),
@@ -291,23 +317,35 @@ impl CodecTools {
             "G7222" => Ok(AudioCodec::G7222),
             "PCM16" => Ok(AudioCodec::Pcm16),
             "OPUS" => Ok(AudioCodec::Opus),
-            _ => Err(anyhow::anyhow!("Unknown codec: {}", codec_str))
+            _ => Err(anyhow::anyhow!("Unknown codec: {}", codec_str)),
         }
     }
-    
+
     fn is_gpu_supported(&self, codec: &str) -> bool {
         // All our codecs support GPU transcoding
-        matches!(codec, "G711_ULAW" | "G711_ALAW" | "G729" | "G722" | "G7222" | "PCM16")
+        matches!(
+            codec,
+            "G711_ULAW" | "G711_ALAW" | "G729" | "G722" | "G7222" | "PCM16"
+        )
     }
-    
+
     fn get_supported_pairs(&self, codec: &str) -> Vec<String> {
-        let all_codecs = ["G711_ULAW", "G711_ALAW", "G729", "G722", "G7222", "PCM16", "OPUS"];
-        all_codecs.iter()
+        let all_codecs = [
+            "G711_ULAW",
+            "G711_ALAW",
+            "G729",
+            "G722",
+            "G7222",
+            "PCM16",
+            "OPUS",
+        ];
+        all_codecs
+            .iter()
             .filter(|&&c| c != codec)
             .map(|&c| c.to_string())
             .collect()
     }
-    
+
     fn generate_test_audio(&self, codec: AudioCodec, sample_rate: u32) -> Vec<u8> {
         // Generate 1 second of sine wave test data
         match codec {

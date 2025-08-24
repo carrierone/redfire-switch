@@ -1,21 +1,21 @@
 /*
  * Comprehensive Compliance Framework Integration Tests
- * 
+ *
  * This test suite validates the complete integration of J-STD-025 CDR
  * and ETSI LI compliance modules with the RedFire Switch B2BUA.
  */
 
 use anyhow::Result;
-use chrono::{DateTime, Utc, Duration};
+use chrono::{DateTime, Duration, Utc};
 use redfire_switch::compliance_framework::{
-    ComplianceFramework, ComplianceConfig, CallEvent, CallEventType, RtpStatistics
-};
-use redfire_switch::j_std_025::{
-    CdrEngineConfig, CdrType, CallResult, ServiceType, ChargingInfo, QoSMetrics
+    CallEvent, CallEventType, ComplianceConfig, ComplianceFramework, RtpStatistics,
 };
 use redfire_switch::etsi_li::{
-    LiControllerConfig, DeliveryEndpoints, EncryptionAlgorithm, AuthenticationMethod,
-    DeliveryFormat, LiWarrant, TargetIdentifierType, InterceptType, WarrantStatus
+    AuthenticationMethod, DeliveryEndpoints, DeliveryFormat, EncryptionAlgorithm, InterceptType,
+    LiControllerConfig, LiWarrant, TargetIdentifierType, WarrantStatus,
+};
+use redfire_switch::j_std_025::{
+    CallResult, CdrEngineConfig, CdrType, ChargingInfo, QoSMetrics, ServiceType,
 };
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
@@ -88,89 +88,89 @@ fn create_test_call_event(
 async fn test_complete_call_flow_compliance() -> Result<()> {
     let config = create_test_compliance_config();
     let framework = ComplianceFramework::new(config)?;
-    
+
     // Start compliance processing
     framework.start().await?;
-    
+
     let call_id = "test-call-001";
     let calling_number = "+15551234567";
     let called_number = "+15559876543";
-    
+
     // Submit call attempt event
     let call_attempt = create_test_call_event(
-        call_id, 
-        CallEventType::CallAttempt, 
-        calling_number, 
-        called_number, 
-        None
+        call_id,
+        CallEventType::CallAttempt,
+        calling_number,
+        called_number,
+        None,
     );
     framework.submit_call_event(call_attempt)?;
-    
+
     // Wait for processing
     sleep(TokioDuration::from_millis(50)).await;
-    
+
     // Submit call progress event
     let call_progress = create_test_call_event(
-        call_id, 
-        CallEventType::CallProgress, 
-        calling_number, 
-        called_number, 
-        Some(180)
+        call_id,
+        CallEventType::CallProgress,
+        calling_number,
+        called_number,
+        Some(180),
     );
     framework.submit_call_event(call_progress)?;
-    
+
     // Submit call answered event
     let call_answered = create_test_call_event(
-        call_id, 
-        CallEventType::CallAnswered, 
-        calling_number, 
-        called_number, 
-        Some(200)
+        call_id,
+        CallEventType::CallAnswered,
+        calling_number,
+        called_number,
+        Some(200),
     );
     framework.submit_call_event(call_answered)?;
-    
+
     // Submit media started event
     let media_started = create_test_call_event(
-        call_id, 
-        CallEventType::MediaStarted, 
-        calling_number, 
-        called_number, 
-        None
+        call_id,
+        CallEventType::MediaStarted,
+        calling_number,
+        called_number,
+        None,
     );
     framework.submit_call_event(media_started)?;
-    
+
     // Submit DTMF event
     let dtmf_event = create_test_call_event(
-        call_id, 
-        CallEventType::DtmfDetected, 
-        calling_number, 
-        called_number, 
-        None
+        call_id,
+        CallEventType::DtmfDetected,
+        calling_number,
+        called_number,
+        None,
     );
     framework.submit_call_event(dtmf_event)?;
-    
+
     // Submit call ended event
     let call_ended = create_test_call_event(
-        call_id, 
-        CallEventType::CallEnded, 
-        calling_number, 
-        called_number, 
-        Some(200)
+        call_id,
+        CallEventType::CallEnded,
+        calling_number,
+        called_number,
+        Some(200),
     );
     framework.submit_call_event(call_ended)?;
-    
+
     // Wait for all processing to complete
     sleep(TokioDuration::from_millis(200)).await;
-    
+
     // Verify statistics
     let stats = framework.get_statistics().await;
     assert_eq!(stats.total_calls, 1);
     assert_eq!(stats.cdrs_generated, 1);
     assert_eq!(stats.active_intercepts, 0); // No warrants for this test
-    
+
     // Verify active call count is zero after call ended
     assert_eq!(framework.get_active_call_count().await, 0);
-    
+
     Ok(())
 }
 
@@ -184,46 +184,46 @@ async fn test_complete_call_flow_compliance() -> Result<()> {
 async fn test_fraud_detection_workflow() -> Result<()> {
     let config = create_test_compliance_config();
     let framework = ComplianceFramework::new(config)?;
-    
+
     framework.start().await?;
-    
+
     let calling_number = "+15551234567";
-    
+
     // Simulate multiple rapid calls from same number (fraud pattern)
     for i in 0..10 {
         let call_id = format!("fraud-call-{:03}", i);
         let called_number = format!("+1555{:07}", 1000000 + i);
-        
+
         let call_attempt = create_test_call_event(
-            &call_id, 
-            CallEventType::CallAttempt, 
-            calling_number, 
-            &called_number, 
-            None
+            &call_id,
+            CallEventType::CallAttempt,
+            calling_number,
+            &called_number,
+            None,
         );
         framework.submit_call_event(call_attempt)?;
-        
+
         // Some calls fail (suspicious pattern)
         let call_ended = create_test_call_event(
-            &call_id, 
-            CallEventType::CallEnded, 
-            calling_number, 
-            &called_number, 
-            Some(404) // Not found
+            &call_id,
+            CallEventType::CallEnded,
+            calling_number,
+            &called_number,
+            Some(404), // Not found
         );
         framework.submit_call_event(call_ended)?;
-        
+
         // Small delay between calls
         sleep(TokioDuration::from_millis(10)).await;
     }
-    
+
     // Wait for processing
     sleep(TokioDuration::from_millis(200)).await;
-    
+
     let stats = framework.get_statistics().await;
     assert_eq!(stats.total_calls, 10);
     assert_eq!(stats.cdrs_generated, 10);
-    
+
     Ok(())
 }
 
@@ -231,76 +231,74 @@ async fn test_fraud_detection_workflow() -> Result<()> {
 async fn test_conference_call_compliance() -> Result<()> {
     let config = create_test_compliance_config();
     let framework = ComplianceFramework::new(config)?;
-    
+
     framework.start().await?;
-    
+
     // Conference call with multiple participants
     let conference_id = "conf-001";
-    let participants = vec![
-        "+15551111111",
-        "+15552222222", 
-        "+15553333333"
-    ];
-    
+    let participants = vec!["+15551111111", "+15552222222", "+15553333333"];
+
     // Each participant joins the conference
     for (i, participant) in participants.iter().enumerate() {
         let call_id = format!("{}-leg-{}", conference_id, i);
-        
+
         let mut call_attempt = create_test_call_event(
-            &call_id, 
-            CallEventType::CallAttempt, 
-            participant, 
-            &conference_id, 
-            None
+            &call_id,
+            CallEventType::CallAttempt,
+            participant,
+            &conference_id,
+            None,
         );
-        
+
         // Mark as conference call
-        call_attempt.sip_headers.insert("X-Conference-ID".to_string(), conference_id.to_string());
+        call_attempt
+            .sip_headers
+            .insert("X-Conference-ID".to_string(), conference_id.to_string());
         framework.submit_call_event(call_attempt)?;
-        
+
         let call_answered = create_test_call_event(
-            &call_id, 
-            CallEventType::CallAnswered, 
-            participant, 
-            &conference_id, 
-            Some(200)
+            &call_id,
+            CallEventType::CallAnswered,
+            participant,
+            &conference_id,
+            Some(200),
         );
         framework.submit_call_event(call_answered)?;
-        
+
         let media_started = create_test_call_event(
-            &call_id, 
-            CallEventType::MediaStarted, 
-            participant, 
-            &conference_id, 
-            None
+            &call_id,
+            CallEventType::MediaStarted,
+            participant,
+            &conference_id,
+            None,
         );
         framework.submit_call_event(media_started)?;
     }
-    
+
     // Wait for processing
     sleep(TokioDuration::from_millis(100)).await;
-    
+
     // Conference ends - all participants disconnect
     for (i, participant) in participants.iter().enumerate() {
         let call_id = format!("{}-leg-{}", conference_id, i);
-        
+
         let call_ended = create_test_call_event(
-            &call_id, 
-            CallEventType::CallEnded, 
-            participant, 
-            &conference_id, 
-            Some(200)
+            &call_id,
+            CallEventType::CallEnded,
+            participant,
+            &conference_id,
+            Some(200),
         );
         framework.submit_call_event(call_ended)?;
     }
-    
+
     // Wait for processing
     sleep(TokioDuration::from_millis(200)).await;
-    
+
     let stats = framework.get_statistics().await;
     assert_eq!(stats.total_calls, 3); // Three conference legs
     assert_eq!(stats.cdrs_generated, 3);
-    
+
     Ok(())
 }
 
@@ -308,61 +306,65 @@ async fn test_conference_call_compliance() -> Result<()> {
 async fn test_emergency_call_compliance() -> Result<()> {
     let config = create_test_compliance_config();
     let framework = ComplianceFramework::new(config)?;
-    
+
     framework.start().await?;
-    
+
     let call_id = "emergency-call-001";
     let calling_number = "+15551234567";
     let called_number = "911"; // Emergency number
-    
+
     let mut call_attempt = create_test_call_event(
-        call_id, 
-        CallEventType::CallAttempt, 
-        calling_number, 
-        called_number, 
-        None
+        call_id,
+        CallEventType::CallAttempt,
+        calling_number,
+        called_number,
+        None,
     );
-    
+
     // Mark as emergency call
-    call_attempt.sip_headers.insert("Priority".to_string(), "emergency".to_string());
-    call_attempt.sip_headers.insert("Resource-Priority".to_string(), "ets.0".to_string());
-    
+    call_attempt
+        .sip_headers
+        .insert("Priority".to_string(), "emergency".to_string());
+    call_attempt
+        .sip_headers
+        .insert("Resource-Priority".to_string(), "ets.0".to_string());
+
     framework.submit_call_event(call_attempt)?;
-    
+
     let call_answered = create_test_call_event(
-        call_id, 
-        CallEventType::CallAnswered, 
-        calling_number, 
-        called_number, 
-        Some(200)
+        call_id,
+        CallEventType::CallAnswered,
+        calling_number,
+        called_number,
+        Some(200),
     );
     framework.submit_call_event(call_answered)?;
-    
+
     let media_started = create_test_call_event(
-        call_id, 
-        CallEventType::MediaStarted, 
-        calling_number, 
-        called_number, 
-        None
+        call_id,
+        CallEventType::MediaStarted,
+        calling_number,
+        called_number,
+        None,
     );
     framework.submit_call_event(media_started)?;
-    
+
     let call_ended = create_test_call_event(
-        call_id, 
-        CallEventType::CallEnded, 
-        calling_number, 
-        called_number, 
-        Some(200)
+        call_id,
+        CallEventType::CallEnded,
+        calling_number,
+        called_number,
+        Some(200),
     );
     framework.submit_call_event(call_ended)?;
-    
+
     // Wait for processing
     sleep(TokioDuration::from_millis(200)).await;
-    
+
     let stats = framework.get_statistics().await;
     assert_eq!(stats.total_calls, 1);
     assert_eq!(stats.cdrs_generated, 1);
-    
+
     Ok(())
 }
 
@@ -370,47 +372,47 @@ async fn test_emergency_call_compliance() -> Result<()> {
 async fn test_international_call_compliance() -> Result<()> {
     let config = create_test_compliance_config();
     let framework = ComplianceFramework::new(config)?;
-    
+
     framework.start().await?;
-    
+
     let call_id = "intl-call-001";
     let calling_number = "+15551234567"; // US number
     let called_number = "+441234567890"; // UK number
-    
+
     let call_attempt = create_test_call_event(
-        call_id, 
-        CallEventType::CallAttempt, 
-        calling_number, 
-        called_number, 
-        None
+        call_id,
+        CallEventType::CallAttempt,
+        calling_number,
+        called_number,
+        None,
     );
     framework.submit_call_event(call_attempt)?;
-    
+
     let call_answered = create_test_call_event(
-        call_id, 
-        CallEventType::CallAnswered, 
-        calling_number, 
-        called_number, 
-        Some(200)
+        call_id,
+        CallEventType::CallAnswered,
+        calling_number,
+        called_number,
+        Some(200),
     );
     framework.submit_call_event(call_answered)?;
-    
+
     let call_ended = create_test_call_event(
-        call_id, 
-        CallEventType::CallEnded, 
-        calling_number, 
-        called_number, 
-        Some(200)
+        call_id,
+        CallEventType::CallEnded,
+        calling_number,
+        called_number,
+        Some(200),
     );
     framework.submit_call_event(call_ended)?;
-    
+
     // Wait for processing
     sleep(TokioDuration::from_millis(200)).await;
-    
+
     let stats = framework.get_statistics().await;
     assert_eq!(stats.total_calls, 1);
     assert_eq!(stats.cdrs_generated, 1);
-    
+
     Ok(())
 }
 
@@ -418,90 +420,92 @@ async fn test_international_call_compliance() -> Result<()> {
 async fn test_call_transfer_compliance() -> Result<()> {
     let config = create_test_compliance_config();
     let framework = ComplianceFramework::new(config)?;
-    
+
     framework.start().await?;
-    
+
     let original_call_id = "transfer-call-001";
     let calling_number = "+15551234567";
     let original_called = "+15559876543";
     let transfer_target = "+15555555555";
-    
+
     // Original call setup
     let call_attempt = create_test_call_event(
-        original_call_id, 
-        CallEventType::CallAttempt, 
-        calling_number, 
-        original_called, 
-        None
+        original_call_id,
+        CallEventType::CallAttempt,
+        calling_number,
+        original_called,
+        None,
     );
     framework.submit_call_event(call_attempt)?;
-    
+
     let call_answered = create_test_call_event(
-        original_call_id, 
-        CallEventType::CallAnswered, 
-        calling_number, 
-        original_called, 
-        Some(200)
+        original_call_id,
+        CallEventType::CallAnswered,
+        calling_number,
+        original_called,
+        Some(200),
     );
     framework.submit_call_event(call_answered)?;
-    
+
     // Call transfer occurs
     let mut call_transferred = create_test_call_event(
-        original_call_id, 
-        CallEventType::CallTransferred, 
-        calling_number, 
-        original_called, 
-        None
+        original_call_id,
+        CallEventType::CallTransferred,
+        calling_number,
+        original_called,
+        None,
     );
-    call_transferred.sip_headers.insert("Refer-To".to_string(), transfer_target.to_string());
+    call_transferred
+        .sip_headers
+        .insert("Refer-To".to_string(), transfer_target.to_string());
     framework.submit_call_event(call_transferred)?;
-    
+
     // Original call ends
     let call_ended = create_test_call_event(
-        original_call_id, 
-        CallEventType::CallEnded, 
-        calling_number, 
-        original_called, 
-        Some(200)
+        original_call_id,
+        CallEventType::CallEnded,
+        calling_number,
+        original_called,
+        Some(200),
     );
     framework.submit_call_event(call_ended)?;
-    
+
     // New call to transfer target
     let transfer_call_id = "transfer-call-002";
     let transfer_attempt = create_test_call_event(
-        transfer_call_id, 
-        CallEventType::CallAttempt, 
-        calling_number, 
-        transfer_target, 
-        None
+        transfer_call_id,
+        CallEventType::CallAttempt,
+        calling_number,
+        transfer_target,
+        None,
     );
     framework.submit_call_event(transfer_attempt)?;
-    
+
     let transfer_answered = create_test_call_event(
-        transfer_call_id, 
-        CallEventType::CallAnswered, 
-        calling_number, 
-        transfer_target, 
-        Some(200)
+        transfer_call_id,
+        CallEventType::CallAnswered,
+        calling_number,
+        transfer_target,
+        Some(200),
     );
     framework.submit_call_event(transfer_answered)?;
-    
+
     let transfer_ended = create_test_call_event(
-        transfer_call_id, 
-        CallEventType::CallEnded, 
-        calling_number, 
-        transfer_target, 
-        Some(200)
+        transfer_call_id,
+        CallEventType::CallEnded,
+        calling_number,
+        transfer_target,
+        Some(200),
     );
     framework.submit_call_event(transfer_ended)?;
-    
+
     // Wait for processing
     sleep(TokioDuration::from_millis(200)).await;
-    
+
     let stats = framework.get_statistics().await;
     assert_eq!(stats.total_calls, 2); // Original call + transfer call
     assert_eq!(stats.cdrs_generated, 2);
-    
+
     Ok(())
 }
 
@@ -509,53 +513,53 @@ async fn test_call_transfer_compliance() -> Result<()> {
 async fn test_high_volume_call_processing() -> Result<()> {
     let config = create_test_compliance_config();
     let framework = ComplianceFramework::new(config)?;
-    
+
     framework.start().await?;
-    
+
     let call_count = 100;
-    
+
     // Generate high volume of calls
     for i in 0..call_count {
         let call_id = format!("volume-call-{:03}", i);
         let calling_number = format!("+155512345{:02}", i % 100);
         let called_number = format!("+155598765{:02}", i % 100);
-        
+
         let call_attempt = create_test_call_event(
-            &call_id, 
-            CallEventType::CallAttempt, 
-            &calling_number, 
-            &called_number, 
-            None
+            &call_id,
+            CallEventType::CallAttempt,
+            &calling_number,
+            &called_number,
+            None,
         );
         framework.submit_call_event(call_attempt)?;
-        
+
         let call_answered = create_test_call_event(
-            &call_id, 
-            CallEventType::CallAnswered, 
-            &calling_number, 
-            &called_number, 
-            Some(200)
+            &call_id,
+            CallEventType::CallAnswered,
+            &calling_number,
+            &called_number,
+            Some(200),
         );
         framework.submit_call_event(call_answered)?;
-        
+
         let call_ended = create_test_call_event(
-            &call_id, 
-            CallEventType::CallEnded, 
-            &calling_number, 
-            &called_number, 
-            Some(200)
+            &call_id,
+            CallEventType::CallEnded,
+            &calling_number,
+            &called_number,
+            Some(200),
         );
         framework.submit_call_event(call_ended)?;
     }
-    
+
     // Wait for all processing to complete
     sleep(TokioDuration::from_millis(500)).await;
-    
+
     let stats = framework.get_statistics().await;
     assert_eq!(stats.total_calls, call_count);
     assert_eq!(stats.cdrs_generated, call_count);
     assert_eq!(framework.get_active_call_count().await, 0);
-    
+
     Ok(())
 }
 
@@ -563,19 +567,19 @@ async fn test_high_volume_call_processing() -> Result<()> {
 async fn test_compliance_error_handling() -> Result<()> {
     let config = create_test_compliance_config();
     let framework = ComplianceFramework::new(config)?;
-    
+
     framework.start().await?;
-    
+
     // Test with malformed call events
     let call_id = "error-call-001";
-    
+
     // Call event with missing required fields
     let invalid_event = CallEvent {
         call_id: call_id.to_string(),
         event_type: CallEventType::CallAttempt,
         timestamp: Utc::now(),
         calling_number: "".to_string(), // Invalid empty number
-        called_number: "".to_string(), // Invalid empty number
+        called_number: "".to_string(),  // Invalid empty number
         sip_method: None,
         sip_response_code: None,
         source_ip: None,
@@ -584,27 +588,27 @@ async fn test_compliance_error_handling() -> Result<()> {
         sip_headers: HashMap::new(),
         rtp_stats: None,
     };
-    
+
     // This should not crash the system
     let _ = framework.submit_call_event(invalid_event);
-    
+
     // Wait for processing
     sleep(TokioDuration::from_millis(100)).await;
-    
+
     let stats = framework.get_statistics().await;
     // Error handling should increment error count
     assert!(stats.compliance_errors >= 0);
-    
+
     Ok(())
 }
 
-#[tokio::test] 
+#[tokio::test]
 async fn test_compliance_statistics_accuracy() -> Result<()> {
     let config = create_test_compliance_config();
     let framework = ComplianceFramework::new(config)?;
-    
+
     framework.start().await?;
-    
+
     // Generate calls with different outcomes
     let test_cases = vec![
         (CallEventType::CallEnded, Some(200)), // Normal
@@ -612,49 +616,49 @@ async fn test_compliance_statistics_accuracy() -> Result<()> {
         (CallEventType::CallEnded, Some(408)), // No Answer
         (CallEventType::CallEnded, Some(503)), // Service Unavailable
     ];
-    
+
     for (i, (event_type, response_code)) in test_cases.iter().enumerate() {
         let call_id = format!("stats-call-{:03}", i);
         let calling_number = "+15551234567";
         let called_number = format!("+155598765{:02}", i);
-        
+
         let call_attempt = create_test_call_event(
-            &call_id, 
-            CallEventType::CallAttempt, 
-            calling_number, 
-            &called_number, 
-            None
+            &call_id,
+            CallEventType::CallAttempt,
+            calling_number,
+            &called_number,
+            None,
         );
         framework.submit_call_event(call_attempt)?;
-        
+
         if *response_code == Some(200) {
             let call_answered = create_test_call_event(
-                &call_id, 
-                CallEventType::CallAnswered, 
-                calling_number, 
-                &called_number, 
-                Some(200)
+                &call_id,
+                CallEventType::CallAnswered,
+                calling_number,
+                &called_number,
+                Some(200),
             );
             framework.submit_call_event(call_answered)?;
         }
-        
+
         let call_ended = create_test_call_event(
-            &call_id, 
-            *event_type, 
-            calling_number, 
-            &called_number, 
-            *response_code
+            &call_id,
+            *event_type,
+            calling_number,
+            &called_number,
+            *response_code,
         );
         framework.submit_call_event(call_ended)?;
     }
-    
+
     // Wait for processing
     sleep(TokioDuration::from_millis(200)).await;
-    
+
     let stats = framework.get_statistics().await;
     assert_eq!(stats.total_calls, 4);
     assert_eq!(stats.cdrs_generated, 4);
     assert!(stats.last_updated > Utc::now() - Duration::seconds(10));
-    
+
     Ok(())
 }

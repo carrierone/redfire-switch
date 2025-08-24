@@ -1,27 +1,27 @@
 /*
  * ITU-T Q.931 Message Parsing and Generation for ISDN PRI Variants
- * 
+ *
  * Complete implementation of Q.931 network layer protocol messages,
  * information elements, and codecs for Primary Rate Interface (PRI).
- * 
+ *
  * Supported variants:
  * - NI-2 (National ISDN-2) - North American PRI standard
  * - Euro ISDN (ETSI ETS 300-102) - European PRI standard
  * - Network and User side implementations for both variants
- * 
+ *
  * Features:
  * - All Q.931 message types with variant-specific extensions
- * - Complete Information Element (IE) parsing/generation  
+ * - Complete Information Element (IE) parsing/generation
  * - Call reference value management
  * - Message validation and error handling
  * - Variant-specific procedures and timers
  */
 
-use anyhow::{Result, anyhow};
-use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
-use tracing::{debug, info, warn, error};
+use anyhow::{anyhow, Result};
 use byteorder::{BigEndian, ByteOrder};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use tracing::{debug, error, info, warn};
 
 /// Q.931 Protocol Discriminator for DSS1/NI-2
 pub const Q931_PROTOCOL_DISCRIMINATOR: u8 = 0x08;
@@ -69,12 +69,12 @@ pub enum Q931MessageType {
     Connect = 0x07,
     ConnectAcknowledge = 0x0F,
     Progress = 0x03,
-    
-    // Call disestablishment messages  
+
+    // Call disestablishment messages
     Disconnect = 0x45,
     Release = 0x4D,
     ReleaseComplete = 0x5A,
-    
+
     // Call information messages
     User = 0x20,
     Suspend = 0x25,
@@ -83,7 +83,7 @@ pub enum Q931MessageType {
     Resume = 0x26,
     ResumeAcknowledge = 0x2E,
     ResumeReject = 0x22,
-    
+
     // Miscellaneous messages
     Hold = 0x24,
     HoldAcknowledge = 0x28,
@@ -91,17 +91,17 @@ pub enum Q931MessageType {
     Retrieve = 0x31,
     RetrieveAcknowledge = 0x33,
     RetrieveReject = 0x37,
-    
+
     // Status and facility messages
     Status = 0x7D,
     StatusEnquiry = 0x75,
     Facility = 0x62,
     Information = 0x7B,
-    
+
     // NI-2 specific messages
     Notify = 0x6E,
     ServiceAcknowledge = 0x4F,
-    
+
     // Euro ISDN specific messages
     CongestDrop = 0x40,
     CongestionControl = 0x79,
@@ -147,7 +147,7 @@ pub enum InformationElementType {
     SendingComplete = 0xA1,
     CongestionLevel = 0xB0,
     RepeatIndicator = 0xD0,
-    
+
     // Variable length IEs
     Segmented = 0x00,
     Change = 0x01,
@@ -174,7 +174,7 @@ pub enum InformationElementType {
     HighLayerCompatibility = 0x7D,
     UserUser = 0x7E,
     Escape = 0x7F,
-    
+
     // NI-2 specific IEs
     OriginationFacility = 0x80,
     DestinationFacility = 0x81,
@@ -227,7 +227,7 @@ impl CallReference {
         } else {
             CALL_REF_FLAG_TERMINATING
         };
-        
+
         // Use 2-byte CRV for PRI
         Self {
             value: value & 0x7FFF, // Ensure 15-bit value
@@ -235,26 +235,29 @@ impl CallReference {
             length: 2,
         }
     }
-    
+
     pub fn parse(data: &[u8]) -> Result<(Self, usize)> {
         if data.is_empty() {
             return Err(anyhow!("Empty call reference data"));
         }
-        
+
         let length = data[0];
         if length == 0 {
             // Global call reference
-            return Ok((Self {
-                value: 0,
-                flag: 0,
-                length: 0,
-            }, 1));
+            return Ok((
+                Self {
+                    value: 0,
+                    flag: 0,
+                    length: 0,
+                },
+                1,
+            ));
         }
-        
+
         if data.len() < (length as usize + 1) {
             return Err(anyhow!("Insufficient data for call reference"));
         }
-        
+
         let (value, flag) = match length {
             1 => {
                 let byte = data[1];
@@ -266,18 +269,25 @@ impl CallReference {
             }
             _ => return Err(anyhow!("Invalid call reference length: {}", length)),
         };
-        
-        Ok((Self { value, flag, length }, length as usize + 1))
+
+        Ok((
+            Self {
+                value,
+                flag,
+                length,
+            },
+            length as usize + 1,
+        ))
     }
-    
+
     pub fn encode(&self) -> Vec<u8> {
         let mut result = vec![self.length];
-        
+
         if self.length == 0 {
             // Global call reference
             return result;
         }
-        
+
         match self.length {
             1 => {
                 result.push((self.value as u8) | self.flag);
@@ -288,7 +298,7 @@ impl CallReference {
             }
             _ => {} // Invalid length, but we'll handle it gracefully
         }
-        
+
         result
     }
 }
@@ -304,26 +314,26 @@ impl InformationElement {
     pub fn new(ie_type: InformationElementType, data: Vec<u8>) -> Self {
         Self { ie_type, data }
     }
-    
+
     /// Parse a variable-length Information Element
     pub fn parse_variable(data: &[u8]) -> Result<(Self, usize)> {
         if data.len() < 2 {
             return Err(anyhow!("Insufficient data for IE header"));
         }
-        
+
         let ie_type = InformationElementType::from_u8(data[0])
             .ok_or_else(|| anyhow!("Unknown IE type: 0x{:02X}", data[0]))?;
-        
+
         let length = data[1] as usize;
         if data.len() < length + 2 {
             return Err(anyhow!("Insufficient data for IE content"));
         }
-        
+
         let ie_data = data[2..2 + length].to_vec();
-        
+
         Ok((Self::new(ie_type, ie_data), length + 2))
     }
-    
+
     pub fn encode(&self) -> Vec<u8> {
         let mut result = vec![self.ie_type as u8, self.data.len() as u8];
         result.extend_from_slice(&self.data);
@@ -357,26 +367,29 @@ impl Q931Message {
             information_elements,
         }
     }
-    
+
     /// Parse Q.931 message from bytes
     pub fn parse(data: &[u8]) -> Result<Self> {
         if data.len() < 3 {
             return Err(anyhow!("Message too short for Q.931 header"));
         }
-        
+
         let mut offset = 0;
-        
+
         // Protocol discriminator
         let protocol_discriminator = data[offset];
         if protocol_discriminator != Q931_PROTOCOL_DISCRIMINATOR {
-            return Err(anyhow!("Invalid protocol discriminator: 0x{:02X}", protocol_discriminator));
+            return Err(anyhow!(
+                "Invalid protocol discriminator: 0x{:02X}",
+                protocol_discriminator
+            ));
         }
         offset += 1;
-        
+
         // Call reference
         let (call_reference, cr_bytes) = CallReference::parse(&data[offset..])?;
         offset += cr_bytes;
-        
+
         // Message type
         if offset >= data.len() {
             return Err(anyhow!("No message type found"));
@@ -384,7 +397,7 @@ impl Q931Message {
         let message_type = Q931MessageType::from_u8(data[offset])
             .ok_or_else(|| anyhow!("Unknown message type: 0x{:02X}", data[offset]))?;
         offset += 1;
-        
+
         // Information elements
         let mut information_elements = Vec::new();
         while offset < data.len() {
@@ -392,7 +405,7 @@ impl Q931Message {
             information_elements.push(ie);
             offset += ie_bytes;
         }
-        
+
         Ok(Self {
             protocol_discriminator,
             call_reference,
@@ -400,37 +413,39 @@ impl Q931Message {
             information_elements,
         })
     }
-    
+
     /// Encode Q.931 message to bytes
     pub fn encode(&self) -> Vec<u8> {
         let mut result = Vec::new();
-        
+
         // Protocol discriminator
         result.push(self.protocol_discriminator);
-        
+
         // Call reference
         result.extend_from_slice(&self.call_reference.encode());
-        
+
         // Message type
         result.push(self.message_type as u8);
-        
+
         // Information elements
         for ie in &self.information_elements {
             result.extend_from_slice(&ie.encode());
         }
-        
+
         result
     }
-    
+
     /// Find specific Information Element
     pub fn find_ie(&self, ie_type: InformationElementType) -> Option<&InformationElement> {
-        self.information_elements.iter()
+        self.information_elements
+            .iter()
             .find(|ie| ie.ie_type == ie_type)
     }
-    
+
     /// Get all IEs of a specific type
     pub fn get_ies(&self, ie_type: InformationElementType) -> Vec<&InformationElement> {
-        self.information_elements.iter()
+        self.information_elements
+            .iter()
             .filter(|ie| ie.ie_type == ie_type)
             .collect()
     }
@@ -494,14 +509,14 @@ pub fn parse_cause_ie(data: &[u8]) -> Result<(u8, CauseValue, Option<Vec<u8>>)> 
     if data.is_empty() {
         return Err(anyhow!("Empty cause IE data"));
     }
-    
+
     let location = data[0] & 0x0F;
     let cause_value = if data.len() > 1 {
         data[1] & 0x7F
     } else {
         return Err(anyhow!("Cause IE too short"));
     };
-    
+
     let cause = match cause_value {
         16 => CauseValue::Normal,
         17 => CauseValue::UserBusy,
@@ -512,18 +527,22 @@ pub fn parse_cause_ie(data: &[u8]) -> Result<(u8, CauseValue, Option<Vec<u8>>)> 
         34 => CauseValue::NoCircuitChannelAvailable,
         _ => CauseValue::ProtocolErrorUnspecified,
     };
-    
+
     let diagnostics = if data.len() > 2 {
         Some(data[2..].to_vec())
     } else {
         None
     };
-    
+
     Ok((location, cause, diagnostics))
 }
 
 /// Create Cause Information Element  
-pub fn create_cause_ie(location: u8, cause: CauseValue, diagnostics: Option<&[u8]>) -> InformationElement {
+pub fn create_cause_ie(
+    location: u8,
+    cause: CauseValue,
+    diagnostics: Option<&[u8]>,
+) -> InformationElement {
     let mut data = vec![0x80 | (location & 0x0F), 0x80 | (cause as u8)];
     if let Some(diag) = diagnostics {
         data.extend_from_slice(diag);
@@ -536,13 +555,13 @@ pub fn parse_called_party_number(data: &[u8]) -> Result<(u8, u8, String)> {
     if data.is_empty() {
         return Err(anyhow!("Empty called party number IE"));
     }
-    
+
     let type_of_number = (data[0] >> 4) & 0x07;
     let numbering_plan = data[0] & 0x0F;
-    
+
     let digits = String::from_utf8(data[1..].to_vec())
         .map_err(|_| anyhow!("Invalid digits in called party number"))?;
-    
+
     Ok((type_of_number, numbering_plan, digits))
 }
 
@@ -551,11 +570,14 @@ pub fn create_called_party_number_ie(ton: u8, npi: u8, digits: &str) -> Result<I
     if digits.len() > 20 {
         return Err(anyhow!("Called party number too long"));
     }
-    
+
     let mut data = vec![0x80 | ((ton & 0x07) << 4) | (npi & 0x0F)];
     data.extend_from_slice(digits.as_bytes());
-    
-    Ok(InformationElement::new(InformationElementType::CalledPartyNumber, data))
+
+    Ok(InformationElement::new(
+        InformationElementType::CalledPartyNumber,
+        data,
+    ))
 }
 
 /// Parse Calling Party Number IE  
@@ -563,14 +585,14 @@ pub fn parse_calling_party_number(data: &[u8]) -> Result<(u8, u8, u8, String)> {
     if data.len() < 2 {
         return Err(anyhow!("Calling party number IE too short"));
     }
-    
+
     let type_of_number = (data[0] >> 4) & 0x07;
     let numbering_plan = data[0] & 0x0F;
     let presentation = (data[1] >> 5) & 0x03;
-    
+
     let digits = String::from_utf8(data[2..].to_vec())
         .map_err(|_| anyhow!("Invalid digits in calling party number"))?;
-    
+
     Ok((type_of_number, numbering_plan, presentation, digits))
 }
 
@@ -586,22 +608,22 @@ mod tests {
         assert_eq!(cr.flag, 0x80);
         assert_eq!(len, 3);
     }
-    
-    #[test] 
+
+    #[test]
     fn test_message_parsing() {
         let data = vec![
-            0x08,       // Protocol discriminator
-            0x02,       // CRV length
+            0x08, // Protocol discriminator
+            0x02, // CRV length
             0x00, 0x01, // CRV value (originating)
-            0x05,       // SETUP message
+            0x05, // SETUP message
         ];
-        
+
         let msg = Q931Message::parse(&data).unwrap();
         assert_eq!(msg.protocol_discriminator, 0x08);
         assert_eq!(msg.call_reference.value, 1);
         assert_eq!(msg.message_type, Q931MessageType::Setup);
     }
-    
+
     #[test]
     fn test_cause_ie() {
         let ie = create_cause_ie(1, CauseValue::UserBusy, None);

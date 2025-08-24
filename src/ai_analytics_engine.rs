@@ -4,13 +4,13 @@
  */
 
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::RwLock;
-use tracing::{info, warn, debug};
-use serde::{Deserialize, Serialize};
+use tracing::{debug, info, warn};
 
 /// AI Analytics configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -164,7 +164,7 @@ pub struct NetworkMetrics {
 impl AIAnalyticsEngine {
     pub fn new(config: AIAnalyticsConfig) -> Self {
         info!("🤖 Initializing AI Analytics Engine with advanced capabilities");
-        
+
         Self {
             config,
             call_history: Arc::new(RwLock::new(Vec::new())),
@@ -226,22 +226,26 @@ impl AIAnalyticsEngine {
         }
 
         // Analyze historical data for similar calls
-        let historical_data = self.get_similar_call_history(source_ip, destination_ip, codec).await?;
-        
+        let historical_data = self
+            .get_similar_call_history(source_ip, destination_ip, codec)
+            .await?;
+
         // Predict quality metrics using historical analysis
-        let (predicted_mos, predicted_packet_loss, predicted_jitter, predicted_latency) = 
+        let (predicted_mos, predicted_packet_loss, predicted_jitter, predicted_latency) =
             self.calculate_quality_predictions(&historical_data).await?;
 
         // Identify risk factors
-        let risk_factors = self.identify_quality_risk_factors(
-            source_ip, destination_ip, codec, &historical_data
-        ).await?;
+        let risk_factors = self
+            .identify_quality_risk_factors(source_ip, destination_ip, codec, &historical_data)
+            .await?;
 
         // Generate recommendations
         let recommendations = self.generate_quality_recommendations(&risk_factors).await?;
 
         // Calculate confidence based on historical data availability
-        let confidence = self.calculate_prediction_confidence(&historical_data).await?;
+        let confidence = self
+            .calculate_prediction_confidence(&historical_data)
+            .await?;
 
         let prediction = CallQualityPrediction {
             call_id: call_id.to_string(),
@@ -260,8 +264,10 @@ impl AIAnalyticsEngine {
             predictions.insert(call_id.to_string(), prediction.clone());
         }
 
-        debug!("🔮 Call quality predicted for {}: MOS={:.2}, Confidence={:.2}", 
-               call_id, predicted_mos, confidence);
+        debug!(
+            "🔮 Call quality predicted for {}: MOS={:.2}, Confidence={:.2}",
+            call_id, predicted_mos, confidence
+        );
 
         Ok(prediction)
     }
@@ -348,8 +354,11 @@ impl AIAnalyticsEngine {
         }
 
         if fraud_probability > 0.5 {
-            warn!("🚨 High fraud probability detected for call {}: {:.1}%", 
-                  call_id, fraud_probability * 100.0);
+            warn!(
+                "🚨 High fraud probability detected for call {}: {:.1}%",
+                call_id,
+                fraud_probability * 100.0
+            );
         }
 
         Ok(result)
@@ -373,7 +382,8 @@ impl AIAnalyticsEngine {
         if metrics.bandwidth_utilization > 0.8 {
             optimizations.push(NetworkOptimization {
                 optimization_type: OptimizationType::LoadBalancing,
-                description: "High bandwidth utilization detected - recommend load balancing".to_string(),
+                description: "High bandwidth utilization detected - recommend load balancing"
+                    .to_string(),
                 expected_improvement: 0.25,
                 implementation_priority: Priority::High,
                 estimated_impact: "25% reduction in latency".to_string(),
@@ -419,7 +429,10 @@ impl AIAnalyticsEngine {
             *recommendations = optimizations.clone();
         }
 
-        info!("🔧 Generated {} network optimization recommendations", optimizations.len());
+        info!(
+            "🔧 Generated {} network optimization recommendations",
+            optimizations.len()
+        );
 
         Ok(optimizations)
     }
@@ -428,17 +441,20 @@ impl AIAnalyticsEngine {
     async fn start_call_quality_prediction(&self) {
         let config = self.config.clone();
         let call_history = Arc::clone(&self.call_history);
-        
+
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(60));
-            
+
             loop {
                 interval.tick().await;
-                
+
                 if config.call_quality_prediction {
                     // Continuously improve prediction models with new data
                     let history = call_history.read().await;
-                    debug!("🔮 Updated call quality prediction models with {} samples", history.len());
+                    debug!(
+                        "🔮 Updated call quality prediction models with {} samples",
+                        history.len()
+                    );
                 }
             }
         });
@@ -448,17 +464,20 @@ impl AIAnalyticsEngine {
     async fn start_fraud_detection(&self) {
         let config = self.config.clone();
         let fraud_patterns = Arc::clone(&self.fraud_patterns);
-        
+
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(30));
-            
+
             loop {
                 interval.tick().await;
-                
+
                 if config.fraud_detection {
                     // Update fraud patterns with latest intelligence
                     let patterns = fraud_patterns.read().await;
-                    debug!("🕵️ Updated fraud detection with {} patterns", patterns.len());
+                    debug!(
+                        "🕵️ Updated fraud detection with {} patterns",
+                        patterns.len()
+                    );
                 }
             }
         });
@@ -467,13 +486,13 @@ impl AIAnalyticsEngine {
     /// Start network optimization service
     async fn start_network_optimization(&self) {
         let config = self.config.clone();
-        
+
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(300)); // Every 5 minutes
-            
+
             loop {
                 interval.tick().await;
-                
+
                 if config.network_optimization {
                     debug!("🔧 Running network optimization analysis");
                 }
@@ -485,13 +504,13 @@ impl AIAnalyticsEngine {
     async fn start_realtime_analytics(&self) {
         let config = self.config.clone();
         let network_metrics = Arc::clone(&self.network_metrics);
-        
+
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(10));
-            
+
             loop {
                 interval.tick().await;
-                
+
                 if config.realtime_analytics {
                     // Update real-time metrics
                     let mut metrics = network_metrics.write().await;
@@ -533,22 +552,42 @@ impl AIAnalyticsEngine {
     }
 
     // Helper methods (simplified implementations)
-    async fn get_similar_call_history(&self, _source_ip: IpAddr, _dest_ip: IpAddr, _codec: &str) -> Result<Vec<CallMetrics>> {
+    async fn get_similar_call_history(
+        &self,
+        _source_ip: IpAddr,
+        _dest_ip: IpAddr,
+        _codec: &str,
+    ) -> Result<Vec<CallMetrics>> {
         let history = self.call_history.read().await;
         Ok(history.iter().take(10).cloned().collect())
     }
 
-    async fn calculate_quality_predictions(&self, _history: &[CallMetrics]) -> Result<(f64, f64, f64, f64)> {
+    async fn calculate_quality_predictions(
+        &self,
+        _history: &[CallMetrics],
+    ) -> Result<(f64, f64, f64, f64)> {
         // Simplified prediction - in real implementation would use ML models
         Ok((4.2, 0.01, 15.0, 120.0)) // MOS, packet_loss, jitter, latency
     }
 
-    async fn identify_quality_risk_factors(&self, _source_ip: IpAddr, _dest_ip: IpAddr, _codec: &str, _history: &[CallMetrics]) -> Result<Vec<String>> {
+    async fn identify_quality_risk_factors(
+        &self,
+        _source_ip: IpAddr,
+        _dest_ip: IpAddr,
+        _codec: &str,
+        _history: &[CallMetrics],
+    ) -> Result<Vec<String>> {
         Ok(vec!["Network congestion detected".to_string()])
     }
 
-    async fn generate_quality_recommendations(&self, _risk_factors: &[String]) -> Result<Vec<String>> {
-        Ok(vec!["Consider codec optimization".to_string(), "Monitor network path".to_string()])
+    async fn generate_quality_recommendations(
+        &self,
+        _risk_factors: &[String],
+    ) -> Result<Vec<String>> {
+        Ok(vec![
+            "Consider codec optimization".to_string(),
+            "Monitor network path".to_string(),
+        ])
     }
 
     async fn calculate_prediction_confidence(&self, history: &[CallMetrics]) -> Result<f64> {
@@ -589,7 +628,11 @@ impl AIAnalyticsEngine {
         let fraud_detection_rate = if fraud_detections.is_empty() {
             0.0
         } else {
-            fraud_detections.values().filter(|f| f.fraud_probability > 0.5).count() as f64 / fraud_detections.len() as f64
+            fraud_detections
+                .values()
+                .filter(|f| f.fraud_probability > 0.5)
+                .count() as f64
+                / fraud_detections.len() as f64
         };
 
         Ok(AnalyticsSummary {
@@ -606,7 +649,7 @@ impl AIAnalyticsEngine {
         let latency_score = (200.0 - metrics.average_latency.min(200.0)) / 200.0;
         let loss_score = (0.05 - metrics.packet_loss_rate.min(0.05)) / 0.05;
         let utilization_score = (0.8 - metrics.bandwidth_utilization.min(0.8)) / 0.8;
-        
+
         (latency_score + loss_score + utilization_score) / 3.0 * 100.0
     }
 }
@@ -630,7 +673,7 @@ mod tests {
     async fn test_ai_analytics_creation() {
         let config = AIAnalyticsConfig::default();
         let engine = AIAnalyticsEngine::new(config);
-        
+
         assert!(engine.config.enabled);
         assert!(engine.config.call_quality_prediction);
         assert!(engine.config.fraud_detection);
@@ -640,14 +683,17 @@ mod tests {
     async fn test_call_quality_prediction() {
         let config = AIAnalyticsConfig::default();
         let engine = AIAnalyticsEngine::new(config);
-        
-        let prediction = engine.predict_call_quality(
-            "test-call-123",
-            IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100)),
-            IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
-            "G.711"
-        ).await.unwrap();
-        
+
+        let prediction = engine
+            .predict_call_quality(
+                "test-call-123",
+                IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100)),
+                IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
+                "G.711",
+            )
+            .await
+            .unwrap();
+
         assert_eq!(prediction.call_id, "test-call-123");
         assert!(prediction.predicted_mos > 0.0);
         assert!(prediction.confidence > 0.0);
@@ -657,15 +703,18 @@ mod tests {
     async fn test_fraud_detection() {
         let config = AIAnalyticsConfig::default();
         let engine = AIAnalyticsEngine::new(config);
-        
-        let result = engine.detect_fraud(
-            "fraud-test-123",
-            IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100)),
-            "+15551234567",
-            "9005551234", // Premium number
-            Duration::from_secs(5)
-        ).await.unwrap();
-        
+
+        let result = engine
+            .detect_fraud(
+                "fraud-test-123",
+                IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100)),
+                "+15551234567",
+                "9005551234", // Premium number
+                Duration::from_secs(5),
+            )
+            .await
+            .unwrap();
+
         assert_eq!(result.call_id, "fraud-test-123");
         assert!(result.fraud_probability > 0.0);
     }

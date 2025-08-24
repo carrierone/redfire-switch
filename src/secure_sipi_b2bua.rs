@@ -3,23 +3,20 @@
  * Security-hardened version with comprehensive input validation and vulnerability fixes
  */
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
+use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::UdpSocket;
 use tokio::sync::RwLock;
-use tracing::{info, warn, error, debug};
-use chrono::{DateTime, Utc};
+use tracing::{debug, error, info, warn};
 
-use redfire_sip_stack::sipt_sipi::{
-    SipTSipIService, SipTSipIConfig, IsupMessage
-};
 use crate::security_utils::{
-    self, sanitize_for_logging, mask_phone_number, validate_message_size,
-    validate_header, validate_phone_number, safe_slice,
-    RateLimiter
+    self, mask_phone_number, safe_slice, sanitize_for_logging, validate_header,
+    validate_message_size, validate_phone_number, RateLimiter,
 };
+use redfire_sip_stack::sipt_sipi::{IsupMessage, SipTSipIConfig, SipTSipIService};
 
 /// Enhanced call leg with SIP-I support and security validation
 #[derive(Debug, Clone)]
@@ -52,9 +49,9 @@ pub enum CallState {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CarrierType {
-    SipNative,      // Pure SIP carrier
-    SipI,           // SIP-I capable carrier
-    LegacyPstn,     // Traditional PSTN/SS7
+    SipNative,  // Pure SIP carrier
+    SipI,       // SIP-I capable carrier
+    LegacyPstn, // Traditional PSTN/SS7
 }
 
 /// SIP-I call session with A-leg and B-leg
@@ -95,21 +92,28 @@ impl SecureSipIB2BUA {
     ) -> Result<Self> {
         // Initialize security utilities
         security_utils::init_security();
-        
-        let socket = UdpSocket::bind(bind_addr).await
+
+        let socket = UdpSocket::bind(bind_addr)
+            .await
             .map_err(|e| anyhow!("Failed to bind socket to {}: {}", bind_addr, e))?;
-        
+
         info!("Secure SIP-I B2BUA listening on {}", bind_addr);
-        info!("Termination target: {}:{}", termination_host, termination_port);
-        
+        info!(
+            "Termination target: {}:{}",
+            termination_host, termination_port
+        );
+
         // Initialize SIP-I service
         let sipi_service = Arc::new(SipTSipIService::new(sipi_config.clone()));
-        info!("SIP-I service initialized for B2BUA - SIP-T: {}, SIP-I: {}", 
-              sipi_service.is_sipt_enabled(), sipi_service.is_sipi_enabled());
-        
+        info!(
+            "SIP-I service initialized for B2BUA - SIP-T: {}, SIP-I: {}",
+            sipi_service.is_sipt_enabled(),
+            sipi_service.is_sipi_enabled()
+        );
+
         // Initialize rate limiter (100 requests per minute per IP)
         let rate_limiter = Arc::new(RwLock::new(RateLimiter::new(100, 60)));
-        
+
         Ok(Self {
             socket: Arc::new(socket),
             termination_host,
@@ -123,11 +127,11 @@ impl SecureSipIB2BUA {
             rate_limiter,
         })
     }
-    
+
     pub async fn start(&self) -> Result<()> {
         info!("Starting Secure SIP-I B2BUA with enhanced security features...");
         let mut buffer = vec![0u8; 65536]; // Set reasonable buffer size
-        
+
         loop {
             match self.socket.recv_from(&mut buffer).await {
                 Ok((len, from)) => {
@@ -139,19 +143,22 @@ impl SecureSipIB2BUA {
                             continue;
                         }
                     }
-                    
+
                     let message = String::from_utf8_lossy(&buffer[..len]);
-                    
+
                     // Validate message size
                     if let Err(e) = validate_message_size(&message) {
                         error!("Message validation failed from {}: {}", from, e);
                         continue;
                     }
-                    
+
                     // Secure logging with sanitization
-                    debug!("Received from {}: {}", from, 
-                           sanitize_for_logging(message.lines().next().unwrap_or("")));
-                    
+                    debug!(
+                        "Received from {}: {}",
+                        from,
+                        sanitize_for_logging(message.lines().next().unwrap_or(""))
+                    );
+
                     if let Err(e) = self.handle_message_secure(&message, from).await {
                         error!("Error handling message from {}: {}", from, e);
                     }
@@ -163,7 +170,7 @@ impl SecureSipIB2BUA {
             }
         }
     }
-    
+
     async fn handle_message_secure(&self, message: &str, from: SocketAddr) -> Result<()> {
         // Basic SIP method detection with security validation
         if message.starts_with("INVITE") {
@@ -182,57 +189,72 @@ impl SecureSipIB2BUA {
             debug!("Handling SIP response from {}", from);
             self.handle_response_secure(message, from).await?;
         } else {
-            warn!("Unknown SIP message type from {}: {}", 
-                  from, sanitize_for_logging(message.lines().next().unwrap_or("")));
+            warn!(
+                "Unknown SIP message type from {}: {}",
+                from,
+                sanitize_for_logging(message.lines().next().unwrap_or(""))
+            );
         }
-        
+
         Ok(())
     }
-    
+
     async fn handle_invite_secure(&self, message: &str, from: SocketAddr) -> Result<()> {
         // Extract and validate call-id with security checks
         let call_id = self.extract_header_secure(message, "Call-ID")?;
         if call_id.len() > 256 {
             return Err(anyhow!("Call-ID exceeds maximum length"));
         }
-        
+
         // Extract and validate phone numbers with security validation
         let from_number = self.extract_phone_number_from_header_secure(message, "From")?;
         let to_number = self.extract_phone_number_from_header_secure(message, "To")?;
-        
+
         // Secure logging with masked numbers
-        info!("Processing INVITE from {} to {} (Call-ID: {})", 
-              mask_phone_number(&from_number), 
-              mask_phone_number(&to_number),
-              sanitize_for_logging(&call_id));
-        
+        info!(
+            "Processing INVITE from {} to {} (Call-ID: {})",
+            mask_phone_number(&from_number),
+            mask_phone_number(&to_number),
+            sanitize_for_logging(&call_id)
+        );
+
         // Parse incoming ISUP if present
         let incoming_isup = match self.extract_isup_from_sip_secure(message).await {
             Ok(isup) => Some(isup),
             Err(_) => None, // No ISUP present, that's okay
         };
-        
+
         // Determine carrier types with validation
         let originating_carrier = self.detect_carrier_type_secure(message, from).await?;
         let terminating_carrier = self.determine_termination_carrier_type(&to_number).await?;
-        
-        info!("Carrier types: Originating={:?}, Terminating={:?}", 
-              originating_carrier, terminating_carrier);
-        
+
+        info!(
+            "Carrier types: Originating={:?}, Terminating={:?}",
+            originating_carrier, terminating_carrier
+        );
+
         // Process call based on carrier types
-        let (modified_invite, cic, isup_iam) = if terminating_carrier == CarrierType::LegacyPstn || 
-                                                   terminating_carrier == CarrierType::SipI {
+        let (modified_invite, cic, isup_iam) = if terminating_carrier == CarrierType::LegacyPstn
+            || terminating_carrier == CarrierType::SipI
+        {
             // Generate ISUP IAM for PSTN/SIP-I termination
             let cic = self.allocate_cic_secure().await?;
             let iam = if let Some(ref existing_isup) = incoming_isup {
                 // Pass through existing ISUP with modifications
-                self.modify_isup_for_termination_secure(existing_isup.clone(), &from_number, &to_number, cic).await?
+                self.modify_isup_for_termination_secure(
+                    existing_isup.clone(),
+                    &from_number,
+                    &to_number,
+                    cic,
+                )
+                .await?
             } else {
                 // Create new ISUP IAM from SIP
-                self.sipi_service.sip_to_iam(&from_number, &to_number, cic)
+                self.sipi_service
+                    .sip_to_iam(&from_number, &to_number, cic)
                     .map_err(|e| anyhow!("Failed to generate ISUP IAM: {}", e))?
             };
-            
+
             let modified_invite = self.add_isup_to_sip_secure(message, &iam).await?;
             (modified_invite, Some(cic), Some(iam))
         } else {
@@ -243,22 +265,29 @@ impl SecureSipIB2BUA {
 
         // Validate termination address
         let termination_addr = format!("{}:{}", self.termination_host, self.termination_port);
-        let termination_socket: SocketAddr = termination_addr.parse()
+        let termination_socket: SocketAddr = termination_addr
+            .parse()
             .map_err(|e| anyhow!("Invalid termination address: {}", e))?;
-        
+
         // Forward to termination with size validation
         if modified_invite.len() > security_utils::MAX_SIP_MESSAGE_SIZE {
             return Err(anyhow!("Modified INVITE exceeds maximum message size"));
         }
-        
-        self.send_to_secure(modified_invite.as_bytes(), termination_socket).await?;
-        info!("INVITE forwarded to termination for call {} (CIC: {:?})", 
-              sanitize_for_logging(&call_id), cic);
+
+        self.send_to_secure(modified_invite.as_bytes(), termination_socket)
+            .await?;
+        info!(
+            "INVITE forwarded to termination for call {} (CIC: {:?})",
+            sanitize_for_logging(&call_id),
+            cic
+        );
 
         // Create secure call session
-        let local_addr = self.socket.local_addr()
+        let local_addr = self
+            .socket
+            .local_addr()
             .map_err(|e| anyhow!("Failed to get local address: {}", e))?;
-            
+
         let a_leg = SecureSipICallLeg {
             call_id: call_id.clone(),
             from_tag: self.extract_from_tag_secure(message)?,
@@ -306,7 +335,8 @@ impl SecureSipIB2BUA {
         // Store session with bounds checking
         {
             let mut calls = self.calls.write().await;
-            if calls.len() >= 10000 { // Prevent memory exhaustion
+            if calls.len() >= 10000 {
+                // Prevent memory exhaustion
                 warn!("Maximum number of concurrent calls reached, rejecting new call");
                 return Err(anyhow!("Maximum concurrent calls exceeded"));
             }
@@ -315,7 +345,7 @@ impl SecureSipIB2BUA {
 
         Ok(())
     }
-    
+
     // Secure header extraction with validation
     fn extract_header_secure(&self, message: &str, header_name: &str) -> Result<String> {
         for line in message.lines() {
@@ -325,35 +355,48 @@ impl SecureSipIB2BUA {
                 // Find the first colon and take everything after it
                 if let Some(colon_pos) = line.find(':') {
                     let header_value = line[(colon_pos + 1)..].trim().to_string();
-                    
+
                     // Validate header
                     validate_header(header_name, &header_value)?;
-                    
+
                     return Ok(header_value);
                 }
             }
         }
-        Err(anyhow!("Header {} not found", sanitize_for_logging(header_name)))
+        Err(anyhow!(
+            "Header {} not found",
+            sanitize_for_logging(header_name)
+        ))
     }
 
-    fn extract_phone_number_from_header_secure(&self, message: &str, header_name: &str) -> Result<String> {
+    fn extract_phone_number_from_header_secure(
+        &self,
+        message: &str,
+        header_name: &str,
+    ) -> Result<String> {
         let header_value = self.extract_header_secure(message, header_name)?;
-        
+
         // Secure logging with sanitization
-        debug!("Extracting phone number from {} header: '{}'", 
-               header_name, sanitize_for_logging(&header_value));
-        
+        debug!(
+            "Extracting phone number from {} header: '{}'",
+            header_name,
+            sanitize_for_logging(&header_value)
+        );
+
         // Extract number from SIP URI with bounds checking
         if let Some(start) = header_value.find("sip:") {
             let sip_uri = &header_value[start..];
             debug!("Found SIP URI: '{}'", sanitize_for_logging(sip_uri));
-            
+
             if let Some(end) = sip_uri.find('@') {
                 // Secure bounds checking
                 if sip_uri.len() >= 4 && end > 4 {
                     let number_part = safe_slice(sip_uri, 4, end)?; // Remove "sip:" prefix
-                    debug!("Extracted number part: '{}'", sanitize_for_logging(number_part));
-                    
+                    debug!(
+                        "Extracted number part: '{}'",
+                        sanitize_for_logging(number_part)
+                    );
+
                     // Validate phone number format
                     let validated_number = validate_phone_number(number_part)?;
                     return Ok(validated_number.trim_start_matches('+').to_string());
@@ -362,23 +405,28 @@ impl SecureSipIB2BUA {
                 }
             }
         }
-        
-        Err(anyhow!("Could not extract phone number from {} header", 
-                    sanitize_for_logging(header_name)))
+
+        Err(anyhow!(
+            "Could not extract phone number from {} header",
+            sanitize_for_logging(header_name)
+        ))
     }
-    
+
     fn extract_from_tag_secure(&self, message: &str) -> Result<String> {
         let from_header = self.extract_header_secure(message, "From")?;
         if let Some(tag_start) = from_header.find("tag=") {
             let tag_part = &from_header[tag_start + 4..];
             let tag = tag_part.split([';', ' ', '>']).next().unwrap_or("").trim();
-            
+
             // Validate tag format
             if tag.len() > 64 {
                 return Err(anyhow!("From tag exceeds maximum length"));
             }
-            
-            if tag.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+
+            if tag
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+            {
                 Ok(tag.to_string())
             } else {
                 Err(anyhow!("Invalid characters in From tag"))
@@ -387,24 +435,27 @@ impl SecureSipIB2BUA {
             Err(anyhow!("From tag not found"))
         }
     }
-    
+
     async fn send_to_secure(&self, data: &[u8], addr: SocketAddr) -> Result<()> {
         // Validate data size
         if data.len() > security_utils::MAX_SIP_MESSAGE_SIZE {
             return Err(anyhow!("Message exceeds maximum size for transmission"));
         }
-        
-        self.socket.send_to(data, addr).await
+
+        self.socket
+            .send_to(data, addr)
+            .await
             .map_err(|e| anyhow!("Failed to send data to {}: {}", addr, e))?;
         Ok(())
     }
-    
+
     async fn allocate_cic_secure(&self) -> Result<u16> {
         let mut used_cics = self.used_cics.write().await;
-        
+
         for cic in self.cic_range_start..=self.cic_range_end {
             if !used_cics.contains(&cic) {
-                if used_cics.len() >= 1000 { // Prevent excessive memory usage
+                if used_cics.len() >= 1000 {
+                    // Prevent excessive memory usage
                     return Err(anyhow!("Too many CICs allocated"));
                 }
                 used_cics.push(cic);
@@ -414,71 +465,81 @@ impl SecureSipIB2BUA {
         }
         Err(anyhow!("No available CICs in range"))
     }
-    
+
     // Additional secure methods would be implemented here...
     // For brevity, I'm showing the pattern of security hardening
-    
+
     async fn handle_ack_secure(&self, _message: &str, _from: SocketAddr) -> Result<()> {
         // Secure ACK handling implementation
         Ok(())
     }
-    
+
     async fn handle_bye_secure(&self, _message: &str, _from: SocketAddr) -> Result<()> {
         // Secure BYE handling implementation
         Ok(())
     }
-    
+
     async fn handle_options_secure(&self, _message: &str, _from: SocketAddr) -> Result<()> {
         // Secure OPTIONS handling implementation
         Ok(())
     }
-    
+
     async fn handle_response_secure(&self, _message: &str, _from: SocketAddr) -> Result<()> {
         // Secure response handling implementation
         Ok(())
     }
-    
+
     async fn extract_isup_from_sip_secure(&self, _message: &str) -> Result<IsupMessage> {
         // Secure ISUP extraction with validation
         Err(anyhow!("ISUP extraction not implemented"))
     }
-    
-    async fn detect_carrier_type_secure(&self, _message: &str, _from: SocketAddr) -> Result<CarrierType> {
+
+    async fn detect_carrier_type_secure(
+        &self,
+        _message: &str,
+        _from: SocketAddr,
+    ) -> Result<CarrierType> {
         // Secure carrier type detection
         Ok(CarrierType::SipNative)
     }
-    
+
     async fn determine_termination_carrier_type(&self, _to_number: &str) -> Result<CarrierType> {
         // Secure termination carrier type determination
         Ok(CarrierType::SipNative)
     }
-    
-    async fn modify_isup_for_termination_secure(&self, _isup: IsupMessage, _from: &str, _to: &str, _cic: u16) -> Result<IsupMessage> {
+
+    async fn modify_isup_for_termination_secure(
+        &self,
+        _isup: IsupMessage,
+        _from: &str,
+        _to: &str,
+        _cic: u16,
+    ) -> Result<IsupMessage> {
         // Secure ISUP modification
         Err(anyhow!("ISUP modification not implemented"))
     }
-    
+
     async fn add_isup_to_sip_secure(&self, _message: &str, _iam: &IsupMessage) -> Result<String> {
         // Secure ISUP to SIP addition
         Err(anyhow!("ISUP to SIP addition not implemented"))
     }
-    
+
     fn modify_invite_for_sip_termination_secure(&self, message: &str) -> Result<String> {
         // Remove any ISUP content and return clean SIP INVITE
         Ok(message.to_string())
     }
-    
+
     // Public API methods for monitoring and management
     pub async fn get_cic_usage(&self) -> (usize, u16) {
         let used_cics = self.used_cics.read().await;
         let total_cics = self.cic_range_end - self.cic_range_start + 1;
         (used_cics.len(), total_cics)
     }
-    
+
     pub fn is_sipi_enabled(&self) -> bool {
         self.sipi_service.is_sipi_enabled()
     }
-    
+
     pub fn is_sipt_enabled(&self) -> bool {
         self.sipi_service.is_sipt_enabled()
     }
@@ -488,20 +549,20 @@ impl SecureSipIB2BUA {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_secure_header_extraction() {
         // Test cases for secure header extraction
         security_utils::init_security();
-        
+
         // Test would go here
     }
-    
+
     #[test]
     fn test_phone_number_validation() {
         // Test cases for phone number validation
         security_utils::init_security();
-        
+
         // Test would go here
     }
 }

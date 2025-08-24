@@ -1,0 +1,237 @@
+# LCR Engine Configuration Example
+# This file shows comprehensive configuration for the Least Cost Routing engine
+
+[database]
+# PostgreSQL connection string
+url = "postgresql://lcr_user:lcr_pass@localhost:5432/lcr_db"
+# Maximum database connections
+max_connections = 20
+
+[api]
+# API server bind address
+bind_addr = "0.0.0.0:8080"
+# Enable API authentication
+auth_enabled = false
+# API timeout in seconds
+timeout = 30
+
+[global_timers]
+# Maximum time between 100 Trying and 183 Session Progress (milliseconds)
+timer_100_to_183_ms = 30000
+# Maximum call duration before forced disconnect (seconds)
+timer_max_call_duration_sec = 10800
+# Post dial delay (milliseconds)
+timer_post_dial_delay_ms = 5000
+# Maximum ringing time (seconds)
+timer_ringing_timeout_sec = 120
+# SIP transaction timeout (milliseconds)
+timer_transaction_timeout_ms = 32000
+
+[global_route_advance]
+# SIP codes that trigger route advancement to next trunk
+advance_on_codes = ["503", "504", "603", "606", "480", "487", "502", "500"]
+# SIP codes that stop routing (no more attempts)
+stop_on_codes = ["404", "486", "600", "604", "403", "401", "402"]
+
+[cache]
+# Enable automatic cache reloading
+auto_reload = true
+# Cache reload interval in minutes
+reload_interval_minutes = 60
+# Enable cache statistics
+enable_stats = true
+
+[nanpa]
+# Path to NANPA data files
+data_path = "files/"
+# Automatically load NANPA data on startup
+auto_load = true
+# NANPA data refresh interval (hours)
+refresh_interval_hours = 24
+
+[lrn]
+# Enable LRN lookups
+enabled = true
+# LRN cache TTL (hours)
+cache_ttl_hours = 24
+# LRN lookup timeout (milliseconds)
+lookup_timeout_ms = 5000
+
+[cluster]
+# Enable cluster synchronization
+enabled = false
+# Cluster node ID
+node_id = "lcr-node-1"
+# Cluster discovery method (redis, consul, static)
+discovery_method = "static"
+# Cluster nodes (for static discovery)
+nodes = ["192.168.1.10:8080", "192.168.1.11:8080"]
+
+[monitoring]
+# Enable prometheus metrics
+prometheus_enabled = true
+# Prometheus metrics port
+prometheus_port = 9090
+# Enable health checks
+health_checks = true
+# Health check interval (seconds)
+health_check_interval = 30
+
+# Example Vendor Configuration
+[[vendors]]
+id = 1
+name = "Carrier ABC"
+type = "Tier1"
+contact_email = "noc@carrierabc.com"
+
+[[vendors.trunks]]
+name = "ABC-Primary"
+host = "sip.carrierabc.com"
+port = 5060
+transport = "UDP"
+capacity_limit = 1000
+cps_limit = 100.0
+priority = 100
+weight = 1
+tech_prefix = ""
+
+[[vendors.trunks]]
+name = "ABC-Secondary" 
+host = "sip2.carrierabc.com"
+port = 5060
+transport = "UDP"
+capacity_limit = 1000
+cps_limit = 100.0
+priority = 110
+weight = 1
+
+[[vendors]]
+id = 2
+name = "Carrier XYZ"
+type = "Premium"
+
+[[vendors.trunks]]
+name = "XYZ-Premium"
+host = "premium.carrierxyz.net"
+port = 5061
+transport = "TLS"
+capacity_limit = 2000
+cps_limit = 200.0
+priority = 90
+weight = 1
+
+# Example Client Configuration
+[[clients]]
+id = 1
+name = "Retail Customer A"
+type = "Retail"
+profit_protection = true
+min_profit_margin = 0.0020
+
+[[clients.trunks]]
+name = "Customer-A-Main"
+ip_address = "192.168.1.100"
+capacity_limit = 100
+cps_limit = 10.0
+auth_username = "customer_a"
+auth_password = "secure_pass123"
+
+# Timer overrides for this client
+[clients.trunks.timers]
+timer_100_to_183_ms = 20000
+timer_max_call_duration_sec = 7200
+
+# Route advance overrides for this client
+[clients.trunks.route_advance]
+advance_on_codes = ["503", "504", "480"]
+stop_on_codes = ["404", "486", "600"]
+
+[[clients]]
+id = 2
+name = "Wholesale Customer B"
+type = "Wholesale" 
+profit_protection = true
+min_profit_margin = 0.0005
+
+[[clients.trunks]]
+name = "Customer-B-Wholesale"
+ip_address = "10.0.0.50"
+capacity_limit = 500
+cps_limit = 50.0
+
+# Example Rate Deck Configuration
+[[rate_decks.vendor]]
+id = 1
+name = "ABC Standard Rates"
+vendor_id = 1
+rate_type = "DNIS"
+effective_date = "2025-01-01T00:00:00Z"
+
+[[rate_decks.vendor]]
+id = 2
+name = "XYZ Premium Rates"
+vendor_id = 2
+rate_type = "LRN"
+effective_date = "2025-01-01T00:00:00Z"
+
+[[rate_decks.client]]
+id = 1
+name = "Retail Rates A"
+client_id = 1
+rate_type = "DNIS"
+effective_date = "2025-01-01T00:00:00Z"
+
+# Example LCR Routes
+[[lcr_routes]]
+id = 1
+name = "NANPA-Standard"
+route_type = "NANPA"
+description = "Standard NANPA least cost routing"
+priority = 100
+
+# Associate ingress trunks with this route
+ingress_trunks = [1, 2]
+
+# Associate egress trunks with this route (in priority order)
+[[lcr_routes.egress_trunks]]
+trunk_id = 1
+vendor_deck_id = 1
+priority = 100
+weight = 1
+
+[[lcr_routes.egress_trunks]]
+trunk_id = 2
+vendor_deck_id = 2
+priority = 110
+weight = 1
+
+# Example Static Routes
+[[static_routes]]
+pattern = "^1911$"
+egress_trunk_id = 1
+priority = 1
+position = "BEFORE"
+description = "Emergency 911 routing"
+
+[[static_routes]]
+pattern = "^1411$"
+egress_trunk_id = 1
+priority = 2
+position = "BEFORE"
+description = "Directory assistance"
+
+[[static_routes]]
+pattern = "^1800"
+egress_trunk_id = 2
+priority = 10
+position = "BEFORE"
+description = "Toll-free numbers"
+# Apply only to specific ingress trunk
+ingress_trunk_id = 1
+
+[[static_routes]]
+pattern = "^1900"
+egress_trunk_id = 3
+priority = 999
+position = "AFTER"
+description = "Premium rate fallback"
