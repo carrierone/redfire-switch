@@ -81,10 +81,10 @@ mod integration_tests {
         };
 
         // Test jurisdiction-based rate selection
-        let inter_rate = get_rate_for_jurisdiction(&rate_without_local, CallJurisdiction::Interstate);
-        let intra_rate = get_rate_for_jurisdiction(&rate_without_local, CallJurisdiction::Intrastate);
+        let inter_rate = get_rate_for_jurisdiction(&rate_without_local, CallJurisdiction::Inter);
+        let intra_rate = get_rate_for_jurisdiction(&rate_without_local, CallJurisdiction::Intra);
         let local_rate = get_rate_for_jurisdiction(&rate_without_local, CallJurisdiction::Local);
-        let ij_rate = get_rate_for_jurisdiction(&rate_without_local, CallJurisdiction::IndeterminateJurisdiction);
+        let ij_rate = get_rate_for_jurisdiction(&rate_without_local, CallJurisdiction::Indeterminate);
 
         assert_eq!(inter_rate, Decimal::from_str("0.0150").unwrap());
         assert_eq!(intra_rate, Decimal::from_str("0.0120").unwrap());
@@ -210,9 +210,9 @@ mod integration_tests {
     // Helper function matching the production logic
     fn get_rate_for_jurisdiction(rate: &NanpaRate, jurisdiction: CallJurisdiction) -> Decimal {
         match jurisdiction {
-            CallJurisdiction::Interstate => rate.inter_rate,
-            CallJurisdiction::Intrastate => rate.intra_rate,
-            CallJurisdiction::IndeterminateJurisdiction => rate.ij_rate,
+            CallJurisdiction::Inter => rate.inter_rate,
+            CallJurisdiction::Intra => rate.intra_rate,
+            CallJurisdiction::Indeterminate => rate.ij_rate,
             CallJurisdiction::Local => rate.local_rate.unwrap_or(rate.intra_rate), // Key fallback
         }
     }

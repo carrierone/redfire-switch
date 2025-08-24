@@ -18,10 +18,11 @@ pub enum RouteType {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum CallJurisdiction {
-    Interstate,
-    Intrastate,
-    IndeterminateJurisdiction,
+    Inter,
+    Intra,
+    Indeterminate,
     Local,
 }
 
@@ -37,6 +38,27 @@ pub struct NanpaRate {
     pub min_increment: i32,
     pub interval: i32,
     pub setup_fee: Option<Decimal>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum InternationalJurisdiction {
+    EEA, // European Economic Area
+    ROW, // Rest of World
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InternationalRate {
+    pub id: i32,
+    pub deck_id: i32,
+    pub country_code: String, // Country prefix (e.g., "44", "49", "33")
+    pub destination_code: Option<String>, // Optional more specific code (e.g., "44207")
+    pub destination_name: String, // "United Kingdom", "Germany Mobile", etc.
+    pub jurisdiction: InternationalJurisdiction, // EEA or ROW
+    pub rate: Decimal, // Single rate for international
+    pub initial_increment: i32, // Initial billing increment in seconds (e.g., 30, 60, 6)
+    pub subsequent_increment: i32, // Subsequent billing increment (e.g., 6, 60, 1)
+    pub setup_fee: Option<Decimal>,
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -129,6 +151,7 @@ pub struct EgressTrunk {
     pub priority: i32,
     pub weight: i32,
     pub tech_prefix: Option<String>,
+    pub supports_international: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -144,6 +167,7 @@ pub struct IngressTrunk {
     pub active: bool,
     pub auth_username: Option<String>,
     pub auth_password: Option<String>,
+    pub supports_international: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -237,6 +261,10 @@ pub struct LrnCacheEntry {
     pub jurisdiction: Option<CallJurisdiction>,
     pub cached_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
+    /// Whether the number is ported (has different LRN)
+    pub ported: bool,
+    /// Response time from LRN dip server
+    pub dip_response_time_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -340,3 +368,155 @@ impl SipResponseCode {
         config.stop_on_codes.contains(&code_str)
     }
 }
+
+/// LRN Dip Server Configuration with multiple protocol support
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LrnDipServer {
+    /// Server IP address for LRN dips
+    pub server_ip: IpAddr,
+    /// Server port (default 5060 for SIP, 443 for HTTPS)
+    pub server_port: u16,
+    /// Server priority (lower = higher priority, 0 = highest)
+    #[serde(default)]
+    pub priority: u8,
+    /// LRN dip protocol: "sip_302", "telique_api", "restapi", "soap"
+    #[serde(default = "default_protocol")]
+    pub protocol: String,
+    /// Authentication credentials (for API-based methods)
+    pub auth: Option<LrnAuthConfig>,
+}
+
+/// Authentication configuration for API-based LRN dips
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LrnAuthConfig {
+    /// Authentication type: "basic", "bearer", "api_key"
+    pub auth_type: String,
+    /// Username for basic auth or API key name
+    pub username: Option<String>,
+    /// Password for basic auth or API key value
+    pub password: Option<String>,
+    /// Bearer token or API key
+    pub token: Option<String>,
+}
+
+fn default_protocol() -> String {
+    "sip_302".to_string()
+}
+
+/// LRN Dip Configuration with backup server support
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LrnDipConfig {
+    /// Primary LRN server (for backwards compatibility)
+    #[serde(default)]
+    pub server_ip: Option<IpAddr>,
+    /// Primary LRN server port (for backwards compatibility)
+    #[serde(default = "default_lrn_port")]
+    pub server_port: u16,
+    /// List of LRN dip servers (primary and backups)
+    #[serde(default)]
+    pub servers: Vec<LrnDipServer>,
+    /// Local IP to bind for SIP client
+    pub local_ip: Option<IpAddr>,
+    /// Local port for SIP client (0 for random)
+    pub local_port: Option<u16>,
+    /// Timeout in milliseconds for LRN dips per server
+    pub timeout_ms: u32,
+    /// Timeout in milliseconds before trying backup server
+    pub backup_timeout_ms: Option<u32>,
+    /// Maximum number of redirects to follow
+    pub max_redirects: u8,
+    /// Enable/disable LRN dipping
+    pub enabled: bool,
+    /// Cache timeout for LRN results in seconds
+    pub cache_timeout_sec: u32,
+    /// Load balancing strategy: "priority" (failover) or "round_robin"
+    #[serde(default = "default_lb_strategy")]
+    pub load_balancing: String,
+}
+
+fn default_lrn_port() -> u16 {
+    5060
+}
+
+fn default_lb_strategy() -> String {
+    "priority".to_string()
+}
+
+impl LrnDipConfig {
+    /// Get effective list of servers (backwards compatibility + new format)
+    pub fn get_servers(&self) -> Vec<LrnDipServer> {
+        if !self.servers.is_empty() {
+            // Sort servers by priority if using priority strategy
+            if self.load_balancing == "priority" {
+                let mut servers = self.servers.clone();
+                servers.sort_by_key(|s| s.priority);
+                servers
+            } else {
+                self.servers.clone()
+            }
+        } else if let Some(ip) = self.server_ip {
+            // Backwards compatibility: use server_ip/server_port
+            vec![LrnDipServer {
+                server_ip: ip,
+                server_port: self.server_port,
+                priority: 0,
+                protocol: "sip_302".to_string(),
+                auth: None,
+            }]
+        } else {
+            vec![]
+        }
+    }
+
+    /// Get the effective backup timeout (fallback to main timeout if not set)
+    pub fn get_backup_timeout_ms(&self) -> u32 {
+        self.backup_timeout_ms.unwrap_or(self.timeout_ms / 2)
+    }
+}
+
+impl Default for LrnDipConfig {
+    fn default() -> Self {
+        Self {
+            server_ip: Some("127.0.0.1".parse().expect("Valid IP address")),
+            server_port: 5060,
+            servers: vec![],
+            local_ip: None,
+            local_port: None,
+            timeout_ms: 5000,
+            backup_timeout_ms: Some(2000), // Try backup after 2 seconds
+            max_redirects: 3,
+            enabled: false,
+            cache_timeout_sec: 3600,
+            load_balancing: "priority".to_string(),
+        }
+    }
+}
+
+/// LRN Dip Request
+#[derive(Debug, Clone)]
+pub struct LrnDipRequest {
+    pub tn: String,
+    pub ani: Option<String>,
+    pub request_id: String,
+}
+
+/// LRN Dip Response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LrnDipResponse {
+    pub original_tn: String,
+    pub lrn: Option<String>,
+    pub ported: bool,
+    pub spid: Option<String>,
+    pub response_time_ms: u64,
+    pub redirect_count: u8,
+    pub error: Option<String>,
+}
+
+/// SIP 302 Redirect Response Handler
+#[derive(Debug, Clone)]
+pub struct SipRedirectResponse {
+    pub contact_uri: String,
+    pub lrn: Option<String>,
+    pub spid: Option<String>,
+}
+

@@ -6,6 +6,7 @@ use axum::{
     routing::{get, post, delete},
 };
 use chrono::{DateTime, NaiveTime, Utc};
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;

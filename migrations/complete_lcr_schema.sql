@@ -5,7 +5,8 @@
 -- Rate deck types
 CREATE TYPE rate_type AS ENUM ('LRN', 'DNIS');
 CREATE TYPE route_type AS ENUM ('NANPA', 'A-Z', 'OTHER');
-CREATE TYPE call_jurisdiction AS ENUM ('INTER', 'INTRA', 'IJ', 'LOCAL');
+CREATE TYPE call_jurisdiction AS ENUM ('inter', 'intra', 'indeterminate', 'local');
+CREATE TYPE international_jurisdiction AS ENUM ('EEA', 'ROW');
 
 -- Vendor rate decks (cost)
 CREATE TABLE vendor_rate_decks (
@@ -89,6 +90,38 @@ CREATE TABLE client_nanpa_rates (
     CONSTRAINT client_nanpa_rates_unique UNIQUE(deck_id, code)
 );
 
+-- International vendor rates (cost)
+CREATE TABLE vendor_international_rates (
+    id SERIAL PRIMARY KEY,
+    deck_id INTEGER NOT NULL REFERENCES vendor_rate_decks(id) ON DELETE CASCADE,
+    country_code VARCHAR(10) NOT NULL, -- Country prefix (e.g., "44", "49", "33")
+    destination_code VARCHAR(20), -- Optional more specific code (e.g., "44207", "4920")
+    destination_name VARCHAR(255) NOT NULL, -- "United Kingdom", "Germany Mobile", etc.
+    jurisdiction international_jurisdiction NOT NULL, -- EEA or ROW
+    rate DECIMAL(10, 7) NOT NULL, -- Single rate for international
+    initial_increment INTEGER NOT NULL DEFAULT 30, -- Initial billing increment in seconds
+    subsequent_increment INTEGER NOT NULL DEFAULT 6, -- Subsequent billing increment
+    setup_fee DECIMAL(10, 7) DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CONSTRAINT vendor_intl_rates_unique UNIQUE(deck_id, country_code, destination_code)
+);
+
+-- International client rates (selling)
+CREATE TABLE client_international_rates (
+    id SERIAL PRIMARY KEY,
+    deck_id INTEGER NOT NULL REFERENCES client_rate_decks(id) ON DELETE CASCADE,
+    country_code VARCHAR(10) NOT NULL, -- Country prefix (e.g., "44", "49", "33")
+    destination_code VARCHAR(20), -- Optional more specific code (e.g., "44207", "4920")
+    destination_name VARCHAR(255) NOT NULL, -- "United Kingdom", "Germany Mobile", etc.
+    jurisdiction international_jurisdiction NOT NULL, -- EEA or ROW
+    rate DECIMAL(10, 7) NOT NULL, -- Single rate for international
+    initial_increment INTEGER NOT NULL DEFAULT 30, -- Initial billing increment in seconds
+    subsequent_increment INTEGER NOT NULL DEFAULT 6, -- Subsequent billing increment
+    setup_fee DECIMAL(10, 7) DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CONSTRAINT client_intl_rates_unique UNIQUE(deck_id, country_code, destination_code)
+);
+
 -- Additional tables (trunks, routing, etc.)
 CREATE TABLE egress_trunks (
     id SERIAL PRIMARY KEY,
@@ -103,6 +136,7 @@ CREATE TABLE egress_trunks (
     priority INTEGER DEFAULT 1,
     weight INTEGER DEFAULT 1,
     tech_prefix VARCHAR(20),
+    supports_international BOOLEAN DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -118,6 +152,7 @@ CREATE TABLE ingress_trunks (
     active BOOLEAN DEFAULT true,
     auth_username VARCHAR(255),
     auth_password VARCHAR(255),
+    supports_international BOOLEAN DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -193,6 +228,11 @@ CREATE INDEX idx_vendor_nanpa_code ON vendor_nanpa_rates(code);
 CREATE INDEX idx_vendor_nanpa_deck ON vendor_nanpa_rates(deck_id);
 CREATE INDEX idx_client_nanpa_code ON client_nanpa_rates(code);
 CREATE INDEX idx_client_nanpa_deck ON client_nanpa_rates(deck_id);
+-- International rate indexes for longest-to-shortest matching
+CREATE INDEX idx_vendor_intl_prefix ON vendor_international_rates(deck_id, country_code, destination_code);
+CREATE INDEX idx_vendor_intl_country ON vendor_international_rates(country_code);
+CREATE INDEX idx_client_intl_prefix ON client_international_rates(deck_id, country_code, destination_code);
+CREATE INDEX idx_client_intl_country ON client_international_rates(country_code);
 CREATE INDEX idx_vendor_decks_effective ON vendor_rate_decks(effective_date, end_date);
 CREATE INDEX idx_client_decks_effective ON client_rate_decks(effective_date, end_date);
 CREATE INDEX idx_vendor_rate_decks_active ON vendor_rate_decks(active) WHERE deleted = false;

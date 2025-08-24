@@ -320,7 +320,7 @@ impl NanpaLergDataLoader {
                 if self.is_canadian_npa(&ani_area).await?
                     || self.is_canadian_npa(&dnis_area).await?
                 {
-                    return Ok("IndeterminateJurisdiction".to_string());
+                    return Ok("indeterminate".to_string());
                 }
 
                 // For US numbers, determine jurisdiction by state
@@ -329,13 +329,13 @@ impl NanpaLergDataLoader {
 
                 match (ani_state, dnis_state) {
                     (Some(ani_st), Some(dnis_st)) if ani_st == dnis_st => {
-                        Ok("Intrastate".to_string())
+                        Ok("intra".to_string())
                     }
-                    (Some(_), Some(_)) => Ok("Interstate".to_string()),
-                    _ => Ok("IndeterminateJurisdiction".to_string()),
+                    (Some(_), Some(_)) => Ok("inter".to_string()),
+                    _ => Ok("indeterminate".to_string()),
                 }
             }
-            _ => Ok("IndeterminateJurisdiction".to_string()),
+            _ => Ok("indeterminate".to_string()),
         }
     }
 

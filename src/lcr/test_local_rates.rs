@@ -23,21 +23,21 @@ mod tests {
 
         // Test rate selection for each jurisdiction
         assert_eq!(
-            get_rate_for_jurisdiction(&rate, CallJurisdiction::Interstate),
+            get_rate_for_jurisdiction(&rate, CallJurisdiction::Inter),
             Decimal::from_str("0.0150").unwrap(),
-            "Interstate rate should be inter_rate"
+            "Inter rate should be inter_rate"
         );
         
         assert_eq!(
-            get_rate_for_jurisdiction(&rate, CallJurisdiction::Intrastate),
+            get_rate_for_jurisdiction(&rate, CallJurisdiction::Intra),
             Decimal::from_str("0.0120").unwrap(),
-            "Intrastate rate should be intra_rate"
+            "Intra rate should be intra_rate"
         );
         
         assert_eq!(
-            get_rate_for_jurisdiction(&rate, CallJurisdiction::IndeterminateJurisdiction),
+            get_rate_for_jurisdiction(&rate, CallJurisdiction::Indeterminate),
             Decimal::from_str("0.0140").unwrap(),
-            "IJ rate should be ij_rate"
+            "Indeterminate rate should be ij_rate"
         );
         
         // This is the critical test - local_rate is NULL, should fall back to intra_rate
@@ -75,9 +75,9 @@ mod tests {
     // Helper function to simulate the rate selection logic
     fn get_rate_for_jurisdiction(rate: &NanpaRate, jurisdiction: CallJurisdiction) -> Decimal {
         match jurisdiction {
-            CallJurisdiction::Interstate => rate.inter_rate,
-            CallJurisdiction::Intrastate => rate.intra_rate,
-            CallJurisdiction::IndeterminateJurisdiction => rate.ij_rate,
+            CallJurisdiction::Inter => rate.inter_rate,
+            CallJurisdiction::Intra => rate.intra_rate,
+            CallJurisdiction::Indeterminate => rate.ij_rate,
             CallJurisdiction::Local => rate.local_rate.unwrap_or(rate.intra_rate),
         }
     }

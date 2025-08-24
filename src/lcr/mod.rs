@@ -7,6 +7,7 @@ pub mod data_loader;
 pub mod database;
 pub mod deck_loader;
 pub mod jurisdiction;
+pub mod lrn_dip;
 pub mod nanpa_loader;
 pub mod routing;
 pub mod timers;
@@ -24,9 +25,11 @@ use tokio::sync::RwLock;
 use crate::lcr::cache::LcrCache;
 use crate::lcr::database::DatabasePool;
 use crate::lcr::deck_loader::DeckLoader;
+use crate::lcr::lrn_dip::LrnDipService;
 use crate::lcr::routing::RoutingEngine;
 use crate::lcr::timers::TimerManager;
 use crate::lcr::trunk_manager::TrunkManager;
+use crate::lcr::types::LrnDipConfig;
 
 pub struct LcrEngine {
     db_pool: Arc<DatabasePool>,
@@ -35,25 +38,46 @@ pub struct LcrEngine {
     deck_loader: Arc<DeckLoader>,
     trunk_manager: Arc<TrunkManager>,
     timer_manager: Arc<TimerManager>,
+    lrn_dip_service: Arc<LrnDipService>,
 }
 
 impl LcrEngine {
     pub async fn new(database_url: &str) -> Result<Self> {
+        Self::new_with_lrn_config(database_url, LrnDipConfig::default()).await
+    }
+
+    pub async fn new_with_lrn_config(database_url: &str, lrn_config: LrnDipConfig) -> Result<Self> {
         let db_pool = Arc::new(DatabasePool::new(database_url).await?);
         let pool = db_pool.pool.clone(); // Get the underlying PgPool
         let cache = Arc::new(LcrCache::new());
         let trunk_manager = Arc::new(TrunkManager::new());
         let timer_manager = Arc::new(TimerManager::new());
 
+        // Initialize LRN dip service
+        let lrn_dip_service = Arc::new(LrnDipService::new(lrn_config));
+        if lrn_dip_service.is_enabled() {
+            lrn_dip_service.initialize().await?;
+        }
+
         // Load initial data into cache
         cache.load_from_database(&db_pool).await?;
 
-        let routing_engine = Arc::new(RoutingEngine::new(
-            cache.clone(),
-            trunk_manager.clone(),
-            timer_manager.clone(),
-            pool.clone(),
-        ));
+        let routing_engine = if lrn_dip_service.is_enabled() {
+            Arc::new(RoutingEngine::with_lrn_dip(
+                cache.clone(),
+                trunk_manager.clone(),
+                timer_manager.clone(),
+                pool.clone(),
+                lrn_dip_service.clone(),
+            ))
+        } else {
+            Arc::new(RoutingEngine::new(
+                cache.clone(),
+                trunk_manager.clone(),
+                timer_manager.clone(),
+                pool.clone(),
+            ))
+        };
 
         let deck_loader = Arc::new(DeckLoader::with_cache_and_db(pool, cache.clone(), db_pool.clone()));
 
@@ -64,6 +88,7 @@ impl LcrEngine {
             deck_loader,
             trunk_manager,
             timer_manager,
+            lrn_dip_service,
         })
     }
 
@@ -85,5 +110,9 @@ impl LcrEngine {
 
     pub fn get_timer_manager(&self) -> Arc<TimerManager> {
         self.timer_manager.clone()
+    }
+
+    pub fn get_lrn_dip_service(&self) -> Arc<LrnDipService> {
+        self.lrn_dip_service.clone()
     }
 }

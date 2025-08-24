@@ -4,7 +4,8 @@
 -- Rate deck types
 CREATE TYPE rate_type AS ENUM ('LRN', 'DNIS');
 CREATE TYPE route_type AS ENUM ('NANPA', 'A-Z', 'OTHER');
-CREATE TYPE call_jurisdiction AS ENUM ('INTER', 'INTRA', 'IJ', 'LOCAL');
+CREATE TYPE call_jurisdiction AS ENUM ('inter', 'intra', 'indeterminate', 'local');
+CREATE TYPE international_jurisdiction AS ENUM ('EEA', 'ROW');
 
 -- Vendor rate decks (cost)
 CREATE TABLE vendor_rate_decks (
@@ -82,6 +83,42 @@ CREATE TABLE client_nanpa_rates (
     INDEX idx_client_nanpa_deck (deck_id)
 );
 
+-- International vendor rates (cost)
+CREATE TABLE vendor_international_rates (
+    id SERIAL PRIMARY KEY,
+    deck_id INTEGER NOT NULL REFERENCES vendor_rate_decks(id) ON DELETE CASCADE,
+    country_code VARCHAR(10) NOT NULL, -- Country prefix (e.g., "44", "49", "33")
+    destination_code VARCHAR(20), -- Optional more specific code (e.g., "44207", "4920")
+    destination_name VARCHAR(255) NOT NULL, -- "United Kingdom", "Germany Mobile", etc.
+    jurisdiction international_jurisdiction NOT NULL, -- EEA or ROW
+    rate DECIMAL(10, 7) NOT NULL, -- Single rate for international
+    initial_increment INTEGER NOT NULL DEFAULT 30, -- Initial billing increment in seconds
+    subsequent_increment INTEGER NOT NULL DEFAULT 6, -- Subsequent billing increment
+    setup_fee DECIMAL(10, 7) DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CONSTRAINT vendor_intl_rates_unique UNIQUE(deck_id, country_code, destination_code),
+    INDEX idx_vendor_intl_prefix (deck_id, country_code, destination_code),
+    INDEX idx_vendor_intl_country (country_code)
+);
+
+-- International client rates (selling)
+CREATE TABLE client_international_rates (
+    id SERIAL PRIMARY KEY,
+    deck_id INTEGER NOT NULL REFERENCES client_rate_decks(id) ON DELETE CASCADE,
+    country_code VARCHAR(10) NOT NULL, -- Country prefix (e.g., "44", "49", "33")
+    destination_code VARCHAR(20), -- Optional more specific code (e.g., "44207", "4920")
+    destination_name VARCHAR(255) NOT NULL, -- "United Kingdom", "Germany Mobile", etc.
+    jurisdiction international_jurisdiction NOT NULL, -- EEA or ROW
+    rate DECIMAL(10, 7) NOT NULL, -- Single rate for international
+    initial_increment INTEGER NOT NULL DEFAULT 30, -- Initial billing increment in seconds
+    subsequent_increment INTEGER NOT NULL DEFAULT 6, -- Subsequent billing increment
+    setup_fee DECIMAL(10, 7) DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CONSTRAINT client_intl_rates_unique UNIQUE(deck_id, country_code, destination_code),
+    INDEX idx_client_intl_prefix (deck_id, country_code, destination_code),
+    INDEX idx_client_intl_country (country_code)
+);
+
 -- Static NANPA database for jurisdiction determination
 CREATE TABLE nanpa_static (
     id SERIAL PRIMARY KEY,
@@ -114,6 +151,7 @@ CREATE TABLE egress_trunks (
     priority INTEGER DEFAULT 100, -- Lower is higher priority
     weight INTEGER DEFAULT 1, -- For load balancing
     tech_prefix VARCHAR(20), -- Optional tech prefix
+    supports_international BOOLEAN DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -131,6 +169,7 @@ CREATE TABLE ingress_trunks (
     active BOOLEAN DEFAULT true,
     auth_username VARCHAR(255),
     auth_password VARCHAR(255),
+    supports_international BOOLEAN DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     INDEX idx_ingress_ip (ip_address)

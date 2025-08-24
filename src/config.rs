@@ -13,6 +13,7 @@ use crate::rtp_proxy::RtpProxyConfig;
 use crate::codec::CodecConfig;
 use crate::call_control::CallControlConfig;
 use crate::cnam::CnamConfig;
+use crate::lcr::types::LrnDipConfig;
 #[cfg(feature = "bgp-anycast")]
 use crate::bgp_anycast::BgpAnycastConfig;
 
@@ -319,6 +320,9 @@ pub struct Config {
     // pub sip_cluster: SipClusterConfig,
     /// Cluster binding configuration for non-SIP traffic
     pub cluster_bind: ClusterBindConfig,
+    /// LRN dip service configuration
+    #[serde(default)]
+    pub lrn_dip: LrnDipConfig,
 }
 
 /// Origination routing configuration wrapper
@@ -413,6 +417,8 @@ impl Default for Config {
             // rcs: RcsConfig::default(),
             call_control: CallControlConfig::default(),
             cnam: CnamConfig::default(),
+            cluster_bind: ClusterBindConfig::default(),
+            lrn_dip: LrnDipConfig::default(),
         }
     }
 }

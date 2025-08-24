@@ -1,7 +1,9 @@
 use crate::lcr::cache::LcrCache;
+use crate::lcr::lrn_dip::LrnDipService;
 use crate::lcr::types::{CallJurisdiction, NanpaStatic};
 use anyhow::Result;
-use sqlx::{PgPool, Row};
+use sqlx::Row;
+use std::sync::Arc;
 
 pub struct JurisdictionCalculator;
 
@@ -14,14 +16,14 @@ impl JurisdictionCalculator {
             (Some(ani), Some(dnis)) => {
                 // Check if same state (intrastate)
                 if ani.state == dnis.state {
-                    CallJurisdiction::Intrastate
+                    CallJurisdiction::Intra
                 } else {
-                    CallJurisdiction::Interstate
+                    CallJurisdiction::Inter
                 }
             }
             _ => {
                 // If we can't determine, use indeterminate jurisdiction
-                CallJurisdiction::IndeterminateJurisdiction
+                CallJurisdiction::Indeterminate
             }
         }
     }
@@ -35,7 +37,7 @@ impl JurisdictionCalculator {
     ) -> CallJurisdiction {
         // First check for special numbers that are always Indeterminate
         if Self::is_indeterminate_number(ani) || Self::is_indeterminate_number(dnis) {
-            return CallJurisdiction::IndeterminateJurisdiction;
+            return CallJurisdiction::Indeterminate;
         }
 
         // Use standard logic for regular NANPA numbers
@@ -155,7 +157,7 @@ impl JurisdictionCalculator {
         if Self::is_indeterminate_number_db(pool, ani).await?
             || Self::is_indeterminate_number_db(pool, dnis).await?
         {
-            return Ok(crate::lcr::types::CallJurisdiction::IndeterminateJurisdiction);
+            return Ok(crate::lcr::types::CallJurisdiction::Indeterminate);
         }
 
         // Use standard logic for regular NANPA numbers
@@ -284,8 +286,6 @@ impl JurisdictionCalculator {
         dnis: &str,
         use_lrn: bool,
     ) -> (CallJurisdiction, Option<String>) {
-        let mut lrn_dnis = None;
-
         // Get the DNIS to use for rating (LRN or original)
         let (rating_dnis, lrn_number) = if use_lrn {
             // Check LRN cache first
@@ -293,15 +293,13 @@ impl JurisdictionCalculator {
                 let lrn = lrn_entry.lrn.clone();
                 (lrn.clone(), Some(lrn))
             } else {
-                // TODO: Perform actual LRN dip here
-                // For now, use original DNIS
+                // Use original DNIS if no LRN found in cache
+                // LRN dipping would be done at routing level
                 (dnis.to_string(), None)
             }
         } else {
             (dnis.to_string(), None)
         };
-
-        lrn_dnis = lrn_number;
 
         // Get NANPA info for ANI and DNIS
         let ani_npanxx = Self::extract_npanxx(ani);
@@ -325,9 +323,76 @@ impl JurisdictionCalculator {
             ani_info.as_ref(),
             dnis_info.as_ref(),
         ) {
-            return (CallJurisdiction::Local, lrn_dnis);
+            return (CallJurisdiction::Local, lrn_number);
         }
 
-        (jurisdiction, lrn_dnis)
+        (jurisdiction, lrn_number)
+    }
+
+    /// Get jurisdiction with LRN dipping support
+    pub async fn get_jurisdiction_with_lrn_dip(
+        cache: &LcrCache,
+        lrn_dip_service: Option<Arc<LrnDipService>>,
+        ani: &str,
+        dnis: &str,
+        use_lrn: bool,
+    ) -> (CallJurisdiction, Option<String>) {
+        // Get the DNIS to use for rating (LRN or original)
+        let (rating_dnis, lrn_number) = if use_lrn {
+            // Check LRN cache first
+            if let Some(lrn_entry) = cache.get_lrn_cached(dnis) {
+                let lrn = lrn_entry.lrn.clone();
+                (lrn.clone(), Some(lrn))
+            } else if let Some(lrn_service) = lrn_dip_service {
+                // Perform LRN dip if service is available and enabled
+                match lrn_service.dip_lrn(dnis, Some(ani)).await {
+                    Ok(lrn_response) if lrn_response.lrn.is_some() => {
+                        let lrn = lrn_response.lrn.unwrap();
+                        (lrn.clone(), Some(lrn))
+                    }
+                    Ok(_) => {
+                        // No LRN found, use original DNIS
+                        (dnis.to_string(), None)
+                    }
+                    Err(e) => {
+                        tracing::warn!("LRN dip failed for {}: {}", dnis, e);
+                        // Fall back to original DNIS on error
+                        (dnis.to_string(), None)
+                    }
+                }
+            } else {
+                // Use original DNIS if no LRN service
+                (dnis.to_string(), None)
+            }
+        } else {
+            (dnis.to_string(), None)
+        };
+
+        // Get NANPA info for ANI and DNIS
+        let ani_npanxx = Self::extract_npanxx(ani);
+        let dnis_npanxx = Self::extract_npanxx(&rating_dnis);
+
+        let ani_info = ani_npanxx.and_then(|npanxx| cache.get_nanpa_info(&npanxx));
+        let dnis_info = dnis_npanxx.and_then(|npanxx| cache.get_nanpa_info(&npanxx));
+
+        // Determine jurisdiction using enhanced logic
+        let jurisdiction = Self::determine_jurisdiction_enhanced(
+            ani,
+            &rating_dnis,
+            ani_info.as_ref(),
+            dnis_info.as_ref(),
+        );
+
+        // Check for local calling
+        if Self::determine_local_jurisdiction(
+            ani,
+            &rating_dnis,
+            ani_info.as_ref(),
+            dnis_info.as_ref(),
+        ) {
+            return (CallJurisdiction::Local, lrn_number);
+        }
+
+        (jurisdiction, lrn_number)
     }
 }

@@ -162,7 +162,8 @@ impl DatabasePool {
                 active,
                 priority,
                 weight,
-                tech_prefix
+                tech_prefix,
+                supports_international
             FROM egress_trunks
             WHERE active = true
             ORDER BY priority, name
@@ -188,6 +189,7 @@ impl DatabasePool {
             priority: t.priority.unwrap_or(100),
             weight: t.weight.unwrap_or(1),
             tech_prefix: t.tech_prefix,
+            supports_international: t.supports_international.unwrap_or(false),
         })
         .collect();
 
@@ -208,7 +210,8 @@ impl DatabasePool {
                 min_profit_margin,
                 active,
                 auth_username,
-                auth_password
+                auth_password,
+                supports_international
             FROM ingress_trunks
             WHERE active = true
             ORDER BY name
@@ -230,6 +233,7 @@ impl DatabasePool {
                 active: t.active.unwrap_or(true),
                 auth_username: t.auth_username,
                 auth_password: t.auth_password,
+                supports_international: t.supports_international.unwrap_or(false),
             })
         })
         .collect::<Result<Vec<_>>>()?;
@@ -442,13 +446,15 @@ impl DatabasePool {
             lata: e.lata,
             state: e.state,
             jurisdiction: e.jurisdiction.map(|j| match j.as_str() {
-                "INTER" => CallJurisdiction::Interstate,
-                "INTRA" => CallJurisdiction::Intrastate,
-                "LOCAL" => CallJurisdiction::Local,
-                _ => CallJurisdiction::IndeterminateJurisdiction,
+                "inter" => CallJurisdiction::Inter,
+                "intra" => CallJurisdiction::Intra,
+                "local" => CallJurisdiction::Local,
+                _ => CallJurisdiction::Indeterminate,
             }),
             cached_at: e.cached_at,
             expires_at: e.expires_at,
+            ported: e.lrn != e.tn, // Assume ported if LRN differs from original TN
+            dip_response_time_ms: None,
         });
 
         Ok(entry)
@@ -456,10 +462,10 @@ impl DatabasePool {
 
     pub async fn update_lrn_cache(&self, entry: &LrnCacheEntry) -> Result<()> {
         let jurisdiction_str = entry.jurisdiction.map(|j| match j {
-            CallJurisdiction::Interstate => "INTER",
-            CallJurisdiction::Intrastate => "INTRA",
-            CallJurisdiction::Local => "LOCAL",
-            CallJurisdiction::IndeterminateJurisdiction => "IJ",
+            CallJurisdiction::Inter => "inter",
+            CallJurisdiction::Intra => "intra",
+            CallJurisdiction::Local => "local",
+            CallJurisdiction::Indeterminate => "indeterminate",
         });
 
         sqlx::query!(

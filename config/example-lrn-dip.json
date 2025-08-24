@@ -1,0 +1,138 @@
+{
+  "sip_profiles": [
+    {
+      "name": "default",
+      "bind_ip": "0.0.0.0",
+      "port": 5060,
+      "protocol": "Udp",
+      "allowed_ips": ["127.0.0.1"],
+      "dual_stack": false,
+      "bind_ipv6": null,
+      "ipv6_port": null,
+      "tls_config": null
+    }
+  ],
+  "monitoring": {
+    "enabled": true,
+    "endpoints": []
+  },
+  "stir_shaken": {
+    "enabled": false,
+    "cert_path": "certs/stir_shaken.crt",
+    "key_path": "certs/stir_shaken.key",
+    "issuer": "urn:issuer:example"
+  },
+  "routing": {
+    "enabled": true,
+    "default_route": null
+  },
+  "cdr": {
+    "enabled": false,
+    "output_path": "logs/cdr"
+  },
+  "sipt_sipi": {
+    "enabled": false,
+    "sipt_port": 7000,
+    "sipi_port": 7001
+  },
+  "termination_routing": [],
+  "origination_routing": {
+    "enabled": false,
+    "did_inventory_file": "config/did_inventory.json",
+    "toll_free_inventory_file": "config/toll_free_inventory.json",
+    "vendor_config_file": "config/vendors.json"
+  },
+  "sms": {
+    "enabled": false,
+    "bind_ip": "127.0.0.1",
+    "port": 8080
+  },
+  "twilio_api": {
+    "enabled": false,
+    "bind_ip": "127.0.0.1",
+    "port": 8090
+  },
+  "conversations": {
+    "enabled": false,
+    "webhook_url": "https://example.com/webhook"
+  },
+  "security": {
+    "enabled": true,
+    "max_calls_per_ip": 100,
+    "blocked_ips": []
+  },
+  "billing": {
+    "enabled": false,
+    "provider": "internal",
+    "api_endpoint": "https://billing.example.com"
+  },
+  "rtp_proxy": {
+    "enabled": true,
+    "bind_ip": "0.0.0.0",
+    "port_range_start": 10000,
+    "port_range_end": 20000
+  },
+  "codec": {
+    "enabled": true,
+    "allowed_codecs": ["PCMU", "PCMA", "G729"]
+  },
+  "call_control": {
+    "max_call_duration_seconds": 3600,
+    "max_concurrent_calls": 1000
+  },
+  "cnam": {
+    "enabled": false,
+    "provider": "opencnam",
+    "api_key": ""
+  },
+  "cluster_bind": {
+    "enabled": true,
+    "cluster_ip": "192.168.1.10",
+    "management_ip": "192.168.1.10", 
+    "monitoring_ip": "192.168.1.10",
+    "session_sync_ip": "192.168.1.10",
+    "gossip_port": 7946,
+    "management_port": 8080,
+    "monitoring_port": 8081,
+    "session_sync_port": 8082,
+    "validate_no_anycast_bind": true,
+    "prohibited_anycast_ips": ["192.0.2.100"]
+  },
+  "lrn_dip": {
+    "server_ip": "192.168.1.200",
+    "server_port": 5060,
+    "servers": [
+      {
+        "server_ip": "192.168.1.200",
+        "server_port": 5060,
+        "priority": 0,
+        "protocol": "sip_302"
+      },
+      {
+        "server_ip": "192.168.1.201",
+        "server_port": 5060,
+        "priority": 1,
+        "protocol": "sip_302"
+      },
+      {
+        "server_ip": "api.telique.com",
+        "server_port": 443,
+        "priority": 2,
+        "protocol": "telique_api",
+        "auth": {
+          "auth_type": "api_key",
+          "username": "api_key",
+          "token": "your-telique-api-key"
+        }
+      }
+    ],
+    "local_ip": null,
+    "local_port": null,
+    "timeout_ms": 5000,
+    "backup_timeout_ms": 2000,
+    "max_redirects": 3,
+    "enabled": true,
+    "cache_timeout_sec": 3600,
+    "load_balancing": "priority"
+  }
+}

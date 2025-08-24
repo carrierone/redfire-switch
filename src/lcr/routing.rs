@@ -10,6 +10,7 @@ use tracing::{info, warn};
 use crate::lcr::types::*;
 use crate::lcr::cache::LcrCache;
 use crate::lcr::jurisdiction::JurisdictionCalculator;
+use crate::lcr::lrn_dip::LrnDipService;
 use crate::lcr::timers::TimerManager;
 use crate::lcr::trunk_manager::TrunkManager;
 pub use crate::lcr::types::RouteResponse;
@@ -19,6 +20,7 @@ pub struct RoutingEngine {
     trunk_manager: Arc<TrunkManager>,
     timer_manager: Arc<TimerManager>,
     pool: PgPool,
+    lrn_dip_service: Option<Arc<LrnDipService>>,
     static_route_patterns: HashMap<i32, Regex>,
 }
 
@@ -34,6 +36,24 @@ impl RoutingEngine {
             trunk_manager,
             timer_manager,
             pool,
+            lrn_dip_service: None,
+            static_route_patterns: HashMap::new(),
+        }
+    }
+
+    pub fn with_lrn_dip(
+        cache: Arc<LcrCache>,
+        trunk_manager: Arc<TrunkManager>,
+        timer_manager: Arc<TimerManager>,
+        pool: PgPool,
+        lrn_dip_service: Arc<LrnDipService>,
+    ) -> Self {
+        Self {
+            cache,
+            trunk_manager,
+            timer_manager,
+            pool,
+            lrn_dip_service: Some(lrn_dip_service),
             static_route_patterns: HashMap::new(),
         }
     }
@@ -65,44 +85,47 @@ impl RoutingEngine {
                 .await;
         }
 
-        // Determine jurisdiction and get LRN if needed
-        let use_lrn = request.route_type == RouteType::NANPA;
-        let (jurisdiction, lrn) = JurisdictionCalculator::get_jurisdiction_with_lrn(
-            &self.cache,
-            &request.ani,
-            &request.dnis,
-            use_lrn,
-        )
-        .await;
-
-        // Get the number to use for rating
-        let rating_number = if let Some(ref lrn_number) = lrn {
-            lrn_number
+        // Determine route type automatically if not specified
+        let route_type = if request.route_type == RouteType::OTHER {
+            // Auto-detect based on DNIS
+            if self.is_international_number(&request.dnis) {
+                RouteType::AZ
+            } else {
+                RouteType::NANPA
+            }
         } else {
-            &request.dnis
+            request.route_type
         };
 
-        // Extract code for rating (1NPANXX for NANPA)
-        let rating_code = if request.route_type == RouteType::NANPA {
-            JurisdictionCalculator::normalize_nanpa_number(rating_number)
+        // Get client rate using DNIS (will be updated per trunk if LRN is needed)
+        let base_rating_code = if route_type == RouteType::NANPA {
+            JurisdictionCalculator::normalize_nanpa_number(&request.dnis)
         } else {
-            rating_number.to_string()
+            request.dnis.to_string()
         };
 
-        // Get client rate using effective date
-        let client_rate = if let Some(deck_id) = request.client_deck_id {
-            self.get_client_rate_at_time(deck_id, &rating_code, effective_time).await?
+        // For international calls, client rate is handled separately per trunk
+        let client_rate = if route_type == RouteType::NANPA {
+            if let Some(deck_id) = request.client_deck_id {
+                self.get_client_rate_at_time(deck_id, &base_rating_code, effective_time).await?
+            } else {
+                // Try to find client rate deck associated with ingress trunk at effective time
+                self.get_client_rate_for_trunk_at_time(
+                    request.ingress_trunk_id,
+                    &base_rating_code,
+                    effective_time,
+                ).await?
+            }
         } else {
-            // Try to find client rate deck associated with ingress trunk at effective time
-            self.get_client_rate_for_trunk_at_time(
-                request.ingress_trunk_id,
-                &rating_code,
-                effective_time,
-            ).await?
+            None // International rates handled per trunk
         };
 
         // Build list of potential routes with time-aware rates
         let mut routes: Vec<CallRoute> = Vec::new();
+
+        // For overall response tracking
+        let mut overall_jurisdiction = CallJurisdiction::Indeterminate;
+        let mut overall_lrn: Option<String> = None;
 
         // Get all active egress trunks
         for egress_trunk in self.cache.get_all_egress_trunks() {
@@ -119,45 +142,140 @@ impl RoutingEngine {
                 continue;
             }
 
-            // Get vendor rate using effective date
-            let vendor_rate = self
-                .get_vendor_rate_for_trunk_at_time(
-                    egress_trunk.id,
-                    &rating_code,
-                    effective_time,
-                )
-                .await?;
-
-            if let Some(rate) = vendor_rate {
-                // Calculate costs based on jurisdiction
-                let cost = self.calculate_cost(&rate, jurisdiction);
-                let sell = client_rate
-                    .as_ref()
-                    .map(|cr| self.calculate_cost(cr, jurisdiction))
-                    .unwrap_or(cost);
-                let profit = sell - cost;
-
-                // Apply profit protection if required
-                if request.require_profit_protection || ingress_trunk.profit_protection {
-                    let min_margin = request
-                        .min_profit_margin
-                        .unwrap_or(ingress_trunk.min_profit_margin);
-                    if profit < min_margin {
+            // Handle routing based on route type
+            match route_type {
+                RouteType::NANPA => {
+                    // Skip if trunk doesn't support NANPA
+                    if !self.trunk_supports_nanpa(&egress_trunk) {
                         continue;
                     }
-                }
 
-                routes.push(CallRoute {
-                    egress_trunk: egress_trunk.clone(),
-                    vendor_rate: Some(rate.clone()),
-                    cost_per_minute: cost,
-                    selling_per_minute: sell,
-                    profit_margin: profit,
-                    priority: egress_trunk.priority,
-                    setup_fee: rate.setup_fee.unwrap_or(Decimal::ZERO),
-                    min_increment: rate.min_increment,
-                    interval: rate.interval,
-                });
+                    // Get NANPA vendor rate and check if this trunk uses LRN rating
+                    let vendor_rate_info = self
+                        .get_vendor_rate_for_trunk_at_time(
+                            egress_trunk.id,
+                            &base_rating_code,
+                            effective_time,
+                        )
+                        .await?;
+
+                    if let Some((rate, rate_type)) = vendor_rate_info {
+                        // Determine if we need LRN for this specific trunk
+                        let (jurisdiction, lrn) = if rate_type == RateType::LRN {
+                            // This trunk uses LRN rating - perform LRN dip
+                            JurisdictionCalculator::get_jurisdiction_with_lrn_dip(
+                                &self.cache,
+                                self.lrn_dip_service.clone(),
+                                &request.ani,
+                                &request.dnis,
+                                true, // use_lrn = true
+                            ).await
+                        } else {
+                            // This trunk uses DNIS rating - no LRN needed
+                            // Get ANI and DNIS NANPA info for jurisdiction calculation
+                            let ani_npanxx = JurisdictionCalculator::extract_npanxx(&request.ani);
+                            let dnis_npanxx = JurisdictionCalculator::extract_npanxx(&request.dnis);
+                            let ani_info = ani_npanxx.and_then(|npanxx| self.cache.get_nanpa_info(&npanxx));
+                            let dnis_info = dnis_npanxx.and_then(|npanxx| self.cache.get_nanpa_info(&npanxx));
+                            
+                            let jurisdiction = JurisdictionCalculator::determine_jurisdiction(
+                                ani_info.as_ref(),
+                                dnis_info.as_ref(),
+                            );
+                            (jurisdiction, None)
+                        };
+
+                        // Update overall tracking for response
+                        if overall_jurisdiction == CallJurisdiction::Indeterminate {
+                            overall_jurisdiction = jurisdiction;
+                        }
+                        if lrn.is_some() && overall_lrn.is_none() {
+                            overall_lrn = lrn.clone();
+                        }
+
+                        // Calculate costs based on jurisdiction
+                        let cost = self.calculate_cost(&rate, jurisdiction);
+                        let sell = client_rate
+                            .as_ref()
+                            .map(|cr| self.calculate_cost(cr, jurisdiction))
+                            .unwrap_or(cost);
+                        let profit = sell - cost;
+
+                        // Apply profit protection if required
+                        if request.require_profit_protection || ingress_trunk.profit_protection {
+                            let min_margin = request
+                                .min_profit_margin
+                                .unwrap_or(ingress_trunk.min_profit_margin);
+                            if profit < min_margin {
+                                continue;
+                            }
+                        }
+
+                        routes.push(CallRoute {
+                            egress_trunk: egress_trunk.clone(),
+                            vendor_rate: Some(rate.clone()),
+                            cost_per_minute: cost,
+                            selling_per_minute: sell,
+                            profit_margin: profit,
+                            priority: egress_trunk.priority,
+                            setup_fee: rate.setup_fee.unwrap_or(Decimal::ZERO),
+                            min_increment: rate.min_increment,
+                            interval: rate.interval,
+                        });
+                    }
+                }
+                RouteType::AZ => {
+                    // Skip if trunk doesn't support international
+                    if !egress_trunk.supports_international {
+                        continue;
+                    }
+
+                    // Get international vendor rate with longest-to-shortest matching
+                    if let Some(vendor_deck_id) = self.get_vendor_deck_for_trunk(egress_trunk.id, effective_time).await? {
+                        if let Some(intl_rate) = self.load_vendor_international_rate_from_db(vendor_deck_id, &request.dnis).await? {
+                            // Get client international rate
+                            let client_intl_rate = if let Some(client_deck_id) = self.get_client_deck_for_trunk(request.ingress_trunk_id, effective_time).await? {
+                                self.load_client_international_rate_from_db(client_deck_id, &request.dnis).await?
+                            } else {
+                                None
+                            };
+
+                            // Calculate costs (single rate for international)
+                            let cost = intl_rate.rate;
+                            let sell = client_intl_rate.as_ref().map(|cr| cr.rate).unwrap_or(cost);
+                            let profit = sell - cost;
+
+                            // Set jurisdiction to indeterminate for international calls
+                            overall_jurisdiction = CallJurisdiction::Indeterminate;
+
+                            // Apply profit protection if required
+                            if request.require_profit_protection || ingress_trunk.profit_protection {
+                                let min_margin = request
+                                    .min_profit_margin
+                                    .unwrap_or(ingress_trunk.min_profit_margin);
+                                if profit < min_margin {
+                                    continue;
+                                }
+                            }
+
+                            routes.push(CallRoute {
+                                egress_trunk: egress_trunk.clone(),
+                                vendor_rate: None, // International rates use different structure
+                                cost_per_minute: cost,
+                                selling_per_minute: sell,
+                                profit_margin: profit,
+                                priority: egress_trunk.priority,
+                                setup_fee: intl_rate.setup_fee.unwrap_or(Decimal::ZERO),
+                                min_increment: intl_rate.initial_increment,
+                                interval: intl_rate.subsequent_increment,
+                            });
+                        }
+                    }
+                }
+                RouteType::OTHER => {
+                    // Skip - OTHER should have been converted to specific type above
+                    continue;
+                }
             }
         }
 
@@ -184,8 +302,8 @@ impl RoutingEngine {
         let total_routes = routes.len();
         Ok(RouteResponse {
             routes,
-            jurisdiction,
-            lrn,
+            jurisdiction: overall_jurisdiction,
+            lrn: overall_lrn,
             total_routes,
         })
     }
@@ -261,11 +379,11 @@ impl RoutingEngine {
         trunk_id: i32,
         code: &str,
         effective_time: DateTime<Utc>,
-    ) -> Result<Option<NanpaRate>> {
+    ) -> Result<Option<(NanpaRate, RateType)>> {
         // Get the vendor deck associated with this trunk at the given time
-        let deck_id = sqlx::query_scalar::<_, Option<i32>>(
+        let deck_row = sqlx::query!(
             r#"
-            SELECT vrd.id
+            SELECT vrd.id, vrd.rate_type as "rate_type!: RateType"
             FROM lcr_route_trunks lrt
             JOIN vendor_rate_decks vrd ON vrd.id = lrt.vendor_deck_id
             WHERE lrt.egress_trunk_id = $1
@@ -274,21 +392,26 @@ impl RoutingEngine {
               AND vrd.active = true
             ORDER BY vrd.deck_version DESC
             LIMIT 1
-            "#
+            "#,
+            trunk_id,
+            effective_time
         )
-        .bind(trunk_id)
-        .bind(effective_time)
         .fetch_optional(&self.pool)
         .await?;
 
-        if let Some(Some(deck_id)) = deck_id {
+        if let Some(deck_info) = deck_row {
+            let deck_id = deck_info.id;
+            let rate_type = deck_info.rate_type;
+            
             // Check cache first
             if let Some(rate) = self.cache.get_vendor_rate(deck_id, code) {
-                return Ok(Some(rate));
+                return Ok(Some((rate, rate_type)));
             }
             
             // Load from database if not in cache
-            return self.load_vendor_rate_from_db(deck_id, code).await;
+            if let Some(rate) = self.load_vendor_rate_from_db(deck_id, code).await? {
+                return Ok(Some((rate, rate_type)));
+            }
         }
 
         Ok(None)
@@ -465,9 +588,9 @@ impl RoutingEngine {
     /// Calculate cost based on jurisdiction
     fn calculate_cost(&self, rate: &NanpaRate, jurisdiction: CallJurisdiction) -> Decimal {
         match jurisdiction {
-            CallJurisdiction::Interstate => rate.inter_rate,
-            CallJurisdiction::Intrastate => rate.intra_rate,
-            CallJurisdiction::IndeterminateJurisdiction => rate.ij_rate,
+            CallJurisdiction::Inter => rate.inter_rate,
+            CallJurisdiction::Intra => rate.intra_rate,
+            CallJurisdiction::Indeterminate => rate.ij_rate,
             CallJurisdiction::Local => rate.local_rate.unwrap_or(rate.intra_rate),
         }
     }
@@ -528,7 +651,7 @@ impl RoutingEngine {
 
         Ok(RouteResponse {
             routes: vec![call_route],
-            jurisdiction: CallJurisdiction::IndeterminateJurisdiction,
+            jurisdiction: CallJurisdiction::Indeterminate,
             lrn: None,
             total_routes: 1,
         })
@@ -599,6 +722,199 @@ impl RoutingEngine {
                 "NO_ROUTES_AVAILABLE".to_string()
             },
         })
+    }
+
+    /// Load international vendor rate from database with longest-to-shortest prefix matching
+    async fn load_vendor_international_rate_from_db(
+        &self, 
+        deck_id: i32, 
+        dnis: &str
+    ) -> Result<Option<InternationalRate>> {
+        // Extract the international number (remove leading +, 00, or 011)
+        let normalized = self.normalize_international_number(dnis);
+        
+        // Use a single query with proper longest-to-shortest matching
+        let row = sqlx::query!(
+            r#"
+            SELECT id, deck_id, country_code, destination_code, destination_name,
+                   jurisdiction as "jurisdiction!: InternationalJurisdiction", 
+                   rate, initial_increment, subsequent_increment, setup_fee, created_at
+            FROM vendor_international_rates
+            WHERE deck_id = $1 AND $2 LIKE (country_code || COALESCE(destination_code, '') || '%')
+            ORDER BY LENGTH(country_code || COALESCE(destination_code, '')) DESC
+            LIMIT 1
+            "#,
+            deck_id,
+            normalized
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if let Some(row) = row {
+            return Ok(Some(InternationalRate {
+                id: row.id,
+                deck_id: row.deck_id,
+                country_code: row.country_code,
+                destination_code: row.destination_code,
+                destination_name: row.destination_name,
+                jurisdiction: row.jurisdiction,
+                rate: row.rate,
+                initial_increment: row.initial_increment,
+                subsequent_increment: row.subsequent_increment,
+                setup_fee: row.setup_fee,
+                created_at: row.created_at,
+            }));
+        }
+        
+        Ok(None)
+    }
+
+    /// Load international client rate from database with longest-to-shortest prefix matching
+    async fn load_client_international_rate_from_db(
+        &self, 
+        deck_id: i32, 
+        dnis: &str
+    ) -> Result<Option<InternationalRate>> {
+        // Extract the international number (remove leading +, 00, or 011)
+        let normalized = self.normalize_international_number(dnis);
+        
+        // Use a single query with proper longest-to-shortest matching
+        let row = sqlx::query!(
+            r#"
+            SELECT id, deck_id, country_code, destination_code, destination_name,
+                   jurisdiction as "jurisdiction!: InternationalJurisdiction", 
+                   rate, initial_increment, subsequent_increment, setup_fee, created_at
+            FROM client_international_rates
+            WHERE deck_id = $1 AND $2 LIKE (country_code || COALESCE(destination_code, '') || '%')
+            ORDER BY LENGTH(country_code || COALESCE(destination_code, '')) DESC
+            LIMIT 1
+            "#,
+            deck_id,
+            normalized
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if let Some(row) = row {
+            return Ok(Some(InternationalRate {
+                id: row.id,
+                deck_id: row.deck_id,
+                country_code: row.country_code,
+                destination_code: row.destination_code,
+                destination_name: row.destination_name,
+                jurisdiction: row.jurisdiction,
+                rate: row.rate,
+                initial_increment: row.initial_increment,
+                subsequent_increment: row.subsequent_increment,
+                setup_fee: row.setup_fee,
+                created_at: row.created_at,
+            }));
+        }
+        
+        Ok(None)
+    }
+
+    /// Normalize international number by removing common prefixes
+    fn normalize_international_number(&self, number: &str) -> String {
+        let digits: String = number.chars().filter(|c| c.is_digit(10)).collect();
+        
+        // Remove international access codes
+        if digits.starts_with("011") && digits.len() > 3 {
+            // US international prefix
+            digits[3..].to_string()
+        } else if digits.starts_with("00") && digits.len() > 2 {
+            // International prefix (most countries)
+            digits[2..].to_string()
+        } else if number.starts_with('+') {
+            // Plus format
+            digits
+        } else {
+            // Assume already normalized
+            digits
+        }
+    }
+
+    /// Check if a number is international (not NANPA)
+    fn is_international_number(&self, dnis: &str) -> bool {
+        let normalized = dnis.chars().filter(|c| c.is_digit(10)).collect::<String>();
+        
+        // International access codes
+        if normalized.starts_with("011") || normalized.starts_with("00") || dnis.starts_with('+') {
+            return true;
+        }
+        
+        // Valid NANPA number formats:
+        // - 10 digits: NPANXXNNNN (e.g., 2125551234)
+        // - 11 digits starting with 1: 1NPANXXNNNN (e.g., 12125551234)
+        if normalized.len() == 10 {
+            // Check if it's a valid NANPA NPA (first digit 2-9)
+            if let Some(first_digit) = normalized.chars().next() {
+                return first_digit < '2' || first_digit > '9';
+            }
+        } else if normalized.len() == 11 && normalized.starts_with('1') {
+            // Check if NPA is valid (second digit 2-9)
+            if let Some(second_digit) = normalized.chars().nth(1) {
+                return second_digit < '2' || second_digit > '9';
+            }
+        } else {
+            // Invalid NANPA length - likely international
+            return true;
+        }
+        
+        false
+    }
+
+    /// Check if trunk supports NANPA routing (not international-only)
+    fn trunk_supports_nanpa(&self, trunk: &EgressTrunk) -> bool {
+        // If trunk supports international, it can still support NANPA unless explicitly configured otherwise
+        // For now, assume all trunks support NANPA unless they are international-only
+        true // This could be extended with a separate field in the future
+    }
+
+    /// Get vendor deck ID for trunk at specific time
+    async fn get_vendor_deck_for_trunk(&self, trunk_id: i32, effective_time: DateTime<Utc>) -> Result<Option<i32>> {
+        let deck_id = sqlx::query_scalar::<_, Option<i32>>(
+            r#"
+            SELECT vrd.id
+            FROM lcr_route_trunks lrt
+            JOIN vendor_rate_decks vrd ON vrd.id = lrt.vendor_deck_id
+            WHERE lrt.egress_trunk_id = $1
+              AND vrd.effective_date <= $2
+              AND (vrd.end_date IS NULL OR vrd.end_date > $2)
+              AND vrd.active = true
+            ORDER BY vrd.deck_version DESC
+            LIMIT 1
+            "#
+        )
+        .bind(trunk_id)
+        .bind(effective_time)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(deck_id.flatten())
+    }
+
+    /// Get client deck ID for trunk at specific time
+    async fn get_client_deck_for_trunk(&self, trunk_id: i32, effective_time: DateTime<Utc>) -> Result<Option<i32>> {
+        let deck_id = sqlx::query_scalar::<_, Option<i32>>(
+            r#"
+            SELECT crd.id
+            FROM trunk_rate_associations tra
+            JOIN client_rate_decks crd ON crd.id = tra.client_deck_id
+            WHERE tra.ingress_trunk_id = $1
+              AND crd.effective_date <= $2
+              AND (crd.end_date IS NULL OR crd.end_date > $2)
+              AND crd.active = true
+            ORDER BY crd.deck_version DESC
+            LIMIT 1
+            "#
+        )
+        .bind(trunk_id)
+        .bind(effective_time)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(deck_id.flatten())
     }
 }
 
