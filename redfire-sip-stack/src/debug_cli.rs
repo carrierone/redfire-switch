@@ -32,9 +32,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::IntoRawMode;
-use termion::{clear, color, cursor, style};
-use tokio::sync::{broadcast, mpsc, RwLock};
-use tracing::{debug, error, info, warn};
+use termion::{clear, cursor, style};
+use tokio::sync::{mpsc, RwLock};
+use tracing::info;
 
 use crate::parser::SipMessage;
 use crate::transport::SipTransport;

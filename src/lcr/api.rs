@@ -2,14 +2,13 @@ use anyhow::Result;
 use axum::{
     extract::{Json, Path, Query, State},
     http::StatusCode,
-    response::{IntoResponse, Response},
+    response::IntoResponse,
     routing::{get, post},
     Router,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::sync::Arc;
 
-use crate::lcr::routing::CallSimulation;
 use crate::lcr::types::*;
 use crate::lcr::LcrEngine;
 

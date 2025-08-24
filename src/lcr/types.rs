@@ -1,6 +1,7 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Utc, NaiveTime};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
 use std::net::IpAddr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -39,14 +40,79 @@ pub struct NanpaRate {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CallSimulation {
+    pub ani: String,
+    pub dnis: String,
+    pub lrn: Option<String>,
+    pub jurisdiction: CallJurisdiction,
+    pub ingress_trunk: String,
+    pub total_routes: usize,
+    pub routes: Vec<SimulatedRoute>,
+    pub routing_decision: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SimulatedRoute {
+    pub egress_trunk: String,
+    pub vendor: String,
+    pub cost_per_minute: Decimal,
+    pub selling_per_minute: Decimal,
+    pub profit_margin: Decimal,
+    pub priority: i32,
+    pub setup_fee: Decimal,
+    pub min_increment: i32,
+    pub interval: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct RateDeck {
     pub id: i32,
     pub name: String,
     pub owner_id: i32, // vendor_id or client_id
     pub rate_type: RateType,
     pub effective_date: DateTime<Utc>,
-    pub expires_date: Option<DateTime<Utc>>,
+    pub end_date: Option<DateTime<Utc>>,
+    pub deck_version: i32,
+    pub parent_deck_id: Option<i32>,
+    pub effective_time: NaiveTime,
+    pub preload_minutes: i32,
+    pub loaded_at: Option<DateTime<Utc>>,
+    pub is_staged: bool,
     pub active: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct DeckCutoverSchedule {
+    pub id: i32,
+    pub deck_type: String,
+    pub current_deck_id: i32,
+    pub new_deck_id: i32,
+    pub cutover_date: DateTime<Utc>,
+    pub preload_at: DateTime<Utc>,
+    pub status: String,  // Changed from CutoverStatus enum to String for simpler DB mapping
+    pub preloaded_at: Option<DateTime<Utc>>,
+    pub activated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CutoverStatus {
+    Scheduled,
+    Preloading,
+    Preloaded,
+    Active,
+    Completed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeckLoadRequest {
+    pub deck_name: String,
+    pub owner_id: i32,
+    pub rate_type: RateType,
+    pub effective_date: DateTime<Utc>,
+    pub effective_time: Option<NaiveTime>,
+    pub preload_minutes: Option<i32>,
+    pub rates_csv: Option<String>,
+    pub rates_data: Option<Vec<NanpaRate>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -207,6 +273,7 @@ pub struct RouteRequest {
     pub route_type: RouteType,
     pub require_profit_protection: bool,
     pub min_profit_margin: Option<Decimal>,
+    pub effective_time: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,7 +1,6 @@
 use anyhow::Result;
 use arc_swap::ArcSwap;
 use dashmap::DashMap;
-use rust_decimal::Decimal;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -214,6 +213,10 @@ impl LcrCache {
 
     pub fn get_all_ingress_trunks(&self) -> Vec<IngressTrunk> {
         self.ingress_trunks.load().values().cloned().collect()
+    }
+
+    pub fn get_static_routes(&self) -> Arc<Vec<StaticRoute>> {
+        Arc::clone(&self.static_routes.load())
     }
 
     pub fn get_static_routes_for_ingress(&self, ingress_trunk_id: Option<i32>) -> Vec<StaticRoute> {

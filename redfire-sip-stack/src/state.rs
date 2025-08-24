@@ -219,7 +219,7 @@ impl SipStateManager {
     /// Process INVITE request
     async fn process_invite_request(
         &self,
-        message: &SipMessage,
+        _message: &SipMessage,
         request: &Request,
         call_id: &str,
         from_tag: Option<String>,
@@ -293,7 +293,7 @@ impl SipStateManager {
     /// Process BYE request
     async fn process_bye_request(
         &self,
-        message: &SipMessage,
+        _message: &SipMessage,
         request: &Request,
         call_id: &str,
         from_tag: Option<String>,
@@ -411,7 +411,7 @@ impl SipStateManager {
         call_id: &str,
         from_tag: Option<String>,
         to_tag: Option<String>,
-        message: &SipMessage,
+        _message: &SipMessage,
     ) -> Result<()> {
         if let Some(mut dialog) = self.dialogs.get_mut(dialog_id) {
             // Update existing dialog
@@ -626,7 +626,7 @@ impl TransactionTimerManager {
 
     /// Process timer events
     async fn process_timers(&self) {
-        let now = chrono::Utc::now();
+        let _now = chrono::Utc::now();
 
         for mut transaction in self.transactions.iter_mut() {
             // Check various timers based on transaction state

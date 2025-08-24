@@ -13,11 +13,17 @@ CREATE TABLE vendor_rate_decks (
     vendor_id INTEGER NOT NULL,
     rate_type rate_type NOT NULL DEFAULT 'DNIS',
     effective_date TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    expires_date TIMESTAMP WITH TIME ZONE,
+    end_date TIMESTAMP WITH TIME ZONE,
+    deck_version INTEGER NOT NULL DEFAULT 1,
+    parent_deck_id INTEGER REFERENCES vendor_rate_decks(id),
+    effective_time TIME DEFAULT '00:00:00',
+    preload_minutes INTEGER DEFAULT 30,
+    loaded_at TIMESTAMP WITH TIME ZONE,
+    is_staged BOOLEAN DEFAULT false,
     active BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE(name, vendor_id, effective_date)
+    CONSTRAINT vendor_deck_version_unique UNIQUE(vendor_id, name, deck_version)
 );
 
 -- Client rate decks (selling)
@@ -27,11 +33,17 @@ CREATE TABLE client_rate_decks (
     client_id INTEGER NOT NULL,
     rate_type rate_type NOT NULL DEFAULT 'DNIS',
     effective_date TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    expires_date TIMESTAMP WITH TIME ZONE,
+    end_date TIMESTAMP WITH TIME ZONE,
+    deck_version INTEGER NOT NULL DEFAULT 1,
+    parent_deck_id INTEGER REFERENCES client_rate_decks(id),
+    effective_time TIME DEFAULT '00:00:00',
+    preload_minutes INTEGER DEFAULT 30,
+    loaded_at TIMESTAMP WITH TIME ZONE,
+    is_staged BOOLEAN DEFAULT false,
     active BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE(name, client_id, effective_date)
+    CONSTRAINT client_deck_version_unique UNIQUE(client_id, name, deck_version)
 );
 
 -- NANPA vendor rates (cost)
@@ -386,3 +398,149 @@ VALUES
     ('1700', 'IC_SERVICES', 'IJ', 'Interexchange carrier services', true),
     ('1710', 'GOVERNMENT', 'IJ', 'Government services', true),
     ('1720', 'SPECIAL_VOIP', 'IJ', 'Special/VoIP services', true);
+
+-- Additional indexes for deck versioning
+CREATE INDEX IF NOT EXISTS idx_vendor_decks_effective ON vendor_rate_decks(effective_date, end_date);
+CREATE INDEX IF NOT EXISTS idx_vendor_decks_staged ON vendor_rate_decks(is_staged, effective_date) WHERE is_staged = true;
+CREATE INDEX IF NOT EXISTS idx_client_decks_effective ON client_rate_decks(effective_date, end_date);
+CREATE INDEX IF NOT EXISTS idx_client_decks_staged ON client_rate_decks(is_staged, effective_date) WHERE is_staged = true;
+
+-- Table to track deck loading history
+CREATE TABLE IF NOT EXISTS deck_load_history (
+    id SERIAL PRIMARY KEY,
+    deck_type VARCHAR(20) NOT NULL, -- 'vendor' or 'client'
+    deck_id INTEGER NOT NULL,
+    deck_version INTEGER NOT NULL,
+    loaded_by VARCHAR(255),
+    loaded_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    effective_date TIMESTAMP WITH TIME ZONE NOT NULL,
+    end_date TIMESTAMP WITH TIME ZONE,
+    rate_count INTEGER,
+    load_duration_ms INTEGER,
+    notes TEXT
+);
+
+-- Table for deck cutover scheduling
+CREATE TABLE IF NOT EXISTS deck_cutover_schedule (
+    id SERIAL PRIMARY KEY,
+    deck_type VARCHAR(20) NOT NULL,
+    current_deck_id INTEGER NOT NULL,
+    new_deck_id INTEGER NOT NULL,
+    cutover_date TIMESTAMP WITH TIME ZONE NOT NULL,
+    preload_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    status VARCHAR(20) DEFAULT 'scheduled', -- scheduled, preloading, preloaded, active, completed
+    preloaded_at TIMESTAMP WITH TIME ZONE,
+    activated_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_cutover_schedule_status ON deck_cutover_schedule(status, preload_at);
+
+-- Function to get active deck at a specific time
+CREATE OR REPLACE FUNCTION get_active_vendor_deck(
+    p_vendor_id INTEGER,
+    p_deck_name VARCHAR,
+    p_timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+) RETURNS INTEGER AS $$
+DECLARE
+    v_deck_id INTEGER;
+BEGIN
+    SELECT id INTO v_deck_id
+    FROM vendor_rate_decks
+    WHERE vendor_id = p_vendor_id
+      AND name = p_deck_name
+      AND effective_date <= p_timestamp
+      AND (end_date IS NULL OR end_date > p_timestamp)
+      AND active = true
+    ORDER BY deck_version DESC
+    LIMIT 1;
+    
+    RETURN v_deck_id;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to get active client deck at a specific time
+CREATE OR REPLACE FUNCTION get_active_client_deck(
+    p_client_id INTEGER,
+    p_deck_name VARCHAR,
+    p_timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+) RETURNS INTEGER AS $$
+DECLARE
+    v_deck_id INTEGER;
+BEGIN
+    SELECT id INTO v_deck_id
+    FROM client_rate_decks
+    WHERE client_id = p_client_id
+      AND name = p_deck_name
+      AND effective_date <= p_timestamp
+      AND (end_date IS NULL OR end_date > p_timestamp)
+      AND active = true
+    ORDER BY deck_version DESC
+    LIMIT 1;
+    
+    RETURN v_deck_id;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to automatically set end_date when loading new version
+CREATE OR REPLACE FUNCTION update_deck_end_dates()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.parent_deck_id IS NOT NULL THEN
+        -- Update end_date of previous version
+        IF TG_TABLE_NAME = 'vendor_rate_decks' THEN
+            UPDATE vendor_rate_decks
+            SET end_date = NEW.effective_date - INTERVAL '1 second',
+                updated_at = NOW()
+            WHERE id = NEW.parent_deck_id
+              AND end_date IS NULL;
+        ELSIF TG_TABLE_NAME = 'client_rate_decks' THEN
+            UPDATE client_rate_decks
+            SET end_date = NEW.effective_date - INTERVAL '1 second',
+                updated_at = NOW()
+            WHERE id = NEW.parent_deck_id
+              AND end_date IS NULL;
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create triggers for automatic end_date management
+DROP TRIGGER IF EXISTS vendor_deck_end_date_trigger ON vendor_rate_decks;
+CREATE TRIGGER vendor_deck_end_date_trigger
+AFTER INSERT ON vendor_rate_decks
+FOR EACH ROW
+EXECUTE FUNCTION update_deck_end_dates();
+
+DROP TRIGGER IF EXISTS client_deck_end_date_trigger ON client_rate_decks;
+CREATE TRIGGER client_deck_end_date_trigger
+AFTER INSERT ON client_rate_decks
+FOR EACH ROW
+EXECUTE FUNCTION update_deck_end_dates();
+
+-- Notification system for deck changes
+CREATE OR REPLACE FUNCTION notify_deck_change()
+RETURNS TRIGGER AS $$
+BEGIN
+    PERFORM pg_notify('deck_change', json_build_object(
+        'action', TG_OP,
+        'table', TG_TABLE_NAME,
+        'deck_id', NEW.id,
+        'effective_date', NEW.effective_date,
+        'deck_version', NEW.deck_version
+    )::text);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER vendor_deck_notify_trigger
+AFTER INSERT OR UPDATE ON vendor_rate_decks
+FOR EACH ROW
+EXECUTE FUNCTION notify_deck_change();
+
+CREATE TRIGGER client_deck_notify_trigger
+AFTER INSERT OR UPDATE ON client_rate_decks
+FOR EACH ROW
+EXECUTE FUNCTION notify_deck_change();

@@ -162,7 +162,7 @@ impl SipCodecIntegration {
         debug!("Processing SIP message from {}: {:?}", from_addr, method);
 
         // Authenticate if required
-        if let Some(ref method) = method {
+        if let Some(ref _method) = method {
             let auth_result = self
                 .sip_auth
                 .lock()

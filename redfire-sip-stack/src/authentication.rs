@@ -493,8 +493,8 @@ impl SipAuthenticator {
     async fn try_digest_authentication(
         &mut self,
         auth_header: &str,
-        method: &rsip::Method,
-        request_uri: &rsip::Uri,
+        _method: &rsip::Method,
+        _request_uri: &rsip::Uri,
     ) -> Result<AuthResult> {
         // Parse authorization header
         let auth_params = self.parse_authorization_header(auth_header)?;
