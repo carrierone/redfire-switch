@@ -57,6 +57,9 @@ postgres-types = { version = "0.2", features = ["derive"] }
 rust_decimal = "1.33"
 rust_decimal_macros = "1.33"
 
+# Phone number validation
+rlibphonenumber = "0.2.1"
+
 # Cache and synchronization
 dashmap = "5.5"
 arc-swap = "1.6"
@@ -129,6 +132,14 @@ path = "src/bin/enterprise_demo.rs"
 [[bin]]
 name = "ai-analytics-demo"
 path = "src/bin/ai_analytics_demo.rs"
+
+[[bin]]
+name = "phone-validation-test-suite"
+path = "src/bin/phone_validation_test_suite.rs"
+
+[[bin]]
+name = "simple-phone-validation-test"
+path = "src/bin/simple_phone_validation_test.rs"
 
 [features]
 default = []

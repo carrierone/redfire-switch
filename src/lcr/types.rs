@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use std::net::IpAddr;
 
+use crate::lcr::phone_validation::PhoneValidationConfig;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RateType {
     LRN,
@@ -292,6 +294,78 @@ pub struct CallRoute {
     pub interval: i32,
 }
 
+/// International routing plan configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InternationalRoutingPlan {
+    pub id: i32,
+    pub name: String,
+    pub description: Option<String>,
+    // Phone validation settings
+    pub phone_validation_enabled: bool,
+    pub phone_validation_strict: bool,
+    pub phone_validation_default_region: String,
+    pub phone_validation_use_country_detection: bool,
+    // EEA routing settings
+    pub eea_routing_enabled: bool,
+    pub eea_priority_routing: bool,
+    pub eea_reduced_rates: bool,
+    pub eea_rate_reduction: Decimal,
+    // Default routing settings
+    pub default_jurisdiction: InternationalJurisdiction,
+    pub allow_unknown_destinations: bool,
+    pub max_rate_unknown_destinations: Decimal,
+    pub require_strict_validation_unknown: bool,
+    pub active: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Country-specific routing preferences
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CountryRoutingPreference {
+    pub id: i32,
+    pub routing_plan_id: i32,
+    pub country_code: String, // ISO 2-letter country code
+    pub country_name: String,
+    /// Preferred jurisdiction classification
+    pub jurisdiction: InternationalJurisdiction,
+    /// Quality scoring for this destination
+    pub quality_score: i32,
+    /// Cost multiplier (1.0 = normal, >1.0 = more expensive)
+    pub cost_multiplier: Decimal,
+    /// Whether to require phone validation for this country
+    pub require_validation: bool,
+    /// Maximum call duration in minutes (0 = unlimited)
+    pub max_duration_minutes: i32,
+    pub created_at: DateTime<Utc>,
+}
+
+/// EEA routing configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EeaRoutingConfig {
+    /// Enable EEA-specific routing
+    pub enabled: bool,
+    /// EEA countries get priority routing
+    pub priority_routing: bool,
+    /// Apply reduced rates for EEA destinations
+    pub reduced_rates: bool,
+    /// Rate reduction percentage (0.1 = 10% reduction)
+    pub rate_reduction: Decimal,
+}
+
+/// Default routing configuration for unknown destinations
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DefaultRoutingConfig {
+    /// Default jurisdiction for unknown countries
+    pub default_jurisdiction: InternationalJurisdiction,
+    /// Whether to allow routing to unknown destinations
+    pub allow_unknown: bool,
+    /// Maximum rate per minute for unknown destinations
+    pub max_rate_per_minute: Decimal,
+    /// Require strict phone validation for unknown destinations
+    pub require_strict_validation: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RouteRequest {
     pub ani: String,
@@ -302,6 +376,10 @@ pub struct RouteRequest {
     pub require_profit_protection: bool,
     pub min_profit_margin: Option<Decimal>,
     pub effective_time: Option<DateTime<Utc>>,
+    /// Phone validation configuration for this request
+    pub phone_validation: Option<PhoneValidationConfig>,
+    /// International routing plan ID to use
+    pub routing_plan_id: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

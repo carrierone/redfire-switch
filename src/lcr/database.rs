@@ -590,4 +590,149 @@ impl DatabasePool {
 
         Ok(())
     }
+
+    /// Create default international routing plans if they don't exist
+    pub async fn ensure_default_routing_plans(&self) -> Result<()> {
+        // Check if any routing plans exist
+        let count = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM international_routing_plans"
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        if count == 0 {
+            // Create default EEA routing plan
+            let eea_plan_id = sqlx::query_scalar::<_, i32>(
+                r#"
+                INSERT INTO international_routing_plans (
+                    name, description,
+                    phone_validation_enabled, phone_validation_strict, 
+                    phone_validation_default_region, phone_validation_use_country_detection,
+                    eea_routing_enabled, eea_priority_routing, eea_reduced_rates, eea_rate_reduction,
+                    default_jurisdiction, allow_unknown_destinations, max_rate_unknown_destinations,
+                    require_strict_validation_unknown, active
+                ) VALUES (
+                    'Default EEA Routing', 
+                    'Default routing plan with phone validation enabled and EEA optimization',
+                    true, false, 'US', true,
+                    true, true, true, 0.1000,
+                    'ROW', true, 1.0000,
+                    false, true
+                ) RETURNING id
+                "#
+            )
+            .fetch_one(&self.pool)
+            .await?;
+
+            // Create default ROW routing plan
+            let row_plan_id = sqlx::query_scalar::<_, i32>(
+                r#"
+                INSERT INTO international_routing_plans (
+                    name, description,
+                    phone_validation_enabled, phone_validation_strict, 
+                    phone_validation_default_region, phone_validation_use_country_detection,
+                    eea_routing_enabled, eea_priority_routing, eea_reduced_rates, eea_rate_reduction,
+                    default_jurisdiction, allow_unknown_destinations, max_rate_unknown_destinations,
+                    require_strict_validation_unknown, active
+                ) VALUES (
+                    'Default ROW Routing', 
+                    'Default routing plan for Rest of World destinations with basic validation',
+                    true, false, 'US', true,
+                    false, false, false, 0.0000,
+                    'ROW', true, 2.0000,
+                    true, true
+                ) RETURNING id
+                "#
+            )
+            .fetch_one(&self.pool)
+            .await?;
+
+            // Create strict validation routing plan
+            let _strict_plan_id = sqlx::query_scalar::<_, i32>(
+                r#"
+                INSERT INTO international_routing_plans (
+                    name, description,
+                    phone_validation_enabled, phone_validation_strict, 
+                    phone_validation_default_region, phone_validation_use_country_detection,
+                    eea_routing_enabled, eea_priority_routing, eea_reduced_rates, eea_rate_reduction,
+                    default_jurisdiction, allow_unknown_destinations, max_rate_unknown_destinations,
+                    require_strict_validation_unknown, active
+                ) VALUES (
+                    'Strict Validation Plan', 
+                    'High-security routing plan with strict phone number validation',
+                    true, true, 'US', true,
+                    true, true, true, 0.0500,
+                    'ROW', false, 0.5000,
+                    true, true
+                ) RETURNING id
+                "#
+            )
+            .fetch_one(&self.pool)
+            .await?;
+
+            // Add EEA country preferences for the EEA routing plan
+            let eea_countries = vec![
+                ("AT", "Austria"), ("BE", "Belgium"), ("BG", "Bulgaria"), ("CY", "Cyprus"),
+                ("CZ", "Czech Republic"), ("DE", "Germany"), ("DK", "Denmark"), ("EE", "Estonia"),
+                ("ES", "Spain"), ("FI", "Finland"), ("FR", "France"), ("GR", "Greece"),
+                ("HR", "Croatia"), ("HU", "Hungary"), ("IE", "Ireland"), ("IS", "Iceland"),
+                ("IT", "Italy"), ("LI", "Liechtenstein"), ("LT", "Lithuania"), ("LU", "Luxembourg"),
+                ("LV", "Latvia"), ("MT", "Malta"), ("NL", "Netherlands"), ("NO", "Norway"),
+                ("PL", "Poland"), ("PT", "Portugal"), ("RO", "Romania"), ("SE", "Sweden"),
+                ("SI", "Slovenia"), ("SK", "Slovakia"),
+            ];
+
+            for (code, name) in eea_countries {
+                sqlx::query!(
+                    r#"
+                    INSERT INTO country_routing_preferences (
+                        routing_plan_id, country_code, country_name,
+                        jurisdiction, quality_score, cost_multiplier,
+                        require_validation, max_duration_minutes
+                    ) VALUES ($1, $2, $3, 'EEA', 95, 0.9, true, 0)
+                    "#,
+                    eea_plan_id,
+                    code,
+                    name
+                )
+                .execute(&self.pool)
+                .await?;
+            }
+
+            // Add some common ROW countries for the ROW routing plan
+            let row_countries = vec![
+                ("US", "United States"), ("CA", "Canada"), ("MX", "Mexico"),
+                ("AU", "Australia"), ("NZ", "New Zealand"), ("JP", "Japan"),
+                ("KR", "South Korea"), ("CN", "China"), ("IN", "India"),
+                ("BR", "Brazil"), ("AR", "Argentina"), ("CL", "Chile"),
+                ("ZA", "South Africa"), ("RU", "Russia"), ("TR", "Turkey"),
+                ("AE", "United Arab Emirates"), ("SA", "Saudi Arabia"),
+            ];
+
+            for (code, name) in row_countries {
+                sqlx::query!(
+                    r#"
+                    INSERT INTO country_routing_preferences (
+                        routing_plan_id, country_code, country_name,
+                        jurisdiction, quality_score, cost_multiplier,
+                        require_validation, max_duration_minutes
+                    ) VALUES ($1, $2, $3, 'ROW', 85, 1.0, false, 0)
+                    "#,
+                    row_plan_id,
+                    code,
+                    name
+                )
+                .execute(&self.pool)
+                .await?;
+            }
+
+            println!("Created default international routing plans:");
+            println!("  - Default EEA Routing (ID: {})", eea_plan_id);
+            println!("  - Default ROW Routing (ID: {})", row_plan_id);
+            println!("  - Added {} EEA country preferences", eea_countries.len());
+            println!("  - Added {} ROW country preferences", row_countries.len());
+        }
+
+        Ok(())
+    }
 }
