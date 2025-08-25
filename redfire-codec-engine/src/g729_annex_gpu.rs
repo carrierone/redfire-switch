@@ -348,13 +348,9 @@ impl G729AnnexGpuProcessor {
     async fn compile_kernels(&mut self) -> Result<()> {
         match self.config.gpu_config.backend {
             #[cfg(feature = "cuda")]
-            GpuBackend::Cuda => {
-                self.compile_cuda_kernels().await
-            }
+            GpuBackend::Cuda => self.compile_cuda_kernels().await,
             #[cfg(feature = "rocm")]
-            GpuBackend::Rocm => {
-                self.compile_rocm_kernels().await
-            }
+            GpuBackend::Rocm => self.compile_rocm_kernels().await,
             _ => Err(anyhow!("Unsupported GPU backend")),
         }
     }
