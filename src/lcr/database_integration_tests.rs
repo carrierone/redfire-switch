@@ -335,6 +335,8 @@ mod database_integration_tests {
             parent_deck_id: None,
             effective_time: NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
             preload_minutes: 30,
+            loaded_at: Some(Utc::now()),
+            is_staged: false,
             active: true,
         }
     }

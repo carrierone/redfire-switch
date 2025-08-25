@@ -37,6 +37,7 @@ pub mod isdn_stack_manager;
 pub mod cesopsn;
 pub mod cesopsn_ni2_integration;
 pub mod tdmoe_ni2_signaling;
+pub mod tdmoe_dtmf;
 
 // Media infrastructure (legacy modules, gradually being moved to codec_engine)
 pub mod rtp;

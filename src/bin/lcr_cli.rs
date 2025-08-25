@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use redfire_switch::lcr::routing::RouteRequest;
-use redfire_switch::lcr::types::{ConfigScope, RouteType};
+use redfire_switch::lcr::types::RouteType;
 use redfire_switch::lcr::LcrEngine;
 use rust_decimal::Decimal;
 use std::sync::Arc;
@@ -239,6 +239,9 @@ async fn main() -> Result<()> {
                 route_type: route_type_enum,
                 require_profit_protection: profit_protection,
                 min_profit_margin,
+                effective_time: None,
+                phone_validation: None,
+                routing_plan_id: None,
             };
 
             let response = routing_engine.find_routes(&request).await?;
@@ -372,5 +375,3 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
-
-use std::str::FromStr;

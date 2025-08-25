@@ -78,4 +78,19 @@ _site/
 .*.swp
 .*.swo
 
+# SQLx cache files
+.sqlx/
+
+# Production configuration files (additional patterns)
+*-production.toml
+production-*.toml
+
+# Private key and certificate files
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.cer
+
 .github

@@ -30,7 +30,7 @@ rsip = "0.4"
 tokio = { version = "1.0", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-clap = { version = "4.0", features = ["derive"] }
+clap = { version = "4.0", features = ["derive", "env"] }
 anyhow = "1.0"
 tracing = "0.1"
 tracing-subscriber = "0.3"
@@ -50,7 +50,7 @@ x509-parser = "0.15"
 pem = "3.0"
 
 # Database dependencies
-sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid"] }
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid", "rust_decimal"] }
 deadpool-postgres = "0.11"
 tokio-postgres = "0.7"
 postgres-types = { version = "0.2", features = ["derive"] }

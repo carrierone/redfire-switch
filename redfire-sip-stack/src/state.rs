@@ -18,15 +18,12 @@ use anyhow::{anyhow, Result};
 use dashmap::DashMap;
 use rsip::{
     message::{HeadersExt, SipMessage as RsipMessage},
-    param::Param,
     Method, Request, Response,
 };
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::RwLock;
-use tokio::time::{interval, Instant};
-use tracing::{debug, error, info, warn};
-use uuid::Uuid;
+use tokio::time::interval;
+use tracing::{debug, info, warn};
 
 /// SIP state manager for dialogs and transactions
 pub struct SipStateManager {
@@ -628,7 +625,7 @@ impl TransactionTimerManager {
     async fn process_timers(&self) {
         let _now = chrono::Utc::now();
 
-        for mut transaction in self.transactions.iter_mut() {
+        for transaction in self.transactions.iter_mut() {
             // Check various timers based on transaction state
             match &transaction.state {
                 TransactionState::Invite(invite_state) => {

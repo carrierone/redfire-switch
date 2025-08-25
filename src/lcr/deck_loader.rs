@@ -260,20 +260,23 @@ impl DeckLoader {
         .await?;
         
         // Get the schedule details
-        let schedule = sqlx::query!(
-            "SELECT deck_type, new_deck_id FROM deck_cutover_schedule WHERE id = $1",
-            schedule_id
+        let schedule = sqlx::query(
+            "SELECT deck_type, new_deck_id FROM deck_cutover_schedule WHERE id = $1"
         )
+        .bind(schedule_id)
         .fetch_one(&mut *tx)
         .await?;
         
         // Mark deck as loaded
-        match schedule.deck_type.as_str() {
+        let deck_type: String = schedule.get("deck_type");
+        let new_deck_id: i32 = schedule.get("new_deck_id");
+        
+        match deck_type.as_str() {
             "vendor" => {
                 sqlx::query(
                     "UPDATE vendor_rate_decks SET loaded_at = NOW(), is_staged = false WHERE id = $1"
                 )
-                .bind(schedule.new_deck_id)
+                .bind(new_deck_id)
                 .execute(&mut *tx)
                 .await?;
             },
@@ -281,7 +284,7 @@ impl DeckLoader {
                 sqlx::query(
                     "UPDATE client_rate_decks SET loaded_at = NOW(), is_staged = false WHERE id = $1"
                 )
-                .bind(schedule.new_deck_id)
+                .bind(new_deck_id)
                 .execute(&mut *tx)
                 .await?;
             },

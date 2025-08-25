@@ -12,17 +12,15 @@
 
 use anyhow::{anyhow, Result};
 use rsip::{
-    headers::{CSeq, ContentLength, Header},
+    headers::{ContentLength, Header},
     message::{HeadersExt, SipMessage as RsipMessage},
     method::Method,
-    param::Param,
     uri::Uri,
     version::Version,
     Request, Response,
 };
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
-use std::str::FromStr;
 use tracing::{debug, warn};
 use uuid::Uuid;
 

@@ -18,19 +18,17 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{broadcast, mpsc, RwLock};
-use tokio::time::interval;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 use crate::buffer_pool::{AudioBufferPool, ChannelIdCache};
 use crate::cesopsn::{
-    CesopsnCircuitConfig, CesopsnCircuitType, CesopsnManager, CesopsnPayloadType, CesopsnService,
-    CesopsnServiceQuality, CesopsnServiceStats,
+    CesopsnCircuitConfig, CesopsnCircuitType, CesopsnManager, CesopsnServiceStats,
 };
 use crate::codec_optimized::OptimizedCodecProcessor;
 use crate::dtmf_processor::DtmfProcessor;
 use crate::q931_messages::{IsdnConfig, IsdnSideType, IsdnVariant};
 use crate::tdmoe_ni2_signaling::{
-    Ni2CallContext, Ni2CallState, Ni2Event, Ni2SideType, TdmoeNi2Signaling,
+    Ni2SideType, TdmoeNi2Signaling,
 };
 
 /// PCM Codec Type for voice encoding

@@ -159,7 +159,6 @@ pub fn create_sipt_sipi_service() -> SipTSipIService {
 /// Utility functions for common SIP operations  
 pub mod utils {
     use super::*;
-    use crate::parser::SipTransport;
 
     /// Generate a unique Call-ID
     pub fn generate_call_id() -> String {

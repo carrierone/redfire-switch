@@ -19,12 +19,12 @@ use tokio::time::{interval, sleep};
 use tracing::{info, warn, Level};
 use tracing_subscriber;
 
-use redfire_switch::cesopsn::PcmCodec;
 use redfire_switch::cesopsn::{
     CesopsnCircuitConfig, CesopsnCircuitType, CesopsnManager, CesopsnPayloadType,
     CesopsnServiceQuality,
 };
 use redfire_switch::cesopsn_ni2_integration::{
+    PcmCodec,
     CesopsnNi2CircuitConfig, CesopsnNi2Event, CesopsnNi2Integration,
 };
 use redfire_switch::q931_messages::{IsdnConfig, IsdnSideType, IsdnVariant};
@@ -340,7 +340,7 @@ impl CesopsnTestEnvironment {
                         );
                     }
                     CesopsnNi2Event::Ni2MessageReceived {
-                        circuit_id,
+                        circuit_id: _,
                         channel_id,
                         message,
                     } => {
@@ -411,7 +411,7 @@ impl CesopsnTestEnvironment {
                         );
                     }
                     CesopsnNi2Event::Ni2MessageReceived {
-                        circuit_id,
+                        circuit_id: _,
                         channel_id,
                         message,
                     } => {

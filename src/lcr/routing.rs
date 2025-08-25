@@ -14,7 +14,7 @@ use crate::lcr::lrn_dip::LrnDipService;
 use crate::lcr::phone_validation::{PhoneValidator, PhoneValidationConfig};
 use crate::lcr::timers::TimerManager;
 use crate::lcr::trunk_manager::TrunkManager;
-pub use crate::lcr::types::RouteResponse;
+pub use crate::lcr::types::{RouteResponse, RouteRequest};
 
 pub struct RoutingEngine {
     cache: Arc<LcrCache>,
@@ -455,9 +455,9 @@ impl RoutingEngine {
         effective_time: DateTime<Utc>,
     ) -> Result<Option<(NanpaRate, RateType)>> {
         // Get the vendor deck associated with this trunk at the given time
-        let deck_row = sqlx::query!(
+        let deck_row = sqlx::query(
             r#"
-            SELECT vrd.id, vrd.rate_type as "rate_type!: RateType"
+            SELECT vrd.id, vrd.rate_type
             FROM lcr_route_trunks lrt
             JOIN vendor_rate_decks vrd ON vrd.id = lrt.vendor_deck_id
             WHERE lrt.egress_trunk_id = $1
@@ -466,16 +466,21 @@ impl RoutingEngine {
               AND vrd.active = true
             ORDER BY vrd.deck_version DESC
             LIMIT 1
-            "#,
-            trunk_id,
-            effective_time
+            "#
         )
+        .bind(trunk_id)
+        .bind(effective_time)
         .fetch_optional(&self.pool)
         .await?;
 
         if let Some(deck_info) = deck_row {
-            let deck_id = deck_info.id;
-            let rate_type = deck_info.rate_type;
+            let deck_id: i32 = deck_info.get("id");
+            let rate_type_str: String = deck_info.get("rate_type");
+            let rate_type = match rate_type_str.as_str() {
+                "LRN" => RateType::LRN,
+                "DNIS" => RateType::DNIS,
+                _ => RateType::DNIS,
+            };
             
             // Check cache first
             if let Some(rate) = self.cache.get_vendor_rate(deck_id, code) {
@@ -810,35 +815,42 @@ impl RoutingEngine {
         let normalized = self.normalize_international_number(dnis);
         
         // Use a single query with proper longest-to-shortest matching
-        let row = sqlx::query!(
+        let row = sqlx::query(
             r#"
             SELECT id, deck_id, country_code, destination_code, destination_name,
-                   jurisdiction as "jurisdiction!: InternationalJurisdiction", 
+                   jurisdiction, 
                    rate, initial_increment, subsequent_increment, setup_fee, created_at
             FROM vendor_international_rates
             WHERE deck_id = $1 AND $2 LIKE (country_code || COALESCE(destination_code, '') || '%')
             ORDER BY LENGTH(country_code || COALESCE(destination_code, '')) DESC
             LIMIT 1
-            "#,
-            deck_id,
-            normalized
+            "#
         )
+        .bind(deck_id)
+        .bind(normalized)
         .fetch_optional(&self.pool)
         .await?;
 
         if let Some(row) = row {
+            let jurisdiction_str: String = row.get("jurisdiction");
+            let jurisdiction = match jurisdiction_str.as_str() {
+                "EEA" => InternationalJurisdiction::EEA,
+                "ROW" => InternationalJurisdiction::ROW,
+                _ => InternationalJurisdiction::ROW,
+            };
+            
             return Ok(Some(InternationalRate {
-                id: row.id,
-                deck_id: row.deck_id,
-                country_code: row.country_code,
-                destination_code: row.destination_code,
-                destination_name: row.destination_name,
-                jurisdiction: row.jurisdiction,
-                rate: row.rate,
-                initial_increment: row.initial_increment,
-                subsequent_increment: row.subsequent_increment,
-                setup_fee: row.setup_fee,
-                created_at: row.created_at,
+                id: row.get("id"),
+                deck_id: row.get("deck_id"),
+                country_code: row.get("country_code"),
+                destination_code: row.get("destination_code"),
+                destination_name: row.get("destination_name"),
+                jurisdiction,
+                rate: row.get("rate"),
+                initial_increment: row.get("initial_increment"),
+                subsequent_increment: row.get("subsequent_increment"),
+                setup_fee: row.get("setup_fee"),
+                created_at: row.get("created_at"),
             }));
         }
         
@@ -855,35 +867,42 @@ impl RoutingEngine {
         let normalized = self.normalize_international_number(dnis);
         
         // Use a single query with proper longest-to-shortest matching
-        let row = sqlx::query!(
+        let row = sqlx::query(
             r#"
             SELECT id, deck_id, country_code, destination_code, destination_name,
-                   jurisdiction as "jurisdiction!: InternationalJurisdiction", 
+                   jurisdiction, 
                    rate, initial_increment, subsequent_increment, setup_fee, created_at
             FROM client_international_rates
             WHERE deck_id = $1 AND $2 LIKE (country_code || COALESCE(destination_code, '') || '%')
             ORDER BY LENGTH(country_code || COALESCE(destination_code, '')) DESC
             LIMIT 1
-            "#,
-            deck_id,
-            normalized
+            "#
         )
+        .bind(deck_id)
+        .bind(normalized)
         .fetch_optional(&self.pool)
         .await?;
 
         if let Some(row) = row {
+            let jurisdiction_str: String = row.get("jurisdiction");
+            let jurisdiction = match jurisdiction_str.as_str() {
+                "EEA" => InternationalJurisdiction::EEA,
+                "ROW" => InternationalJurisdiction::ROW,
+                _ => InternationalJurisdiction::ROW,
+            };
+            
             return Ok(Some(InternationalRate {
-                id: row.id,
-                deck_id: row.deck_id,
-                country_code: row.country_code,
-                destination_code: row.destination_code,
-                destination_name: row.destination_name,
-                jurisdiction: row.jurisdiction,
-                rate: row.rate,
-                initial_increment: row.initial_increment,
-                subsequent_increment: row.subsequent_increment,
-                setup_fee: row.setup_fee,
-                created_at: row.created_at,
+                id: row.get("id"),
+                deck_id: row.get("deck_id"),
+                country_code: row.get("country_code"),
+                destination_code: row.get("destination_code"),
+                destination_name: row.get("destination_name"),
+                jurisdiction,
+                rate: row.get("rate"),
+                initial_increment: row.get("initial_increment"),
+                subsequent_increment: row.get("subsequent_increment"),
+                setup_fee: row.get("setup_fee"),
+                created_at: row.get("created_at"),
             }));
         }
         
@@ -995,43 +1014,50 @@ impl RoutingEngine {
 
     /// Get international routing plan configuration
     async fn get_routing_plan(&self, routing_plan_id: i32) -> Result<Option<InternationalRoutingPlan>> {
-        let row = sqlx::query!(
+        let row = sqlx::query(
             r#"
             SELECT id, name, description,
                    phone_validation_enabled, phone_validation_strict, 
                    phone_validation_default_region, phone_validation_use_country_detection,
                    eea_routing_enabled, eea_priority_routing, eea_reduced_rates, eea_rate_reduction,
-                   default_jurisdiction as "default_jurisdiction!: InternationalJurisdiction",
+                   default_jurisdiction,
                    allow_unknown_destinations, max_rate_unknown_destinations,
                    require_strict_validation_unknown, active, created_at, updated_at
             FROM international_routing_plans
             WHERE id = $1 AND active = true
-            "#,
-            routing_plan_id
+            "#
         )
+        .bind(routing_plan_id)
         .fetch_optional(&self.pool)
         .await?;
 
         if let Some(row) = row {
+            let jurisdiction_str: String = row.get("default_jurisdiction");
+            let jurisdiction = match jurisdiction_str.as_str() {
+                "EEA" => InternationalJurisdiction::EEA,
+                "ROW" => InternationalJurisdiction::ROW,
+                _ => InternationalJurisdiction::ROW,
+            };
+            
             Ok(Some(InternationalRoutingPlan {
-                id: row.id,
-                name: row.name,
-                description: row.description,
-                phone_validation_enabled: row.phone_validation_enabled,
-                phone_validation_strict: row.phone_validation_strict,
-                phone_validation_default_region: row.phone_validation_default_region,
-                phone_validation_use_country_detection: row.phone_validation_use_country_detection,
-                eea_routing_enabled: row.eea_routing_enabled,
-                eea_priority_routing: row.eea_priority_routing,
-                eea_reduced_rates: row.eea_reduced_rates,
-                eea_rate_reduction: row.eea_rate_reduction,
-                default_jurisdiction: row.default_jurisdiction,
-                allow_unknown_destinations: row.allow_unknown_destinations,
-                max_rate_unknown_destinations: row.max_rate_unknown_destinations,
-                require_strict_validation_unknown: row.require_strict_validation_unknown,
-                active: row.active,
-                created_at: row.created_at,
-                updated_at: row.updated_at,
+                id: row.get("id"),
+                name: row.get("name"),
+                description: row.get("description"),
+                phone_validation_enabled: row.get("phone_validation_enabled"),
+                phone_validation_strict: row.get("phone_validation_strict"),
+                phone_validation_default_region: row.get("phone_validation_default_region"),
+                phone_validation_use_country_detection: row.get("phone_validation_use_country_detection"),
+                eea_routing_enabled: row.get("eea_routing_enabled"),
+                eea_priority_routing: row.get("eea_priority_routing"),
+                eea_reduced_rates: row.get("eea_reduced_rates"),
+                eea_rate_reduction: row.get("eea_rate_reduction"),
+                default_jurisdiction: jurisdiction,
+                allow_unknown_destinations: row.get("allow_unknown_destinations"),
+                max_rate_unknown_destinations: row.get("max_rate_unknown_destinations"),
+                require_strict_validation_unknown: row.get("require_strict_validation_unknown"),
+                active: row.get("active"),
+                created_at: row.get("created_at"),
+                updated_at: row.get("updated_at"),
             }))
         } else {
             Ok(None)
@@ -1044,33 +1070,40 @@ impl RoutingEngine {
         routing_plan_id: i32, 
         country_code: &str
     ) -> Result<Option<CountryRoutingPreference>> {
-        let row = sqlx::query!(
+        let row = sqlx::query(
             r#"
             SELECT id, routing_plan_id, country_code, country_name,
-                   jurisdiction as "jurisdiction!: InternationalJurisdiction",
+                   jurisdiction,
                    quality_score, cost_multiplier, require_validation,
                    max_duration_minutes, created_at
             FROM country_routing_preferences
             WHERE routing_plan_id = $1 AND country_code = $2
-            "#,
-            routing_plan_id,
-            country_code
+            "#
         )
+        .bind(routing_plan_id)
+        .bind(country_code)
         .fetch_optional(&self.pool)
         .await?;
 
         if let Some(row) = row {
+            let jurisdiction_str: String = row.get("jurisdiction");
+            let jurisdiction = match jurisdiction_str.as_str() {
+                "EEA" => InternationalJurisdiction::EEA,
+                "ROW" => InternationalJurisdiction::ROW,
+                _ => InternationalJurisdiction::ROW,
+            };
+            
             Ok(Some(CountryRoutingPreference {
-                id: row.id,
-                routing_plan_id: row.routing_plan_id,
-                country_code: row.country_code,
-                country_name: row.country_name,
-                jurisdiction: row.jurisdiction,
-                quality_score: row.quality_score,
-                cost_multiplier: row.cost_multiplier,
-                require_validation: row.require_validation,
-                max_duration_minutes: row.max_duration_minutes,
-                created_at: row.created_at,
+                id: row.get("id"),
+                routing_plan_id: row.get("routing_plan_id"),
+                country_code: row.get("country_code"),
+                country_name: row.get("country_name"),
+                jurisdiction,
+                quality_score: row.get("quality_score"),
+                cost_multiplier: row.get("cost_multiplier"),
+                require_validation: row.get("require_validation"),
+                max_duration_minutes: row.get("max_duration_minutes"),
+                created_at: row.get("created_at"),
             }))
         } else {
             Ok(None)

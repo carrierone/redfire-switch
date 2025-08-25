@@ -220,7 +220,7 @@ impl PhoneValidator {
     }
 
     /// Format number for international display
-    fn format_international(&self, normalized: &str) -> String {
+    pub fn format_international(&self, normalized: &str) -> String {
         if normalized.starts_with('+') {
             normalized.to_string()
         } else if normalized.len() == 10 && self.config.default_region == "US" {

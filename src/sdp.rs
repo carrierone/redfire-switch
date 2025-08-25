@@ -199,7 +199,10 @@ impl SdpSession {
                 continue;
             }
 
-            let line_type = line.chars().nth(0).unwrap();
+            let line_type = line.chars().nth(0).ok_or_else(|| anyhow!("Empty SDP line"))?;
+            if line.len() < 2 {
+                return Err(anyhow!("Invalid SDP line format: {}", line));
+            }
             let line_value = &line[2..];
 
             match line_type {

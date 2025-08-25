@@ -19,6 +19,16 @@ pub enum RouteType {
     OTHER,
 }
 
+impl std::fmt::Display for RouteType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RouteType::NANPA => write!(f, "NANPA"),
+            RouteType::AZ => write!(f, "A-Z"),
+            RouteType::OTHER => write!(f, "OTHER"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CallJurisdiction {
@@ -46,6 +56,15 @@ pub struct NanpaRate {
 pub enum InternationalJurisdiction {
     EEA, // European Economic Area
     ROW, // Rest of World
+}
+
+impl std::fmt::Display for InternationalJurisdiction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InternationalJurisdiction::EEA => write!(f, "EEA"),
+            InternationalJurisdiction::ROW => write!(f, "ROW"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
