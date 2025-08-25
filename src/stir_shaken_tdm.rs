@@ -20,9 +20,9 @@ use reqwest::Client as HttpClient;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::{mpsc, RwLock};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 use url::Url;
 
 /// STIR/SHAKEN TDM transport methods

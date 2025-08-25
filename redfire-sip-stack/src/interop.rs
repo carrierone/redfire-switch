@@ -47,20 +47,14 @@
 
 use anyhow::{anyhow, Result};
 use rsip::{
-    headers::{
-        CSeq, CallId, Contact, ContentLength, ContentType, From, Header, MaxForwards, RecordRoute,
-        Route, To, Via,
-    },
-    message::{HeadersExt, SipMessage},
-    param::Param,
-    uri::Uri,
-    Method, Request, Response, StatusCode, Version,
+    headers::Header,
+    message::HeadersExt,
+    Method, Request, Response, Version,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::net::{IpAddr, SocketAddr};
-use std::time::{Duration, SystemTime};
-use tracing::{debug, error, info, warn};
+use std::net::SocketAddr;
+use tracing::{debug, info, warn};
 
 /// SIP interoperability configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]

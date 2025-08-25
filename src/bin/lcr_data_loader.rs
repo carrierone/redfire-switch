@@ -3,10 +3,11 @@ use clap::{Arg, Command};
 use redfire_switch::lcr::data_loader::NanpaLergDataLoader;
 use sqlx::postgres::PgPoolOptions;
 use tracing::{info, warn};
+use tracing_subscriber;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::init();
+    tracing_subscriber::fmt::init();
 
     let matches = Command::new("LCR Data Loader")
         .version("1.0")
@@ -14,9 +15,9 @@ async fn main() -> Result<()> {
         .arg(
             Arg::new("database-url")
                 .long("database-url")
-                .env("DATABASE_URL")
+                .value_name("URL")
                 .default_value("postgresql://postgres:postgres@localhost:5432/lcr")
-                .help("PostgreSQL database URL"),
+                .help("PostgreSQL database URL (or set DATABASE_URL env var)"),
         )
         .arg(
             Arg::new("data-dir")
@@ -38,7 +39,10 @@ async fn main() -> Result<()> {
         )
         .get_matches();
 
-    let database_url = matches.get_one::<String>("database-url").unwrap();
+    let database_url = matches.get_one::<String>("database-url")
+        .map(|s| s.to_string())
+        .or_else(|| std::env::var("DATABASE_URL").ok())
+        .unwrap_or_else(|| "postgresql://postgres:postgres@localhost:5432/lcr".to_string());
     let data_dir = matches.get_one::<String>("data-dir").unwrap();
     let npa_report_only = matches.get_flag("npa-report");
     let lerg_only = matches.get_flag("lerg-only");
@@ -46,7 +50,7 @@ async fn main() -> Result<()> {
     info!("Connecting to database: {}", database_url);
     let pool = PgPoolOptions::new()
         .max_connections(5)
-        .connect(database_url)
+        .connect(&database_url)
         .await?;
 
     let loader = NanpaLergDataLoader::new(pool);

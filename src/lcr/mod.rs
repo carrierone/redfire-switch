@@ -9,6 +9,7 @@ pub mod deck_loader;
 pub mod jurisdiction;
 pub mod lrn_dip;
 pub mod nanpa_loader;
+pub mod phone_validation;
 pub mod routing;
 pub mod timers;
 pub mod trunk_manager;
@@ -17,6 +18,14 @@ pub mod types;
 pub mod test_local_rates;
 #[cfg(test)]
 pub mod integration_test;
+#[cfg(test)]
+pub mod phone_validation_tests;
+#[cfg(test)]
+pub mod routing_integration_tests;
+#[cfg(test)]
+pub mod database_integration_tests;
+#[cfg(test)]
+pub mod end_to_end_tests;
 
 use anyhow::Result;
 use std::sync::Arc;
@@ -58,6 +67,9 @@ impl LcrEngine {
         if lrn_dip_service.is_enabled() {
             lrn_dip_service.initialize().await?;
         }
+
+        // Ensure default international routing plans exist
+        db_pool.ensure_default_routing_plans().await?;
 
         // Load initial data into cache
         cache.load_from_database(&db_pool).await?;

@@ -108,6 +108,8 @@ mod integration_tests {
             require_profit_protection: true,
             min_profit_margin: Some(Decimal::from_str("0.001").unwrap()), // 0.1¢ minimum
             effective_time: Some(Utc::now()), // Route at current time
+            phone_validation: None,
+            routing_plan_id: None,
         };
 
         // Verify structure

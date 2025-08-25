@@ -37,7 +37,6 @@ use tokio::sync::{mpsc, RwLock};
 use tracing::info;
 
 use crate::parser::SipMessage;
-use crate::transport::SipTransport;
 
 /// SIP debug configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]

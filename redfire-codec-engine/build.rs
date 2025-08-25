@@ -31,8 +31,6 @@ fn main() {
 
 #[cfg(feature = "cuda")]
 fn compile_cuda_kernels() {
-    use std::fs;
-
     println!("cargo:rustc-link-lib=cuda");
     println!("cargo:rustc-link-lib=cudart");
 

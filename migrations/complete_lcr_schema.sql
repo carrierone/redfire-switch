@@ -122,6 +122,51 @@ CREATE TABLE client_international_rates (
     CONSTRAINT client_intl_rates_unique UNIQUE(deck_id, country_code, destination_code)
 );
 
+-- International routing plans
+CREATE TABLE international_routing_plans (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL UNIQUE,
+    description TEXT,
+    -- Phone validation settings (stored as JSON)
+    phone_validation_enabled BOOLEAN DEFAULT true,
+    phone_validation_strict BOOLEAN DEFAULT false,
+    phone_validation_default_region VARCHAR(2) DEFAULT 'US',
+    phone_validation_use_country_detection BOOLEAN DEFAULT true,
+    -- EEA routing settings
+    eea_routing_enabled BOOLEAN DEFAULT true,
+    eea_priority_routing BOOLEAN DEFAULT true,
+    eea_reduced_rates BOOLEAN DEFAULT true,
+    eea_rate_reduction DECIMAL(5,4) DEFAULT 0.1000, -- 10% reduction
+    -- Default routing settings
+    default_jurisdiction international_jurisdiction DEFAULT 'ROW',
+    allow_unknown_destinations BOOLEAN DEFAULT true,
+    max_rate_unknown_destinations DECIMAL(10,7) DEFAULT 1.0000,
+    require_strict_validation_unknown BOOLEAN DEFAULT true,
+    active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Country routing preferences
+CREATE TABLE country_routing_preferences (
+    id SERIAL PRIMARY KEY,
+    routing_plan_id INTEGER NOT NULL REFERENCES international_routing_plans(id) ON DELETE CASCADE,
+    country_code VARCHAR(2) NOT NULL, -- ISO 2-letter
+    country_name VARCHAR(100) NOT NULL,
+    jurisdiction international_jurisdiction NOT NULL,
+    quality_score INTEGER DEFAULT 100, -- 0-100 quality score
+    cost_multiplier DECIMAL(5,3) DEFAULT 1.000, -- 1.0 = normal cost
+    require_validation BOOLEAN DEFAULT true,
+    max_duration_minutes INTEGER DEFAULT 0, -- 0 = unlimited
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CONSTRAINT country_routing_unique UNIQUE(routing_plan_id, country_code)
+);
+
+-- Indexes for performance
+CREATE INDEX idx_intl_routing_plans_active ON international_routing_plans(active);
+CREATE INDEX idx_country_preferences_plan ON country_routing_preferences(routing_plan_id);
+CREATE INDEX idx_country_preferences_country ON country_routing_preferences(country_code);
+
 -- Additional tables (trunks, routing, etc.)
 CREATE TABLE egress_trunks (
     id SERIAL PRIMARY KEY,

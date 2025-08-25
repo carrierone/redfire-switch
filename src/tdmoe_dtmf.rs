@@ -15,11 +15,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{RwLock, mpsc, broadcast};
-use tracing::{debug, info, warn, error};
+use tracing::{debug, info};
 use serde::{Serialize, Deserialize};
 
 use crate::dtmf_processor::{
-    DtmfProcessor, DtmfDetector, DtmfGenerator, DtmfDetectorConfig, 
+    DtmfProcessor, DtmfDetectorConfig, 
     DtmfGeneratorConfig, DtmfEvent, DtmfSource
 };
 use crate::rfc2833_events::{Rfc2833Processor, Rfc2833Event, Rfc2833EventId};
@@ -222,7 +222,8 @@ impl TdmoeDtmfIntegration {
         // Add to DTMF detector if detection enabled
         if config.enable_detection {
             let detector = self.dtmf_processor.detector();
-            detector.add_channel(channel_id.clone()).await?;
+            let channel_num = self.channel_to_number(&channel_id)?;
+            detector.add_channel(channel_num)?;
             
             // Initialize audio buffer
             let mut buffers = self.audio_buffers.write().await;
@@ -251,7 +252,8 @@ impl TdmoeDtmfIntegration {
     pub async fn remove_tdm_channel(&self, channel_id: &str) -> Result<()> {
         // Remove from DTMF detector
         let detector = self.dtmf_processor.detector();
-        detector.remove_channel(channel_id).await?;
+        let channel_num = self.channel_to_number(channel_id)?;
+        detector.remove_channel(channel_num)?;
         
         // Remove audio buffer
         let mut buffers = self.audio_buffers.write().await;
@@ -302,7 +304,12 @@ impl TdmoeDtmfIntegration {
             
             // Process with DTMF detector
             let detector = self.dtmf_processor.detector();
-            detector.process_audio(channel_id, &chunk, DtmfSource::TdmoeVoice).await?;
+            // Convert f32 samples to u8 for detector
+            let u8_chunk: Vec<u8> = chunk.iter()
+                .map(|&s| ((s * 128.0 + 128.0).clamp(0.0, 255.0) as u8))
+                .collect();
+            let channel_num = self.channel_to_number(channel_id)?;
+            detector.process_audio(channel_num, &u8_chunk)?;
         }
         
         // Update performance statistics
@@ -324,11 +331,10 @@ impl TdmoeDtmfIntegration {
         
         // Generate DTMF samples
         let generator = self.dtmf_processor.generator();
-        let f32_samples = generator.generate_digit(
-            digit, 
-            duration, 
-            Some(config.generation_amplitude)
-        )?;
+        let duration_ms = duration
+            .map(|d| d.as_millis() as u32)
+            .unwrap_or(100); // Default 100ms
+        let f32_samples = generator.generate_digit(digit, duration_ms)?;
         
         // Convert f32 samples to i16 for TDM output
         let i16_samples: Vec<i16> = f32_samples.iter()
@@ -578,5 +584,23 @@ impl TdmoeDtmfIntegration {
     pub async fn list_channels(&self) -> Vec<String> {
         let configs = self.channel_configs.read().await;
         configs.keys().cloned().collect()
+    }
+
+    /// Convert channel ID to numeric ID for DTMF processor
+    fn channel_to_number(&self, channel_id: &str) -> Result<u32> {
+        // Parse channel ID format (e.g., "T1-1-1" -> span 1, channel 1)
+        let parts: Vec<&str> = channel_id.split('-').collect();
+        if parts.len() >= 3 {
+            let span = parts[1].parse::<u32>().unwrap_or(1);
+            let channel = parts[2].parse::<u32>().unwrap_or(1);
+            Ok((span - 1) * 24 + channel) // T1 has 24 channels
+        } else {
+            // Fallback: use hash of channel ID
+            use std::collections::hash_map::DefaultHasher;
+            use std::hash::{Hash, Hasher};
+            let mut hasher = DefaultHasher::new();
+            channel_id.hash(&mut hasher);
+            Ok((hasher.finish() % 1000) as u32)
+        }
     }
 }

@@ -17,13 +17,13 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
 use tokio::time::interval;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 use crate::cesopsn_ni2_integration::{
     CesopsnNi2CircuitConfig, CesopsnNi2Event, CesopsnNi2Integration,
 };
 use crate::pri_timers::{
-    clear_call_action, send_message_action, ActivePriTimer, PriTimerAction, PriTimerExpiredEvent,
+    clear_call_action, send_message_action, PriTimerAction, PriTimerExpiredEvent,
     PriTimerManager, PriTimerType,
 };
 use crate::q921_lapd::{LapdEvent, LapdStatistics, Q921LapdManager};

@@ -152,21 +152,21 @@ impl NanpaDataLoader {
         // This is a placeholder - need to implement proper parameterized query
         // For now, insert one by one to avoid SQL injection
         for entry in batch {
-            sqlx::query!(
+            sqlx::query(
                 "INSERT INTO nanpa_static (npa, nxx, state, country, ocn, rate_center) 
                  VALUES ($1, $2, $3, $4, $5, $6)
                  ON CONFLICT (npa, nxx) DO UPDATE SET 
                      state = EXCLUDED.state,
                      country = EXCLUDED.country,
                      ocn = EXCLUDED.ocn,
-                     rate_center = EXCLUDED.rate_center",
-                entry.npa,
-                entry.nxx,
-                entry.state,
-                entry.country,
-                entry.ocn,
-                entry.rate_center
+                     rate_center = EXCLUDED.rate_center"
             )
+            .bind(&entry.npa)
+            .bind(&entry.nxx)
+            .bind(&entry.state)
+            .bind(&entry.country)
+            .bind(&entry.ocn)
+            .bind(&entry.rate_center)
             .execute(&db.pool)
             .await?;
         }
@@ -180,13 +180,13 @@ impl NanpaDataLoader {
         state: &str,
         country: &str,
     ) -> Result<()> {
-        sqlx::query!(
+        sqlx::query(
             "UPDATE nanpa_static SET state = $2, country = $3 
-             WHERE npa = $1 AND nxx IS NULL",
-            npa,
-            state,
-            country
+             WHERE npa = $1 AND nxx IS NULL"
         )
+        .bind(npa)
+        .bind(state)
+        .bind(country)
         .execute(&db.pool)
         .await?;
 

@@ -19,7 +19,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio::sync::{mpsc, RwLock};
-use tokio_rustls::{TlsAcceptor, TlsConnector, TlsStream};
+use tokio_rustls::{TlsAcceptor, TlsConnector};
 use tracing::{debug, error, info, instrument, warn};
 
 /// SIP transport types
@@ -513,7 +513,7 @@ impl SipTransportManager {
                     let message_data = &buffer[..size];
 
                     // Update connection stats
-                    if let Some(mut conn) = connections.write().await.get_mut(&connection_id) {
+                    if let Some(conn) = connections.write().await.get_mut(&connection_id) {
                         conn.bytes_received += size as u64;
                         conn.last_activity = chrono::Utc::now();
                     }
@@ -521,7 +521,7 @@ impl SipTransportManager {
                     match Self::parse_sip_message(message_data) {
                         Ok(message) => {
                             // Update message count
-                            if let Some(mut conn) =
+                            if let Some(conn) =
                                 connections.write().await.get_mut(&connection_id)
                             {
                                 conn.messages_received += 1;
@@ -583,7 +583,7 @@ impl SipTransportManager {
                     let message_data = &buffer[..size];
 
                     // Update connection stats
-                    if let Some(mut conn) = connections.write().await.get_mut(&connection_id) {
+                    if let Some(conn) = connections.write().await.get_mut(&connection_id) {
                         conn.bytes_received += size as u64;
                         conn.last_activity = chrono::Utc::now();
                     }
@@ -591,7 +591,7 @@ impl SipTransportManager {
                     match Self::parse_sip_message(message_data) {
                         Ok(message) => {
                             // Update message count
-                            if let Some(mut conn) =
+                            if let Some(conn) =
                                 connections.write().await.get_mut(&connection_id)
                             {
                                 conn.messages_received += 1;

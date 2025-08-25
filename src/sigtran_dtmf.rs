@@ -16,14 +16,12 @@
  */
 
 use anyhow::{anyhow, Result};
-use byteorder::{BigEndian, ByteOrder, ReadBytesExt, WriteBytesExt};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::io::Cursor;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, RwLock};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 use crate::dtmf_processor::{DtmfEvent, DtmfSource};
 

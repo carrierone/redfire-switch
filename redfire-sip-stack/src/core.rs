@@ -598,8 +598,8 @@ impl SipMessageProcessor {
                         .await;
                 }
                 AuthResult::Challenge {
-                    realm,
-                    nonce,
+                    realm: _,
+                    nonce: _,
                     algorithm,
                 } => {
                     debug!("Authentication challenge required");

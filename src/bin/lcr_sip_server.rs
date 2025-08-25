@@ -214,9 +214,12 @@ impl LcrSipServer {
             dnis: dnis.to_string(),
             ingress_trunk_id: 999, // Use test trunk ID
             client_deck_id: Some(999),
-            route_type: RouteType::Nanpa,
-            profit_protection: false,
+            route_type: RouteType::NANPA,
+            require_profit_protection: false,
             min_profit_margin: None,
+            effective_time: None,
+            phone_validation: None,
+            routing_plan_id: None,
         };
 
         // Get routes from LCR engine
@@ -226,12 +229,12 @@ impl LcrSipServer {
             .await
             .map_err(|e| anyhow!("LCR routing failed: {}", e))?;
 
-        if routes.is_empty() {
+        if routes.routes.is_empty() {
             return Err(anyhow!("No routes found for {} → {}", ani, dnis));
         }
 
         // Use first (best) route
-        let best_route = &routes[0];
+        let best_route = &routes.routes[0];
 
         Ok(EgressRoute {
             host: best_route.egress_trunk.host.clone(),
@@ -281,7 +284,7 @@ impl LcrSipServer {
         let call_id = self.extract_call_id(message)?;
         debug!("📝 ACK received for call {}", call_id);
 
-        if let Some(mut session) = self.calls.write().await.get_mut(&call_id) {
+        if let Some(session) = self.calls.write().await.get_mut(&call_id) {
             session.state = CallState::Connected;
             session.last_activity = Instant::now();
         }
@@ -505,15 +508,18 @@ async fn main() -> Result<()> {
         .arg(
             Arg::new("database-url")
                 .long("database-url")
-                .env("DATABASE_URL")
                 .value_name("URL")
-                .help("PostgreSQL database URL")
+                .help("PostgreSQL database URL (can be set via DATABASE_URL env var)")
                 .default_value("postgresql://postgres:postgres@localhost:5432/lcr"),
         )
         .get_matches();
 
     let bind_addr_str = matches.get_one::<String>("bind").unwrap();
-    let database_url = matches.get_one::<String>("database-url").unwrap();
+    let database_url = matches
+        .get_one::<String>("database-url")
+        .map(|s| s.clone())
+        .or_else(|| std::env::var("DATABASE_URL").ok())
+        .unwrap_or_else(|| "postgresql://postgres:postgres@localhost:5432/lcr".to_string());
 
     let bind_addr: SocketAddr = bind_addr_str
         .parse()
@@ -523,7 +529,7 @@ async fn main() -> Result<()> {
     info!("📍 Bind Address: {}", bind_addr);
     info!("🗄️  Database: {}", database_url);
 
-    let server = LcrSipServer::new(bind_addr, database_url).await?;
+    let server = LcrSipServer::new(bind_addr, &database_url).await?;
     server.run().await?;
 
     Ok(())

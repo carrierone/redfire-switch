@@ -3,11 +3,14 @@ use crate::stir_shaken::StirShakenService;
 use crate::termination_routing::TerminationRoutingService;
 use crate::origination_routing::OriginationRoutingService;
 use crate::cdr::CdrService;
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use tokio::net::{UdpSocket, TcpListener};
 use tracing::{info, warn, error, debug};
+
+// Import the SIP core engine
+use redfire_sip_stack::{SipCoreEngine, SipCoreConfig, TransportMessage, SipRequestResult};
 
 pub struct SipServer {
     config: Arc<Config>,
@@ -15,6 +18,7 @@ pub struct SipServer {
     termination_routing: Option<Arc<TerminationRoutingService>>,
     origination_routing: Option<Arc<OriginationRoutingService>>,
     cdr_service: Option<Arc<CdrService>>,
+    sip_core: Arc<SipCoreEngine>,
 }
 
 impl SipServer {
@@ -72,12 +76,29 @@ impl SipServer {
             None
         };
 
+        // Initialize SIP core engine
+        let sip_core_config = SipCoreConfig {
+            bind_addresses: config.sip_profiles.iter()
+                .map(|p| format!("{}:{}", p.bind_ip, p.port))
+                .collect(),
+            enable_authentication: true,
+            enable_tls: config.sip_profiles.iter().any(|p| matches!(p.protocol, Protocol::Tls | Protocol::Dtls)),
+            max_concurrent_calls: config.max_concurrent_calls.unwrap_or(10000),
+            call_timeout_seconds: 300,
+        };
+        
+        let sip_core = SipCoreEngine::new(sip_core_config).await
+            .map_err(|e| anyhow!("Failed to initialize SIP core engine: {}", e))?;
+        
+        info!("SIP core engine initialized");
+
         Ok(Self {
             config: Arc::new(config),
             stir_shaken,
             termination_routing,
             origination_routing,
             cdr_service,
+            sip_core: Arc::new(sip_core),
         })
     }
 
@@ -139,7 +160,7 @@ impl SipServer {
 
         // Start IPv6 listener if dual-stack is enabled
         let ipv6_task = if profile.dual_stack && profile.bind_ipv6.is_some() {
-            let ipv6_ip = profile.bind_ipv6.unwrap();
+            let ipv6_ip = profile.bind_ipv6.ok_or_else(|| anyhow!("IPv6 bind address required for dual-stack"))?;
             let ipv6_port = profile.ipv6_port.unwrap_or(profile.port);
             let ipv6_addr = SocketAddr::new(ipv6_ip, ipv6_port);
             
@@ -371,6 +392,165 @@ impl SipServer {
             .and_then(|line| line.split_whitespace().next())
             .unwrap_or("UNKNOWN")
             .to_string()
+    }
+    
+    // New improved SIP method handlers
+    
+    fn extract_sip_method(&self, message: &str) -> Option<String> {
+        message.lines()
+            .next()
+            .and_then(|line| line.split_whitespace().next())
+            .map(|s| s.to_string())
+    }
+    
+    async fn handle_register_request(
+        &self,
+        message: &str,
+        addr: SocketAddr,
+        socket: &UdpSocket,
+    ) -> Result<()> {
+        info!("Processing REGISTER request from {}", addr);
+        
+        // Extract Contact header and other registration details
+        let call_id = self.extract_header(message, "Call-ID").unwrap_or_default();
+        let from = self.extract_header(message, "From").unwrap_or_default();
+        let expires = self.extract_header(message, "Expires").unwrap_or("3600".to_string());
+        
+        // For now, accept all registrations (in production, check authentication)
+        let response = format!(
+            "SIP/2.0 200 OK\r\n\
+             Call-ID: {}\r\n\
+             From: {}\r\n\
+             To: {}\r\n\
+             CSeq: 1 REGISTER\r\n\
+             Expires: {}\r\n\
+             Contact: <sip:{}>\r\n\
+             Content-Length: 0\r\n\r\n",
+            call_id, from, from, expires, addr
+        );
+        
+        socket.send_to(response.as_bytes(), addr).await?;
+        info!("Registration accepted for {}", from);
+        Ok(())
+    }
+    
+    async fn handle_invite_request(
+        &self,
+        message: &str,
+        addr: SocketAddr,
+        socket: &UdpSocket,
+    ) -> Result<()> {
+        info!("Processing INVITE request from {}", addr);
+        
+        let call_id = self.extract_header(message, "Call-ID").unwrap_or_default();
+        let from = self.extract_header(message, "From").unwrap_or_default();
+        let to = self.extract_header(message, "To").unwrap_or_default();
+        
+        // STIR/SHAKEN verification if enabled
+        if let Some(stir_shaken) = &self.stir_shaken {
+            if let Some(identity_header) = self.extract_header(message, "Identity") {
+                match stir_shaken.verify_identity(&identity_header).await {
+                    Ok(verification) => {
+                        info!("STIR/SHAKEN verification successful: {:?}", verification);
+                    }
+                    Err(e) => {
+                        warn!("STIR/SHAKEN verification failed: {}", e);
+                        // Could reject call here based on policy
+                    }
+                }
+            }
+        }
+        
+        // For now, send 200 OK with basic SDP
+        let response = format!(
+            "SIP/2.0 200 OK\r\n\
+             Call-ID: {}\r\n\
+             From: {}\r\n\
+             To: {}\r\n\
+             CSeq: 1 INVITE\r\n\
+             Content-Type: application/sdp\r\n\
+             Content-Length: 200\r\n\r\n\
+             v=0\r\n\
+             o=redfire 123456 123456 IN IP4 {}\r\n\
+             s=Redfire Session\r\n\
+             c=IN IP4 {}\r\n\
+             t=0 0\r\n\
+             m=audio 8000 RTP/AVP 0 8\r\n\
+             a=rtpmap:0 PCMU/8000\r\n\
+             a=rtpmap:8 PCMA/8000\r\n",
+            call_id, from, to, addr.ip(), addr.ip()
+        );
+        
+        socket.send_to(response.as_bytes(), addr).await?;
+        info!("Call established for {}", call_id);
+        Ok(())
+    }
+    
+    async fn handle_bye_request(
+        &self,
+        message: &str,
+        addr: SocketAddr,
+        socket: &UdpSocket,
+    ) -> Result<()> {
+        info!("Processing BYE request from {}", addr);
+        
+        let call_id = self.extract_header(message, "Call-ID").unwrap_or_default();
+        let from = self.extract_header(message, "From").unwrap_or_default();
+        let to = self.extract_header(message, "To").unwrap_or_default();
+        
+        // Send 200 OK to confirm call termination
+        let response = format!(
+            "SIP/2.0 200 OK\r\n\
+             Call-ID: {}\r\n\
+             From: {}\r\n\
+             To: {}\r\n\
+             CSeq: 1 BYE\r\n\
+             Content-Length: 0\r\n\r\n",
+            call_id, from, to
+        );
+        
+        socket.send_to(response.as_bytes(), addr).await?;
+        info!("Call terminated for {}", call_id);
+        Ok(())
+    }
+    
+    async fn handle_options_request(
+        &self,
+        message: &str,
+        addr: SocketAddr,
+        socket: &UdpSocket,
+    ) -> Result<()> {
+        debug!("Processing OPTIONS request from {}", addr);
+        
+        let call_id = self.extract_header(message, "Call-ID").unwrap_or_default();
+        let from = self.extract_header(message, "From").unwrap_or_default();
+        let to = self.extract_header(message, "To").unwrap_or_default();
+        
+        // Send capabilities response
+        let response = format!(
+            "SIP/2.0 200 OK\r\n\
+             Call-ID: {}\r\n\
+             From: {}\r\n\
+             To: {}\r\n\
+             CSeq: 1 OPTIONS\r\n\
+             Allow: INVITE,ACK,CANCEL,BYE,OPTIONS,REGISTER,INFO\r\n\
+             Accept: application/sdp\r\n\
+             Accept-Encoding: identity\r\n\
+             Content-Length: 0\r\n\r\n",
+            call_id, from, to
+        );
+        
+        socket.send_to(response.as_bytes(), addr).await?;
+        Ok(())
+    }
+    
+    fn extract_header(&self, message: &str, header_name: &str) -> Option<String> {
+        for line in message.lines() {
+            if line.to_lowercase().starts_with(&format!("{}:", header_name.to_lowercase())) {
+                return Some(line.split(':').nth(1)?.trim().to_string());
+            }
+        }
+        None
     }
 
     fn extract_header(message: &str, header_name: &str) -> String {

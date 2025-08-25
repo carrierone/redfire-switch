@@ -7,7 +7,7 @@
 use anyhow::Result;
 use redfire_sip_stack::core::{SipCoreConfig, SipCoreEngine};
 use redfire_switch::calea_sip_bridge::CaleaSipBridge;
-use redfire_switch::compliance_framework::ComplianceFramework;
+use redfire_switch::compliance_framework::{ComplianceFramework, ComplianceConfig};
 use std::sync::Arc;
 use tracing::{info, Level};
 
@@ -21,7 +21,8 @@ async fn main() -> Result<()> {
 
     // Step 1: Initialize ComplianceFramework
     info!("Step 1: Initializing ComplianceFramework for CALEA compliance");
-    let compliance_framework = Arc::new(ComplianceFramework::new().await?);
+    let compliance_config = ComplianceConfig::default();
+    let compliance_framework = Arc::new(ComplianceFramework::new(compliance_config)?);
 
     // Step 2: Create CALEA SIP Bridge
     info!("Step 2: Creating CALEA SIP bridge");

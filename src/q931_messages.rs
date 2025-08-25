@@ -20,8 +20,6 @@
 use anyhow::{anyhow, Result};
 use byteorder::{BigEndian, ByteOrder};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use tracing::{debug, error, info, warn};
 
 /// Q.931 Protocol Discriminator for DSS1/NI-2
 pub const Q931_PROTOCOL_DISCRIMINATOR: u8 = 0x08;
