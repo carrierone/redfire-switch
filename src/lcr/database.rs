@@ -1,5 +1,5 @@
 use anyhow::Result;
-use chrono::{DateTime, Utc, NaiveTime};
+use chrono::{DateTime, NaiveTime, Utc};
 use rust_decimal::Decimal;
 use sqlx::{postgres::PgPoolOptions, PgPool, Row};
 use std::net::IpAddr;
@@ -41,13 +41,14 @@ impl DatabasePool {
             FROM vendor_rate_decks
             WHERE active = true
             ORDER BY effective_date DESC
-            "#
+            "#,
         )
         .fetch_all(&self.pool)
         .await?;
 
-        let decks = rows.into_iter().map(|row| {
-            RateDeck {
+        let decks = rows
+            .into_iter()
+            .map(|row| RateDeck {
                 id: row.get("id"),
                 name: row.get("name"),
                 owner_id: row.get("owner_id"),
@@ -60,13 +61,17 @@ impl DatabasePool {
                 end_date: row.get("expires_date"),
                 deck_version: row.get::<Option<i32>, _>("deck_version").unwrap_or(1),
                 parent_deck_id: row.get("parent_deck_id"),
-                effective_time: row.get::<Option<NaiveTime>, _>("effective_time").unwrap_or_else(|| NaiveTime::from_hms_opt(0, 0, 0).expect("Invalid default time 00:00:00")),
+                effective_time: row
+                    .get::<Option<NaiveTime>, _>("effective_time")
+                    .unwrap_or_else(|| {
+                        NaiveTime::from_hms_opt(0, 0, 0).expect("Invalid default time 00:00:00")
+                    }),
                 preload_minutes: row.get::<Option<i32>, _>("preload_minutes").unwrap_or(30),
                 loaded_at: row.get("loaded_at"),
                 is_staged: row.get::<Option<bool>, _>("is_staged").unwrap_or(false),
                 active: row.get("active"),
-            }
-        }).collect();
+            })
+            .collect();
 
         Ok(decks)
     }
@@ -91,13 +96,14 @@ impl DatabasePool {
             FROM client_rate_decks
             WHERE active = true
             ORDER BY effective_date DESC
-            "#
+            "#,
         )
         .fetch_all(&self.pool)
         .await?;
 
-        let decks = rows.into_iter().map(|row| {
-            RateDeck {
+        let decks = rows
+            .into_iter()
+            .map(|row| RateDeck {
                 id: row.get("id"),
                 name: row.get("name"),
                 owner_id: row.get("owner_id"),
@@ -110,13 +116,17 @@ impl DatabasePool {
                 end_date: row.get("expires_date"),
                 deck_version: row.get::<Option<i32>, _>("deck_version").unwrap_or(1),
                 parent_deck_id: row.get("parent_deck_id"),
-                effective_time: row.get::<Option<NaiveTime>, _>("effective_time").unwrap_or_else(|| NaiveTime::from_hms_opt(0, 0, 0).expect("Invalid default time 00:00:00")),
+                effective_time: row
+                    .get::<Option<NaiveTime>, _>("effective_time")
+                    .unwrap_or_else(|| {
+                        NaiveTime::from_hms_opt(0, 0, 0).expect("Invalid default time 00:00:00")
+                    }),
                 preload_minutes: row.get::<Option<i32>, _>("preload_minutes").unwrap_or(30),
                 loaded_at: row.get("loaded_at"),
                 is_staged: row.get::<Option<bool>, _>("is_staged").unwrap_or(false),
                 active: row.get("active"),
-            }
-        }).collect();
+            })
+            .collect();
 
         Ok(decks)
     }
@@ -138,13 +148,14 @@ impl DatabasePool {
             FROM vendor_nanpa_rates
             WHERE deck_id = $1
             ORDER BY code
-            "#
+            "#,
         )
         .bind(deck_id)
         .fetch_all(&self.pool)
         .await?;
 
-        let rates = rows.into_iter()
+        let rates = rows
+            .into_iter()
             .map(|r| NanpaRate {
                 id: r.get("id"),
                 deck_id: r.get("deck_id"),
@@ -179,13 +190,14 @@ impl DatabasePool {
             FROM client_nanpa_rates
             WHERE deck_id = $1
             ORDER BY code
-            "#
+            "#,
         )
         .bind(deck_id)
         .fetch_all(&self.pool)
         .await?;
 
-        let rates = rows.into_iter()
+        let rates = rows
+            .into_iter()
             .map(|r| NanpaRate {
                 id: r.get("id"),
                 deck_id: r.get("deck_id"),
@@ -223,12 +235,13 @@ impl DatabasePool {
             FROM egress_trunks
             WHERE active = true
             ORDER BY priority, name
-            "#
+            "#,
         )
         .fetch_all(&self.pool)
         .await?;
 
-        let trunks = rows.into_iter()
+        let trunks = rows
+            .into_iter()
             .map(|t| {
                 let transport_str: Option<String> = t.get("transport");
                 EgressTrunk {
@@ -243,12 +256,16 @@ impl DatabasePool {
                         _ => TransportProtocol::UDP,
                     },
                     capacity_limit: t.get::<Option<i32>, _>("capacity_limit").unwrap_or(1000),
-                    cps_limit: t.get::<Option<Decimal>, _>("cps_limit").unwrap_or(Decimal::from(100)),
+                    cps_limit: t
+                        .get::<Option<Decimal>, _>("cps_limit")
+                        .unwrap_or(Decimal::from(100)),
                     active: t.get::<Option<bool>, _>("active").unwrap_or(true),
                     priority: t.get::<Option<i32>, _>("priority").unwrap_or(100),
                     weight: t.get::<Option<i32>, _>("weight").unwrap_or(1),
                     tech_prefix: t.get("tech_prefix"),
-                    supports_international: t.get::<Option<bool>, _>("supports_international").unwrap_or(false),
+                    supports_international: t
+                        .get::<Option<bool>, _>("supports_international")
+                        .unwrap_or(false),
                 }
             })
             .collect();
@@ -275,12 +292,13 @@ impl DatabasePool {
             FROM ingress_trunks
             WHERE active = true
             ORDER BY name
-            "#
+            "#,
         )
         .fetch_all(&self.pool)
         .await?;
 
-        let trunks = rows.into_iter()
+        let trunks = rows
+            .into_iter()
             .map(|t| {
                 let ip_str: String = t.get("ip_address");
                 Ok(IngressTrunk {
@@ -289,14 +307,21 @@ impl DatabasePool {
                     client_id: t.get("client_id"),
                     ip_address: IpAddr::from_str(&ip_str)?,
                     capacity_limit: t.get::<Option<i32>, _>("capacity_limit").unwrap_or(100),
-                    cps_limit: t.get::<Option<Decimal>, _>("cps_limit").unwrap_or(Decimal::from(10)),
-                    profit_protection: t.get::<Option<bool>, _>("profit_protection").unwrap_or(true),
-                    min_profit_margin: t.get::<Option<Decimal>, _>("min_profit_margin")
+                    cps_limit: t
+                        .get::<Option<Decimal>, _>("cps_limit")
+                        .unwrap_or(Decimal::from(10)),
+                    profit_protection: t
+                        .get::<Option<bool>, _>("profit_protection")
+                        .unwrap_or(true),
+                    min_profit_margin: t
+                        .get::<Option<Decimal>, _>("min_profit_margin")
                         .unwrap_or(Decimal::from_str("0.0001")?),
                     active: t.get::<Option<bool>, _>("active").unwrap_or(true),
                     auth_username: t.get("auth_username"),
                     auth_password: t.get("auth_password"),
-                    supports_international: t.get::<Option<bool>, _>("supports_international").unwrap_or(false),
+                    supports_international: t
+                        .get::<Option<bool>, _>("supports_international")
+                        .unwrap_or(false),
                 })
             })
             .collect::<Result<Vec<_>>>()?;
@@ -317,12 +342,13 @@ impl DatabasePool {
             FROM lcr_routes
             WHERE active = true
             ORDER BY priority, name
-            "#
+            "#,
         )
         .fetch_all(&self.pool)
         .await?;
 
-        let routes = rows.into_iter()
+        let routes = rows
+            .into_iter()
             .map(|r| {
                 let route_type_str: String = r.get("route_type");
                 LcrRoute {
@@ -358,12 +384,13 @@ impl DatabasePool {
             FROM static_routes
             WHERE active = true
             ORDER BY priority
-            "#
+            "#,
         )
         .fetch_all(&self.pool)
         .await?;
 
-        let routes = rows.into_iter()
+        let routes = rows
+            .into_iter()
             .map(|r| {
                 let position_str: Option<String> = r.get("position");
                 StaticRoute {
@@ -396,12 +423,13 @@ impl DatabasePool {
                 stop_on_codes
             FROM route_advance_configs
             ORDER BY scope, scope_id
-            "#
+            "#,
         )
         .fetch_all(&self.pool)
         .await?;
 
-        let configs = rows.into_iter()
+        let configs = rows
+            .into_iter()
             .map(|c| {
                 let scope_str: String = c.get("scope");
                 RouteAdvanceConfig {
@@ -412,8 +440,12 @@ impl DatabasePool {
                         _ => ConfigScope::Global,
                     },
                     scope_id: c.get("scope_id"),
-                    advance_on_codes: c.get::<Option<Vec<String>>, _>("advance_on_codes").unwrap_or_default(),
-                    stop_on_codes: c.get::<Option<Vec<String>>, _>("stop_on_codes").unwrap_or_default(),
+                    advance_on_codes: c
+                        .get::<Option<Vec<String>>, _>("advance_on_codes")
+                        .unwrap_or_default(),
+                    stop_on_codes: c
+                        .get::<Option<Vec<String>>, _>("stop_on_codes")
+                        .unwrap_or_default(),
                 }
             })
             .collect();
@@ -435,12 +467,13 @@ impl DatabasePool {
                 timer_transaction_timeout_ms
             FROM timer_configs
             ORDER BY scope, scope_id
-            "#
+            "#,
         )
         .fetch_all(&self.pool)
         .await?;
 
-        let configs = rows.into_iter()
+        let configs = rows
+            .into_iter()
             .map(|c| {
                 let scope_str: String = c.get("scope");
                 TimerConfig {
@@ -451,11 +484,21 @@ impl DatabasePool {
                         _ => ConfigScope::Global,
                     },
                     scope_id: c.get("scope_id"),
-                    timer_100_to_183_ms: c.get::<Option<i32>, _>("timer_100_to_183_ms").unwrap_or(30000),
-                    timer_max_call_duration_sec: c.get::<Option<i32>, _>("timer_max_call_duration_sec").unwrap_or(10800),
-                    timer_post_dial_delay_ms: c.get::<Option<i32>, _>("timer_post_dial_delay_ms").unwrap_or(5000),
-                    timer_ringing_timeout_sec: c.get::<Option<i32>, _>("timer_ringing_timeout_sec").unwrap_or(120),
-                    timer_transaction_timeout_ms: c.get::<Option<i32>, _>("timer_transaction_timeout_ms").unwrap_or(32000),
+                    timer_100_to_183_ms: c
+                        .get::<Option<i32>, _>("timer_100_to_183_ms")
+                        .unwrap_or(30000),
+                    timer_max_call_duration_sec: c
+                        .get::<Option<i32>, _>("timer_max_call_duration_sec")
+                        .unwrap_or(10800),
+                    timer_post_dial_delay_ms: c
+                        .get::<Option<i32>, _>("timer_post_dial_delay_ms")
+                        .unwrap_or(5000),
+                    timer_ringing_timeout_sec: c
+                        .get::<Option<i32>, _>("timer_ringing_timeout_sec")
+                        .unwrap_or(120),
+                    timer_transaction_timeout_ms: c
+                        .get::<Option<i32>, _>("timer_transaction_timeout_ms")
+                        .unwrap_or(32000),
                 }
             })
             .collect();
@@ -477,12 +520,13 @@ impl DatabasePool {
                 switch_clli
             FROM nanpa_static
             ORDER BY npa, nxx
-            "#
+            "#,
         )
         .fetch_all(&self.pool)
         .await?;
 
-        let entries = rows.into_iter()
+        let entries = rows
+            .into_iter()
             .map(|e| NanpaStatic {
                 npa: e.get("npa"),
                 nxx: e.get("nxx"),
@@ -513,7 +557,7 @@ impl DatabasePool {
                 expires_at
             FROM lrn_cache
             WHERE tn = $1 AND expires_at > NOW()
-            "#
+            "#,
         )
         .bind(tn)
         .fetch_optional(&self.pool)
@@ -523,7 +567,7 @@ impl DatabasePool {
             let tn: String = e.get("tn");
             let lrn: String = e.get("lrn");
             let jurisdiction_str: Option<String> = e.get("jurisdiction");
-            
+
             LrnCacheEntry {
                 tn: tn.clone(),
                 lrn: lrn.clone(),
@@ -598,12 +642,13 @@ impl DatabasePool {
                 priority
             FROM trunk_rate_associations
             ORDER BY priority
-            "#
+            "#,
         )
         .fetch_all(&self.pool)
         .await?;
 
-        let associations = rows.into_iter()
+        let associations = rows
+            .into_iter()
             .map(|a| TrunkRateAssociation {
                 id: a.get("id"),
                 egress_trunk_id: a.get("egress_trunk_id"),
@@ -629,12 +674,13 @@ impl DatabasePool {
                 weight
             FROM lcr_route_trunks
             ORDER BY lcr_route_id, priority
-            "#
+            "#,
         )
         .fetch_all(&self.pool)
         .await?;
 
-        let route_trunks = rows.into_iter()
+        let route_trunks = rows
+            .into_iter()
             .map(|rt| LcrRouteTrunk {
                 id: rt.get("id"),
                 lcr_route_id: rt.get("lcr_route_id"),
@@ -669,7 +715,7 @@ impl DatabasePool {
                 total_calls = trunk_usage_stats.total_calls + 1,
                 last_call_at = NOW(),
                 updated_at = NOW()
-            "#
+            "#,
         )
         .bind(trunk_id)
         .bind(trunk_type_str)
@@ -683,11 +729,10 @@ impl DatabasePool {
     /// Create default international routing plans if they don't exist
     pub async fn ensure_default_routing_plans(&self) -> Result<()> {
         // Check if any routing plans exist
-        let count = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM international_routing_plans"
-        )
-        .fetch_one(&self.pool)
-        .await?;
+        let count =
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM international_routing_plans")
+                .fetch_one(&self.pool)
+                .await?;
 
         if count == 0 {
             // Create default EEA routing plan
@@ -761,14 +806,36 @@ impl DatabasePool {
 
             // Add EEA country preferences for the EEA routing plan
             let eea_countries = vec![
-                ("AT", "Austria"), ("BE", "Belgium"), ("BG", "Bulgaria"), ("CY", "Cyprus"),
-                ("CZ", "Czech Republic"), ("DE", "Germany"), ("DK", "Denmark"), ("EE", "Estonia"),
-                ("ES", "Spain"), ("FI", "Finland"), ("FR", "France"), ("GR", "Greece"),
-                ("HR", "Croatia"), ("HU", "Hungary"), ("IE", "Ireland"), ("IS", "Iceland"),
-                ("IT", "Italy"), ("LI", "Liechtenstein"), ("LT", "Lithuania"), ("LU", "Luxembourg"),
-                ("LV", "Latvia"), ("MT", "Malta"), ("NL", "Netherlands"), ("NO", "Norway"),
-                ("PL", "Poland"), ("PT", "Portugal"), ("RO", "Romania"), ("SE", "Sweden"),
-                ("SI", "Slovenia"), ("SK", "Slovakia"),
+                ("AT", "Austria"),
+                ("BE", "Belgium"),
+                ("BG", "Bulgaria"),
+                ("CY", "Cyprus"),
+                ("CZ", "Czech Republic"),
+                ("DE", "Germany"),
+                ("DK", "Denmark"),
+                ("EE", "Estonia"),
+                ("ES", "Spain"),
+                ("FI", "Finland"),
+                ("FR", "France"),
+                ("GR", "Greece"),
+                ("HR", "Croatia"),
+                ("HU", "Hungary"),
+                ("IE", "Ireland"),
+                ("IS", "Iceland"),
+                ("IT", "Italy"),
+                ("LI", "Liechtenstein"),
+                ("LT", "Lithuania"),
+                ("LU", "Luxembourg"),
+                ("LV", "Latvia"),
+                ("MT", "Malta"),
+                ("NL", "Netherlands"),
+                ("NO", "Norway"),
+                ("PL", "Poland"),
+                ("PT", "Portugal"),
+                ("RO", "Romania"),
+                ("SE", "Sweden"),
+                ("SI", "Slovenia"),
+                ("SK", "Slovakia"),
             ];
 
             for (code, name) in &eea_countries {
@@ -779,7 +846,7 @@ impl DatabasePool {
                         jurisdiction, quality_score, cost_multiplier,
                         require_validation, max_duration_minutes
                     ) VALUES ($1, $2, $3, 'EEA', 95, 0.9, true, 0)
-                    "#
+                    "#,
                 )
                 .bind(eea_plan_id)
                 .bind(code)
@@ -790,12 +857,23 @@ impl DatabasePool {
 
             // Add some common ROW countries for the ROW routing plan
             let row_countries = vec![
-                ("US", "United States"), ("CA", "Canada"), ("MX", "Mexico"),
-                ("AU", "Australia"), ("NZ", "New Zealand"), ("JP", "Japan"),
-                ("KR", "South Korea"), ("CN", "China"), ("IN", "India"),
-                ("BR", "Brazil"), ("AR", "Argentina"), ("CL", "Chile"),
-                ("ZA", "South Africa"), ("RU", "Russia"), ("TR", "Turkey"),
-                ("AE", "United Arab Emirates"), ("SA", "Saudi Arabia"),
+                ("US", "United States"),
+                ("CA", "Canada"),
+                ("MX", "Mexico"),
+                ("AU", "Australia"),
+                ("NZ", "New Zealand"),
+                ("JP", "Japan"),
+                ("KR", "South Korea"),
+                ("CN", "China"),
+                ("IN", "India"),
+                ("BR", "Brazil"),
+                ("AR", "Argentina"),
+                ("CL", "Chile"),
+                ("ZA", "South Africa"),
+                ("RU", "Russia"),
+                ("TR", "Turkey"),
+                ("AE", "United Arab Emirates"),
+                ("SA", "Saudi Arabia"),
             ];
 
             for (code, name) in &row_countries {
@@ -806,7 +884,7 @@ impl DatabasePool {
                         jurisdiction, quality_score, cost_multiplier,
                         require_validation, max_duration_minutes
                     ) VALUES ($1, $2, $3, 'ROW', 85, 1.0, false, 0)
-                    "#
+                    "#,
                 )
                 .bind(row_plan_id)
                 .bind(code)

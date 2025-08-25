@@ -16,7 +16,7 @@
 //! work correctly both independently and in combination.
 
 use anyhow::Result;
-use redfire_codec_engine::{AudioCodec, CodecService, CodecConfig};
+use redfire_codec_engine::{AudioCodec, CodecConfig, CodecService};
 use redfire_sip_stack::{SipMessage, SipParser, SipTransport};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
@@ -28,13 +28,15 @@ async fn test_codec_engine_basic() -> Result<()> {
     let service = CodecService::new(config).await?;
 
     // Start a transcoding session
-    service.start_session(
-        "test_session".to_string(),
-        AudioCodec::G711Ulaw,
-        AudioCodec::G711Alaw,
-        8000,
-        1
-    ).await?;
+    service
+        .start_session(
+            "test_session".to_string(),
+            AudioCodec::G711Ulaw,
+            AudioCodec::G711Alaw,
+            8000,
+            1,
+        )
+        .await?;
 
     // Verify session was created
     let stats = service.get_statistics();
@@ -83,7 +85,6 @@ fn test_sip_stack_basic() -> Result<()> {
     Ok(())
 }
 
-
 /// Test codec and SIP integration scenario
 #[tokio::test]
 async fn test_codec_sip_integration() -> Result<()> {
@@ -127,13 +128,15 @@ async fn test_codec_sip_integration() -> Result<()> {
     assert_eq!(invite_message.transport, SipTransport::UDP);
 
     // Start codec transcoding session (µ-law to A-law conversion)
-    codec_service.start_session(
-        "integration_test".to_string(),
-        AudioCodec::G711Ulaw,
-        AudioCodec::G711Alaw,
-        8000,
-        1
-    ).await?;
+    codec_service
+        .start_session(
+            "integration_test".to_string(),
+            AudioCodec::G711Ulaw,
+            AudioCodec::G711Alaw,
+            8000,
+            1,
+        )
+        .await?;
 
     // Verify codec session is active
     let stats = codec_service.get_statistics();
@@ -179,7 +182,6 @@ fn test_utility_functions() -> Result<()> {
     assert!(!redfire_sip_stack::utils::validate_sip_uri(
         "http://example.com"
     ));
-
 
     println!("✅ Utility functions test passed");
     Ok(())

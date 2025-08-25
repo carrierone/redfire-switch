@@ -48,7 +48,7 @@ mod phone_validation_tests {
         let result = validator.validate("555-123-4567");
         assert!(result.is_valid);
         assert_eq!(result.country_code, Some("US".to_string()));
-        
+
         // US number with area code
         let result = validator.validate("(212) 555-1234");
         assert!(result.is_valid);
@@ -146,20 +146,62 @@ mod phone_validation_tests {
         let validator = PhoneValidator::new(config);
 
         // Test various country codes
-        assert_eq!(validator.get_country_code("+1-555-123-4567"), Some("US".to_string()));
-        assert_eq!(validator.get_country_code("+44 20 7946 0958"), Some("GB".to_string()));
-        assert_eq!(validator.get_country_code("+49 30 12345678"), Some("DE".to_string()));
-        assert_eq!(validator.get_country_code("+33 1 42 86 83 26"), Some("FR".to_string()));
-        assert_eq!(validator.get_country_code("+39 06 12345678"), Some("IT".to_string()));
-        assert_eq!(validator.get_country_code("+34 91 123 4567"), Some("ES".to_string()));
-        assert_eq!(validator.get_country_code("+31 20 123 4567"), Some("NL".to_string()));
-        assert_eq!(validator.get_country_code("+32 2 123 45 67"), Some("BE".to_string()));
-        assert_eq!(validator.get_country_code("+43 1 12345678"), Some("AT".to_string()));
-        assert_eq!(validator.get_country_code("+41 44 123 45 67"), Some("CH".to_string()));
-        assert_eq!(validator.get_country_code("+46 8 123 456 78"), Some("SE".to_string()));
-        assert_eq!(validator.get_country_code("+47 22 12 34 56"), Some("NO".to_string()));
-        assert_eq!(validator.get_country_code("+45 32 12 34 56"), Some("DK".to_string()));
-        assert_eq!(validator.get_country_code("+358 9 1234 5678"), Some("FI".to_string()));
+        assert_eq!(
+            validator.get_country_code("+1-555-123-4567"),
+            Some("US".to_string())
+        );
+        assert_eq!(
+            validator.get_country_code("+44 20 7946 0958"),
+            Some("GB".to_string())
+        );
+        assert_eq!(
+            validator.get_country_code("+49 30 12345678"),
+            Some("DE".to_string())
+        );
+        assert_eq!(
+            validator.get_country_code("+33 1 42 86 83 26"),
+            Some("FR".to_string())
+        );
+        assert_eq!(
+            validator.get_country_code("+39 06 12345678"),
+            Some("IT".to_string())
+        );
+        assert_eq!(
+            validator.get_country_code("+34 91 123 4567"),
+            Some("ES".to_string())
+        );
+        assert_eq!(
+            validator.get_country_code("+31 20 123 4567"),
+            Some("NL".to_string())
+        );
+        assert_eq!(
+            validator.get_country_code("+32 2 123 45 67"),
+            Some("BE".to_string())
+        );
+        assert_eq!(
+            validator.get_country_code("+43 1 12345678"),
+            Some("AT".to_string())
+        );
+        assert_eq!(
+            validator.get_country_code("+41 44 123 45 67"),
+            Some("CH".to_string())
+        );
+        assert_eq!(
+            validator.get_country_code("+46 8 123 456 78"),
+            Some("SE".to_string())
+        );
+        assert_eq!(
+            validator.get_country_code("+47 22 12 34 56"),
+            Some("NO".to_string())
+        );
+        assert_eq!(
+            validator.get_country_code("+45 32 12 34 56"),
+            Some("DK".to_string())
+        );
+        assert_eq!(
+            validator.get_country_code("+358 9 1234 5678"),
+            Some("FI".to_string())
+        );
 
         // Unknown country code should return None
         assert_eq!(validator.get_country_code("+999 123 456 789"), None);
@@ -191,10 +233,22 @@ mod phone_validation_tests {
         let validator = PhoneValidator::new(config);
 
         // Test various input formats normalize to E164
-        assert_eq!(validator.normalize_to_e164("+1-555-123-4567").unwrap(), "+15551234567");
-        assert_eq!(validator.normalize_to_e164("+44 20 7946 0958").unwrap(), "+442079460958");
-        assert_eq!(validator.normalize_to_e164("011 44 20 7946 0958").unwrap(), "+442079460958");
-        assert_eq!(validator.normalize_to_e164("00 49 30 12345678").unwrap(), "+493012345678");
+        assert_eq!(
+            validator.normalize_to_e164("+1-555-123-4567").unwrap(),
+            "+15551234567"
+        );
+        assert_eq!(
+            validator.normalize_to_e164("+44 20 7946 0958").unwrap(),
+            "+442079460958"
+        );
+        assert_eq!(
+            validator.normalize_to_e164("011 44 20 7946 0958").unwrap(),
+            "+442079460958"
+        );
+        assert_eq!(
+            validator.normalize_to_e164("00 49 30 12345678").unwrap(),
+            "+493012345678"
+        );
 
         // Invalid numbers should fail
         assert!(validator.normalize_to_e164("invalid").is_err());
@@ -219,10 +273,19 @@ mod phone_validation_tests {
         let config = PhoneValidationConfig::default();
         let validator = PhoneValidator::new(config);
 
-        assert_eq!(validator.extract_country_prefix("+1-555-123-4567"), Some("1".to_string()));
-        assert_eq!(validator.extract_country_prefix("+44 20 7946 0958"), Some("44".to_string()));
-        assert_eq!(validator.extract_country_prefix("+49 30 12345678"), Some("49".to_string()));
-        
+        assert_eq!(
+            validator.extract_country_prefix("+1-555-123-4567"),
+            Some("1".to_string())
+        );
+        assert_eq!(
+            validator.extract_country_prefix("+44 20 7946 0958"),
+            Some("44".to_string())
+        );
+        assert_eq!(
+            validator.extract_country_prefix("+49 30 12345678"),
+            Some("49".to_string())
+        );
+
         // Domestic numbers should return None
         assert_eq!(validator.extract_country_prefix("555-123-4567"), None);
     }
@@ -233,7 +296,7 @@ mod phone_validation_tests {
         let validator = PhoneValidator::new(config);
 
         let result = validator.validate("+1-555-123-4567");
-        
+
         // Check all fields are properly populated
         assert_eq!(result.original, "+1-555-123-4567");
         assert!(result.is_valid);
@@ -307,7 +370,12 @@ mod phone_validation_tests {
         for number in test_numbers {
             let result = validator.validate(number);
             assert!(result.is_valid, "Number {} should be valid", number);
-            assert_eq!(result.country_code, Some("US".to_string()), "Number {} should be US", number);
+            assert_eq!(
+                result.country_code,
+                Some("US".to_string()),
+                "Number {} should be US",
+                number
+            );
         }
     }
 }

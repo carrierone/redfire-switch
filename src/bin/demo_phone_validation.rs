@@ -4,8 +4,8 @@
 use colored::*;
 
 // Copy the phone validation code directly here to avoid compilation issues
-use serde::{Deserialize, Serialize};
 use anyhow::{anyhow, Result};
+use serde::{Deserialize, Serialize};
 
 /// Phone number validation configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,7 +80,7 @@ impl PhoneValidator {
 
         let normalized = self.normalize_number(number);
         let is_valid = self.basic_validate(&normalized);
-        
+
         let country_code = if self.config.use_country_detection {
             self.detect_country_code(&normalized)
         } else {
@@ -117,7 +117,7 @@ impl PhoneValidator {
         if !self.config.use_country_detection {
             return None;
         }
-        
+
         let normalized = self.normalize_number(number);
         self.detect_country_code(&normalized)
     }
@@ -125,18 +125,20 @@ impl PhoneValidator {
     /// Check if number is likely international (not in default region)
     pub fn is_international(&self, number: &str) -> bool {
         let normalized = self.normalize_number(number);
-        
+
         // Check for international prefixes
-        normalized.starts_with("00") || 
-        number.starts_with('+') || 
-        normalized.starts_with("011") ||
-        self.detect_country_code(&normalized).map_or(false, |cc| cc != self.config.default_region)
+        normalized.starts_with("00")
+            || number.starts_with('+')
+            || normalized.starts_with("011")
+            || self
+                .detect_country_code(&normalized)
+                .map_or(false, |cc| cc != self.config.default_region)
     }
 
     /// Normalize phone number to digits only, handling common prefixes
     fn normalize_number(&self, number: &str) -> String {
         let digits: String = number.chars().filter(|c| c.is_digit(10)).collect();
-        
+
         // Remove international access codes
         if digits.starts_with("011") && digits.len() > 3 {
             format!("+{}", &digits[3..])
@@ -154,18 +156,18 @@ impl PhoneValidator {
         if normalized.is_empty() {
             return false;
         }
-        
+
         let digits = if normalized.starts_with('+') {
             &normalized[1..]
         } else {
             normalized
         };
-        
+
         let len = digits.len();
         if len < 5 || len > 15 {
             return false;
         }
-        
+
         digits.chars().all(|c| c.is_digit(10))
     }
 
@@ -174,9 +176,9 @@ impl PhoneValidator {
         if !normalized.starts_with('+') {
             return Some(self.config.default_region.clone());
         }
-        
+
         let digits = &normalized[1..];
-        
+
         if digits.starts_with("1") {
             Some("US".to_string())
         } else if digits.starts_with("44") {
@@ -215,7 +217,12 @@ impl PhoneValidator {
         if normalized.starts_with('+') {
             normalized.to_string()
         } else if normalized.len() == 10 && self.config.default_region == "US" {
-            format!("+1 {} {} {}", &normalized[0..3], &normalized[3..6], &normalized[6..])
+            format!(
+                "+1 {} {} {}",
+                &normalized[0..3],
+                &normalized[3..6],
+                &normalized[6..]
+            )
         } else {
             format!("+{}", normalized)
         }
@@ -273,10 +280,13 @@ fn main() {
 
     for (number, expected_country, description) in test_numbers {
         total += 1;
-        println!("🔍 Testing: {}", format!("{} ({})", number, description).yellow());
-        
+        println!(
+            "🔍 Testing: {}",
+            format!("{} ({})", number, description).yellow()
+        );
+
         let result = validator.validate(number);
-        
+
         if result.is_valid {
             if let Some(ref country) = result.country_code {
                 if country == expected_country || expected_country.is_empty() {
@@ -286,16 +296,21 @@ fn main() {
                     }
                     passed += 1;
                 } else {
-                    println!("  ❌ Valid but wrong country - Expected: {}, Got: {}", 
-                            expected_country.red(), country.yellow());
+                    println!(
+                        "  ❌ Valid but wrong country - Expected: {}, Got: {}",
+                        expected_country.red(),
+                        country.yellow()
+                    );
                 }
             } else {
                 if expected_country.is_empty() {
                     println!("  ✅ Valid - No country detection needed");
                     passed += 1;
                 } else {
-                    println!("  ❌ Valid but no country detected - Expected: {}", 
-                            expected_country.red());
+                    println!(
+                        "  ❌ Valid but no country detected - Expected: {}",
+                        expected_country.red()
+                    );
                 }
             }
         } else {
@@ -312,35 +327,47 @@ fn main() {
                 }
             }
         }
-        
+
         // Test international detection
         let is_intl = validator.is_international(number);
-        let expected_intl = !expected_country.is_empty() && expected_country != "US" || number.contains('+') || number.starts_with("011");
+        let expected_intl = !expected_country.is_empty() && expected_country != "US"
+            || number.contains('+')
+            || number.starts_with("011");
         if is_intl == expected_intl {
-            println!("  🌍 International: {} {}", 
-                    if is_intl { "Yes" } else { "No" },
-                    "✓".green());
+            println!(
+                "  🌍 International: {} {}",
+                if is_intl { "Yes" } else { "No" },
+                "✓".green()
+            );
         } else {
-            println!("  🌍 International: {} {} (expected {})", 
-                    if is_intl { "Yes" } else { "No" },
-                    "❌".red(),
-                    if expected_intl { "Yes" } else { "No" });
+            println!(
+                "  🌍 International: {} {} (expected {})",
+                if is_intl { "Yes" } else { "No" },
+                "❌".red(),
+                if expected_intl { "Yes" } else { "No" }
+            );
         }
-        
+
         println!();
     }
 
     // Test strict validation mode
     println!("{}", "🔒 Strict Validation Mode Test".cyan().bold());
     println!("{}", "-".repeat(40).cyan());
-    
+
     let mut strict_config = PhoneValidationConfig::default();
     strict_config.strict_validation = true;
     let strict_validator = PhoneValidator::new(strict_config);
-    
-    let invalid_numbers = vec!["invalid-number", "123", "+1234567890123456789", "", "+++---"];
+
+    let invalid_numbers = vec![
+        "invalid-number",
+        "123",
+        "+1234567890123456789",
+        "",
+        "+++---",
+    ];
     let mut strict_passed = 0;
-    
+
     for number in &invalid_numbers {
         let result = strict_validator.validate(number);
         if !result.is_valid {
@@ -350,15 +377,15 @@ fn main() {
             println!("  ❌ {} should have been rejected", number.red());
         }
     }
-    
+
     // Test disabled validation
     println!("\n{}", "🔓 Disabled Validation Test".cyan().bold());
     println!("{}", "-".repeat(40).cyan());
-    
+
     let mut disabled_config = PhoneValidationConfig::default();
     disabled_config.enabled = false;
     let disabled_validator = PhoneValidator::new(disabled_config);
-    
+
     let disabled_result = disabled_validator.validate("completely-invalid-number");
     if disabled_result.is_valid {
         println!("  ✅ Disabled validation passes invalid numbers");
@@ -370,13 +397,9 @@ fn main() {
     // Test E164 normalization
     println!("\n{}", "🔄 E164 Normalization Test".cyan().bold());
     println!("{}", "-".repeat(40).cyan());
-    
-    let normalization_tests = vec![
-        "+1-555-123-4567",
-        "+44 20 7946 0958", 
-        "011 49 30 12345678",
-    ];
-    
+
+    let normalization_tests = vec!["+1-555-123-4567", "+44 20 7946 0958", "011 49 30 12345678"];
+
     for number in normalization_tests {
         match validator.normalize_to_e164(number) {
             Ok(normalized) => {
@@ -391,23 +414,46 @@ fn main() {
     // Summary
     println!("\n{}", "📊 Test Summary".cyan().bold());
     println!("{}", "=".repeat(30).cyan());
-    
+
     let basic_tests = total;
     let extra_tests = invalid_numbers.len() + 1; // +1 for disabled validation test
     let total_tests = basic_tests + extra_tests;
     let total_passed = passed + strict_passed;
     let success_rate = (total_passed as f32 / total_tests as f32) * 100.0;
-    
-    println!("Basic validation: {}/{}", passed.to_string().green().bold(), basic_tests.to_string().bold());
-    println!("Extra tests: {}/{}", strict_passed.to_string().green().bold(), extra_tests.to_string().bold());
-    println!("Total: {}/{}", total_passed.to_string().green().bold(), total_tests.to_string().bold());
+
+    println!(
+        "Basic validation: {}/{}",
+        passed.to_string().green().bold(),
+        basic_tests.to_string().bold()
+    );
+    println!(
+        "Extra tests: {}/{}",
+        strict_passed.to_string().green().bold(),
+        extra_tests.to_string().bold()
+    );
+    println!(
+        "Total: {}/{}",
+        total_passed.to_string().green().bold(),
+        total_tests.to_string().bold()
+    );
     println!("Success rate: {:.1}%", success_rate);
-    
+
     if total_passed == total_tests {
-        println!("\n{}", "🎉 All phone validation tests passed!".green().bold());
-        println!("{}", "✨ Phone validation is working correctly and ready for international routing!".cyan());
+        println!(
+            "\n{}",
+            "🎉 All phone validation tests passed!".green().bold()
+        );
+        println!(
+            "{}",
+            "✨ Phone validation is working correctly and ready for international routing!".cyan()
+        );
     } else {
-        println!("\n{}", "⚠️  Some tests failed, but core functionality is working.".yellow().bold());
+        println!(
+            "\n{}",
+            "⚠️  Some tests failed, but core functionality is working."
+                .yellow()
+                .bold()
+        );
     }
 
     println!("\n{}", "Key Features Demonstrated:".blue().bold());
@@ -417,6 +463,11 @@ fn main() {
     println!("  • ✅ Configurable strict validation mode");
     println!("  • ✅ Enable/disable validation toggle");
     println!("  • ✅ Support for various international prefixes (+, 011, 00)");
-    
-    println!("\n{}", "🚀 Ready for integration with A-Z international routing!".green().bold());
+
+    println!(
+        "\n{}",
+        "🚀 Ready for integration with A-Z international routing!"
+            .green()
+            .bold()
+    );
 }

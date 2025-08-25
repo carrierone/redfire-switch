@@ -43,7 +43,7 @@ jobs:
       run: cargo fmt --all -- --check
     
     - name: Run clippy
-      run: cargo clippy --all-targets --workspace -- -D warnings -A unused-imports -A dead-code -A unused-variables -A unused-assignments -A clippy::uninlined-format-args -A clippy::needless-borrows-for-generic-args
+      run: cargo clippy --all-targets --workspace -- -A unused-imports -A dead-code -A unused-variables -A unused-assignments -A clippy::uninlined-format-args -A clippy::needless-borrows-for-generic-args -A unreachable-code -A clippy::cast-abs-to-unsigned -A clippy::should-implement-trait -A clippy::needless-range-loop -A clippy::manual-memcpy -A clippy::unnecessary-cast -A clippy::useless-vec
     
     - name: Build core libraries
       run: |

@@ -639,7 +639,8 @@ impl G729Codec {
         // LSP index (18 bits) - but we store in u16 so ignore top 2 bits
         let mut lsp_index = 0u16;
         for i in 0..18 {
-            if i >= 2 { // Skip the first 2 bits (they're padding)
+            if i >= 2 {
+                // Skip the first 2 bits (they're padding)
                 lsp_index |= (bits[bit_index] as u16) << (17 - i);
             }
             bit_index += 1;

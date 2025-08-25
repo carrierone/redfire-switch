@@ -324,7 +324,7 @@ impl G711Codec {
     fn linear_to_ulaw(linear: i16) -> u8 {
         // Simplified μ-law compression
         let sign = if linear < 0 { 0x80 } else { 0x00 };
-        let magnitude = linear.abs() as u16;
+        let magnitude = linear.unsigned_abs();
 
         // Basic μ-law compression algorithm
         let compressed = if magnitude < 0x20 {
@@ -377,7 +377,7 @@ impl G711Codec {
     fn linear_to_alaw(linear: i16) -> u8 {
         // Simplified A-law compression
         let sign = if linear < 0 { 0x80 } else { 0x00 };
-        let magnitude = linear.abs() as u16;
+        let magnitude = linear.unsigned_abs();
 
         // Basic A-law compression algorithm
         let compressed = if magnitude < 0x10 {

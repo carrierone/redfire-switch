@@ -288,12 +288,12 @@ impl G729AnnexGpuProcessor {
         let mut cuda_device = None;
         #[cfg(not(feature = "cuda"))]
         let cuda_device: Option<Arc<()>> = None;
-        
-        #[cfg(feature = "rocm")]  
+
+        #[cfg(feature = "rocm")]
         let mut rocm_device = None;
         #[cfg(not(feature = "rocm"))]
         let rocm_device: Option<Arc<()>> = None;
-        
+
         match config.gpu_config.backend {
             #[cfg(feature = "cuda")]
             GpuBackend::Cuda => {

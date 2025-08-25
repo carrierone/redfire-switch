@@ -111,10 +111,16 @@ impl Default for DtmfGeneratorConfig {
 
 impl DtmfProcessor {
     pub fn new() -> Self {
-        Self::with_config(DtmfDetectorConfig::default(), DtmfGeneratorConfig::default())
+        Self::with_config(
+            DtmfDetectorConfig::default(),
+            DtmfGeneratorConfig::default(),
+        )
     }
 
-    pub fn with_config(detector_config: DtmfDetectorConfig, generator_config: DtmfGeneratorConfig) -> Self {
+    pub fn with_config(
+        detector_config: DtmfDetectorConfig,
+        generator_config: DtmfGeneratorConfig,
+    ) -> Self {
         Self {
             detector: DtmfDetector::new(detector_config),
             generator: DtmfGenerator::new(generator_config),
@@ -148,10 +154,13 @@ impl DtmfDetector {
 
     pub fn add_channel(&self, channel_id: u32) -> Result<()> {
         let mut channels = self.channels.lock().unwrap();
-        channels.insert(channel_id, ChannelState {
-            last_digit: None,
-            last_detection: None,
-        });
+        channels.insert(
+            channel_id,
+            ChannelState {
+                last_digit: None,
+                last_detection: None,
+            },
+        );
         Ok(())
     }
 

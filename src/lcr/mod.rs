@@ -5,27 +5,27 @@ pub mod cli_commands;
 pub mod cluster;
 pub mod data_loader;
 pub mod database;
+#[cfg(test)]
+pub mod database_integration_tests;
 pub mod deck_loader;
+#[cfg(test)]
+pub mod end_to_end_tests;
+#[cfg(test)]
+pub mod integration_test;
 pub mod jurisdiction;
 pub mod lrn_dip;
 pub mod nanpa_loader;
 pub mod phone_validation;
-pub mod routing;
-pub mod timers;
-pub mod trunk_manager;
-pub mod types;
-#[cfg(test)]
-pub mod test_local_rates;
-#[cfg(test)]
-pub mod integration_test;
 #[cfg(test)]
 pub mod phone_validation_tests;
+pub mod routing;
 #[cfg(test)]
 pub mod routing_integration_tests;
 #[cfg(test)]
-pub mod database_integration_tests;
-#[cfg(test)]
-pub mod end_to_end_tests;
+pub mod test_local_rates;
+pub mod timers;
+pub mod trunk_manager;
+pub mod types;
 
 use anyhow::Result;
 use std::sync::Arc;
@@ -91,7 +91,11 @@ impl LcrEngine {
             ))
         };
 
-        let deck_loader = Arc::new(DeckLoader::with_cache_and_db(pool, cache.clone(), db_pool.clone()));
+        let deck_loader = Arc::new(DeckLoader::with_cache_and_db(
+            pool,
+            cache.clone(),
+            db_pool.clone(),
+        ));
 
         Ok(Self {
             db_pool,

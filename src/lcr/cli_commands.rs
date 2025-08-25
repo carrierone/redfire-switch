@@ -1,9 +1,9 @@
+use crate::lcr::deck_loader::DeckLoader;
+use crate::lcr::types::{DeckLoadRequest, RateType};
 use anyhow::Result;
 use chrono::{DateTime, NaiveTime, Utc};
 use clap::{Parser, Subcommand};
 use sqlx::Row;
-use crate::lcr::deck_loader::DeckLoader;
-use crate::lcr::types::{RateType, DeckLoadRequest};
 
 #[derive(Parser)]
 #[command(name = "lcr-deck")]
@@ -184,9 +184,7 @@ pub async fn handle_deck_command(cli: DeckCli) -> Result<()> {
         } => {
             let rate_type = parse_rate_type(&rate_type)?;
             let effective_dt = parse_datetime(&effective_date)?;
-            let effective_tm = effective_time
-                .map(|t| parse_time(&t))
-                .transpose()?;
+            let effective_tm = effective_time.map(|t| parse_time(&t)).transpose()?;
 
             let request = DeckLoadRequest {
                 deck_name: name.clone(),
@@ -202,7 +200,7 @@ pub async fn handle_deck_command(cli: DeckCli) -> Result<()> {
             let deck_id = loader.load_vendor_deck(request).await?;
             println!("✓ Loaded vendor deck '{}' with ID {}", name, deck_id);
             println!("  Effective at: {}", effective_dt);
-            
+
             if effective_dt > Utc::now() {
                 let preload_at = effective_dt - chrono::Duration::minutes(preload_minutes as i64);
                 println!("  Will preload at: {}", preload_at);
@@ -221,9 +219,7 @@ pub async fn handle_deck_command(cli: DeckCli) -> Result<()> {
         } => {
             let rate_type = parse_rate_type(&rate_type)?;
             let effective_dt = parse_datetime(&effective_date)?;
-            let effective_tm = effective_time
-                .map(|t| parse_time(&t))
-                .transpose()?;
+            let effective_tm = effective_time.map(|t| parse_time(&t)).transpose()?;
 
             let request = DeckLoadRequest {
                 deck_name: name.clone(),
@@ -239,7 +235,7 @@ pub async fn handle_deck_command(cli: DeckCli) -> Result<()> {
             let deck_id = loader.load_client_deck(request).await?;
             println!("✓ Loaded client deck '{}' with ID {}", name, deck_id);
             println!("  Effective at: {}", effective_dt);
-            
+
             if effective_dt > Utc::now() {
                 let preload_at = effective_dt - chrono::Duration::minutes(preload_minutes as i64);
                 println!("  Will preload at: {}", preload_at);
@@ -274,7 +270,7 @@ pub async fn handle_deck_command(cli: DeckCli) -> Result<()> {
                 WHERE new_deck_id = $1 AND deck_type = $2
                   AND status IN ('scheduled', 'preloading')
                 LIMIT 1
-                "#
+                "#,
             )
             .bind(deck_id)
             .bind(&deck_type)
@@ -285,18 +281,19 @@ pub async fn handle_deck_command(cli: DeckCli) -> Result<()> {
                 loader.preload_deck(schedule_id).await?;
                 println!("✓ Preloaded {} deck ID {}", deck_type, deck_id);
             } else {
-                println!("No pending cutover found for {} deck ID {}", deck_type, deck_id);
+                println!(
+                    "No pending cutover found for {} deck ID {}",
+                    deck_type, deck_id
+                );
             }
         }
 
         DeckCommands::CancelCutover { schedule_id } => {
-            sqlx::query(
-                "UPDATE deck_cutover_schedule SET status = 'cancelled' WHERE id = $1"
-            )
-            .bind(schedule_id)
-            .execute(&pool)
-            .await?;
-            
+            sqlx::query("UPDATE deck_cutover_schedule SET status = 'cancelled' WHERE id = $1")
+                .bind(schedule_id)
+                .execute(&pool)
+                .await?;
+
             println!("✓ Cancelled cutover schedule ID {}", schedule_id);
         }
 
@@ -328,12 +325,14 @@ fn parse_datetime(s: &str) -> Result<DateTime<Utc>> {
     if let Ok(dt) = DateTime::parse_from_str(&format!("{} +0000", s), "%Y-%m-%d %H:%M:%S %z") {
         return Ok(dt.with_timezone(&Utc));
     }
-    
+
     // Try parsing date only (assume midnight)
-    if let Ok(dt) = DateTime::parse_from_str(&format!("{} 00:00:00 +0000", s), "%Y-%m-%d %H:%M:%S %z") {
+    if let Ok(dt) =
+        DateTime::parse_from_str(&format!("{} 00:00:00 +0000", s), "%Y-%m-%d %H:%M:%S %z")
+    {
         return Ok(dt.with_timezone(&Utc));
     }
-    
+
     Err(anyhow::anyhow!("Invalid date format: {}", s))
 }
 
@@ -343,13 +342,18 @@ fn parse_time(s: &str) -> Result<NaiveTime> {
         .map_err(|e| anyhow::anyhow!("Invalid time format: {}", e))
 }
 
-async fn list_decks(pool: &sqlx::PgPool, deck_type: &str, active_only: bool, upcoming: bool) -> Result<()> {
+async fn list_decks(
+    pool: &sqlx::PgPool,
+    deck_type: &str,
+    active_only: bool,
+    upcoming: bool,
+) -> Result<()> {
     let mut where_clause = String::new();
-    
+
     if active_only {
         where_clause.push_str(" AND active = true AND effective_date <= NOW() AND (end_date IS NULL OR end_date > NOW())");
     }
-    
+
     if upcoming {
         where_clause.push_str(" AND effective_date > NOW()");
     }
@@ -357,7 +361,7 @@ async fn list_decks(pool: &sqlx::PgPool, deck_type: &str, active_only: bool, upc
     if deck_type != "all" {
         println!("\n{} Rate Decks:", deck_type.to_uppercase());
         println!("{:-<80}", "");
-        
+
         let query = format!(
             r#"
             SELECT id, name, {}_id as owner_id, rate_type, deck_version, 
@@ -366,13 +370,17 @@ async fn list_decks(pool: &sqlx::PgPool, deck_type: &str, active_only: bool, upc
             WHERE 1=1 {}
             ORDER BY name, deck_version DESC
             "#,
-            if deck_type == "vendor" { "vendor" } else { "client" },
+            if deck_type == "vendor" {
+                "vendor"
+            } else {
+                "client"
+            },
             deck_type,
             where_clause
         );
-        
+
         let rows = sqlx::query(&query).fetch_all(pool).await?;
-        
+
         for row in rows {
             let id: i32 = row.get("id");
             let name: String = row.get("name");
@@ -380,7 +388,7 @@ async fn list_decks(pool: &sqlx::PgPool, deck_type: &str, active_only: bool, upc
             let effective: DateTime<Utc> = row.get("effective_date");
             let end: Option<DateTime<Utc>> = row.get("end_date");
             let staged: bool = row.get("is_staged");
-            
+
             let status = if effective > Utc::now() {
                 "FUTURE"
             } else if end.is_none() || end.unwrap() > Utc::now() {
@@ -388,33 +396,40 @@ async fn list_decks(pool: &sqlx::PgPool, deck_type: &str, active_only: bool, upc
             } else {
                 "EXPIRED"
             };
-            
+
             println!(
                 "ID: {:4} | {} v{} | {} | Status: {} {}",
-                id, name, version, 
+                id,
+                name,
+                version,
                 effective.format("%Y-%m-%d %H:%M"),
                 status,
                 if staged { "[STAGED]" } else { "" }
             );
         }
     }
-    
+
     Ok(())
 }
 
-async fn show_versions(pool: &sqlx::PgPool, name: &str, owner_id: i32, deck_type: &str) -> Result<()> {
+async fn show_versions(
+    pool: &sqlx::PgPool,
+    name: &str,
+    owner_id: i32,
+    deck_type: &str,
+) -> Result<()> {
     let table = if deck_type == "vendor" {
         "vendor_rate_decks"
     } else {
         "client_rate_decks"
     };
-    
+
     let owner_col = if deck_type == "vendor" {
         "vendor_id"
     } else {
         "client_id"
     };
-    
+
     let query = format!(
         r#"
         SELECT id, deck_version, effective_date, end_date, active, loaded_at
@@ -424,24 +439,24 @@ async fn show_versions(pool: &sqlx::PgPool, name: &str, owner_id: i32, deck_type
         "#,
         table, owner_col
     );
-    
+
     let rows = sqlx::query(&query)
         .bind(name)
         .bind(owner_id)
         .fetch_all(pool)
         .await?;
-    
+
     println!("\nDeck Version History: {}", name);
     println!("{:-<80}", "");
     println!("Version | Effective Date        | End Date             | Status");
     println!("{:-<80}", "");
-    
+
     for row in rows {
         let version: i32 = row.get("deck_version");
         let effective: DateTime<Utc> = row.get("effective_date");
         let end: Option<DateTime<Utc>> = row.get("end_date");
         let active: bool = row.get("active");
-        
+
         let status = if !active {
             "INACTIVE"
         } else if effective > Utc::now() {
@@ -451,7 +466,7 @@ async fn show_versions(pool: &sqlx::PgPool, name: &str, owner_id: i32, deck_type
         } else {
             "EXPIRED"
         };
-        
+
         println!(
             "v{:3}    | {} | {} | {}",
             version,
@@ -461,7 +476,7 @@ async fn show_versions(pool: &sqlx::PgPool, name: &str, owner_id: i32, deck_type
             status
         );
     }
-    
+
     Ok(())
 }
 
@@ -474,15 +489,15 @@ async fn show_cutovers(pool: &sqlx::PgPool, hours: i32) -> Result<()> {
         WHERE cutover_date <= NOW() + $1::interval
           AND status NOT IN ('completed', 'cancelled')
         ORDER BY cutover_date
-        "#
+        "#,
     )
     .bind(format!("{} hours", hours))
     .fetch_all(pool)
     .await?;
-    
+
     println!("\nUpcoming Deck Cutovers (next {} hours):", hours);
     println!("{:-<80}", "");
-    
+
     for row in rows {
         let id: i32 = row.get("id");
         let deck_type: String = row.get("deck_type");
@@ -491,7 +506,7 @@ async fn show_cutovers(pool: &sqlx::PgPool, hours: i32) -> Result<()> {
         let cutover: DateTime<Utc> = row.get("cutover_date");
         let preload: DateTime<Utc> = row.get("preload_at");
         let status: String = row.get("status");
-        
+
         println!(
             "Schedule #{}: {} deck {} -> {}",
             id, deck_type, current_id, new_id
@@ -501,7 +516,7 @@ async fn show_cutovers(pool: &sqlx::PgPool, hours: i32) -> Result<()> {
         println!("  Status:  {}", status);
         println!();
     }
-    
+
     Ok(())
 }
 
@@ -514,11 +529,14 @@ async fn test_routing(
     compare: bool,
 ) -> Result<()> {
     // This would use the RoutingEngineV2 to test routing at specific time
-    println!("\nTesting routing at {}", test_time.format("%Y-%m-%d %H:%M:%S"));
+    println!(
+        "\nTesting routing at {}",
+        test_time.format("%Y-%m-%d %H:%M:%S")
+    );
     println!("ANI: {} -> DNIS: {}", ani, dnis);
     println!("Ingress Trunk: {}", trunk_id);
-    
+
     // TODO: Implement actual routing test
-    
+
     Ok(())
 }

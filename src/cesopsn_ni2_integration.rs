@@ -27,9 +27,7 @@ use crate::cesopsn::{
 use crate::codec_optimized::OptimizedCodecProcessor;
 use crate::dtmf_processor::DtmfProcessor;
 use crate::q931_messages::{IsdnConfig, IsdnSideType, IsdnVariant};
-use crate::tdmoe_ni2_signaling::{
-    Ni2SideType, TdmoeNi2Signaling,
-};
+use crate::tdmoe_ni2_signaling::{Ni2SideType, TdmoeNi2Signaling};
 
 /// PCM Codec Type for voice encoding
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

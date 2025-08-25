@@ -124,7 +124,8 @@ impl AnomalyDetectionModel {
         // Calculate anomaly score using z-score
         let mut max_z_score: f64 = 0.0;
         for (i, &feature) in features.iter().enumerate() {
-            if self.feature_stddevs[i] > 1e-6 { // Avoid division by zero
+            if self.feature_stddevs[i] > 1e-6 {
+                // Avoid division by zero
                 let z_score = ((feature - self.feature_means[i]) / self.feature_stddevs[i]).abs();
                 max_z_score = max_z_score.max(z_score);
             } else if (feature - self.feature_means[i]).abs() > 1.0 {

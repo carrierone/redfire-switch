@@ -81,7 +81,7 @@ impl PhoneValidator {
         let normalized = self.normalize_number(number);
         let contains_invalid_chars = self.contains_invalid_chars(number);
         let is_valid = self.basic_validate(&normalized) && !contains_invalid_chars;
-        
+
         let country_code = if self.config.use_country_detection {
             self.detect_country_code(&normalized)
         } else {
@@ -103,9 +103,9 @@ impl PhoneValidator {
 
         ValidationResult {
             original: number.to_string(),
-            is_valid: if self.config.strict_validation { 
-                is_valid 
-            } else { 
+            is_valid: if self.config.strict_validation {
+                is_valid
+            } else {
                 // Non-strict mode - allow formatting variations but reject non-phone strings
                 // Real phone numbers only have digits, +, -, (, ), spaces and dots
                 !contains_invalid_chars && self.is_reasonable_number(&normalized)
@@ -113,12 +113,20 @@ impl PhoneValidator {
             country_code: country_code.clone(),
             region_code: country_code,
             number_type: Some("unknown".to_string()),
-            e164_format: if is_valid { Some(normalized.clone()) } else { None },
-            international_format: if is_valid { Some(self.format_international(&normalized)) } else { None },
-            error: if !is_valid && self.config.strict_validation { 
-                Some("Number failed validation".to_string()) 
-            } else { 
-                None 
+            e164_format: if is_valid {
+                Some(normalized.clone())
+            } else {
+                None
+            },
+            international_format: if is_valid {
+                Some(self.format_international(&normalized))
+            } else {
+                None
+            },
+            error: if !is_valid && self.config.strict_validation {
+                Some("Number failed validation".to_string())
+            } else {
+                None
             },
         }
     }
@@ -128,7 +136,7 @@ impl PhoneValidator {
         if !self.config.use_country_detection {
             return None;
         }
-        
+
         let normalized = self.normalize_number(number);
         self.detect_country_code(&normalized)
     }
@@ -136,18 +144,20 @@ impl PhoneValidator {
     /// Check if number is likely international (not in default region)
     pub fn is_international(&self, number: &str) -> bool {
         let normalized = self.normalize_number(number);
-        
+
         // Check for international prefixes
-        normalized.starts_with("00") || 
-        number.starts_with('+') || 
-        normalized.starts_with("011") ||
-        self.detect_country_code(&normalized).map_or(false, |cc| cc != self.config.default_region)
+        normalized.starts_with("00")
+            || number.starts_with('+')
+            || normalized.starts_with("011")
+            || self
+                .detect_country_code(&normalized)
+                .map_or(false, |cc| cc != self.config.default_region)
     }
 
     /// Normalize phone number to digits only, handling common prefixes
     fn normalize_number(&self, number: &str) -> String {
         let digits: String = number.chars().filter(|c| c.is_digit(10)).collect();
-        
+
         // Remove international access codes
         if digits.starts_with("011") && digits.len() > 3 {
             // US international prefix
@@ -168,10 +178,11 @@ impl PhoneValidator {
     fn looks_phone_like(&self, number: &str) -> bool {
         // Must have some digits and mostly phone-like characters
         let digit_count = number.chars().filter(|c| c.is_digit(10)).count();
-        let phone_char_count = number.chars().filter(|c| {
-            c.is_digit(10) || matches!(*c, '+' | '-' | '(' | ')' | ' ' | '.')
-        }).count();
-        
+        let phone_char_count = number
+            .chars()
+            .filter(|c| c.is_digit(10) || matches!(*c, '+' | '-' | '(' | ')' | ' ' | '.'))
+            .count();
+
         // If it has at least 3 digits and most characters are phone-like, consider it phone-like
         digit_count >= 3 && phone_char_count as f64 / number.len() as f64 > 0.7
     }
@@ -179,7 +190,9 @@ impl PhoneValidator {
     /// Check if original number contains invalid characters
     fn contains_invalid_chars(&self, number: &str) -> bool {
         // Allow digits, +, -, (, ), and space
-        number.chars().any(|c| !c.is_digit(10) && !matches!(c, '+' | '-' | '(' | ')' | ' ' | '.'))
+        number
+            .chars()
+            .any(|c| !c.is_digit(10) && !matches!(c, '+' | '-' | '(' | ')' | ' ' | '.'))
     }
 
     /// Check if a number is reasonable (for non-strict mode)
@@ -188,19 +201,19 @@ impl PhoneValidator {
         if normalized.is_empty() {
             return false;
         }
-        
+
         let digits = if normalized.starts_with('+') {
             &normalized[1..]
         } else {
             normalized
         };
-        
+
         // Lenient length check (3-20 digits)
         let len = digits.len();
         if len < 3 || len > 20 {
             return false;
         }
-        
+
         // Must be all digits
         digits.chars().all(|c| c.is_digit(10))
     }
@@ -210,19 +223,19 @@ impl PhoneValidator {
         if normalized.is_empty() {
             return false;
         }
-        
+
         let digits = if normalized.starts_with('+') {
             &normalized[1..]
         } else {
             normalized
         };
-        
+
         // Basic length check (5-15 digits for international numbers)
         let len = digits.len();
         if len < 5 || len > 15 {
             return false;
         }
-        
+
         // Must be all digits
         digits.chars().all(|c| c.is_digit(10))
     }
@@ -233,9 +246,9 @@ impl PhoneValidator {
             // Domestic number - use default region
             return Some(self.config.default_region.clone());
         }
-        
+
         let digits = &normalized[1..];
-        
+
         // Common country code mappings (simplified)
         if digits.starts_with("1") {
             Some("US".to_string())
@@ -277,7 +290,12 @@ impl PhoneValidator {
             normalized.to_string()
         } else if normalized.len() == 10 && self.config.default_region == "US" {
             // Format US number
-            format!("+1 {} {} {}", &normalized[0..3], &normalized[3..6], &normalized[6..])
+            format!(
+                "+1 {} {} {}",
+                &normalized[0..3],
+                &normalized[3..6],
+                &normalized[6..]
+            )
         } else {
             format!("+{}", normalized)
         }
@@ -345,7 +363,7 @@ mod tests {
         let mut config = PhoneValidationConfig::default();
         config.strict_validation = true;
         let validator = PhoneValidator::new(config);
-        
+
         let result = validator.validate("invalid-number");
         assert!(!result.is_valid);
         assert!(result.error.is_some());
@@ -356,9 +374,18 @@ mod tests {
         let config = PhoneValidationConfig::default();
         let validator = PhoneValidator::new(config);
 
-        assert_eq!(validator.get_country_code("+1-555-123-4567"), Some("US".to_string()));
-        assert_eq!(validator.get_country_code("+44 20 7946 0958"), Some("GB".to_string()));
-        assert_eq!(validator.get_country_code("+49 30 12345678"), Some("DE".to_string()));
+        assert_eq!(
+            validator.get_country_code("+1-555-123-4567"),
+            Some("US".to_string())
+        );
+        assert_eq!(
+            validator.get_country_code("+44 20 7946 0958"),
+            Some("GB".to_string())
+        );
+        assert_eq!(
+            validator.get_country_code("+49 30 12345678"),
+            Some("DE".to_string())
+        );
     }
 
     #[test]

@@ -50,7 +50,7 @@ pub fn init_security() {
 pub fn sanitize_for_logging(input: &str) -> String {
     // Initialize if needed
     init_security();
-    
+
     // FIXED: Handle missing regex gracefully instead of panicking
     let regex = match SAFE_LOGGING_REGEX.get() {
         Some(regex) => regex,
@@ -344,7 +344,7 @@ mod tests {
     fn test_sanitize_for_logging() {
         // Don't call init_security() here - let sanitize_for_logging do it
         // This ensures we get a fresh regex in each test run
-        
+
         assert_eq!(sanitize_for_logging("normal@test.com"), "normal@test.com");
         let result = sanitize_for_logging("evil\r\ninjection");
         assert_eq!(result, "evil__injection");

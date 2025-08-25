@@ -159,7 +159,7 @@ impl NanpaDataLoader {
                      state = EXCLUDED.state,
                      country = EXCLUDED.country,
                      ocn = EXCLUDED.ocn,
-                     rate_center = EXCLUDED.rate_center"
+                     rate_center = EXCLUDED.rate_center",
             )
             .bind(&entry.npa)
             .bind(&entry.nxx)
@@ -182,7 +182,7 @@ impl NanpaDataLoader {
     ) -> Result<()> {
         sqlx::query(
             "UPDATE nanpa_static SET state = $2, country = $3 
-             WHERE npa = $1 AND nxx IS NULL"
+             WHERE npa = $1 AND nxx IS NULL",
         )
         .bind(npa)
         .bind(state)

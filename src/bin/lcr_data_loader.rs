@@ -39,7 +39,8 @@ async fn main() -> Result<()> {
         )
         .get_matches();
 
-    let database_url = matches.get_one::<String>("database-url")
+    let database_url = matches
+        .get_one::<String>("database-url")
         .map(|s| s.to_string())
         .or_else(|| std::env::var("DATABASE_URL").ok())
         .unwrap_or_else(|| "postgresql://postgres:postgres@localhost:5432/lcr".to_string());

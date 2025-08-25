@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc, NaiveTime};
+use chrono::{DateTime, NaiveTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
@@ -75,7 +75,7 @@ pub struct InternationalRate {
     pub destination_code: Option<String>, // Optional more specific code (e.g., "44207")
     pub destination_name: String, // "United Kingdom", "Germany Mobile", etc.
     pub jurisdiction: InternationalJurisdiction, // EEA or ROW
-    pub rate: Decimal, // Single rate for international
+    pub rate: Decimal,        // Single rate for international
     pub initial_increment: i32, // Initial billing increment in seconds (e.g., 30, 60, 6)
     pub subsequent_increment: i32, // Subsequent billing increment (e.g., 6, 60, 1)
     pub setup_fee: Option<Decimal>,
@@ -132,7 +132,7 @@ pub struct DeckCutoverSchedule {
     pub new_deck_id: i32,
     pub cutover_date: DateTime<Utc>,
     pub preload_at: DateTime<Utc>,
-    pub status: String,  // Changed from CutoverStatus enum to String for simpler DB mapping
+    pub status: String, // Changed from CutoverStatus enum to String for simpler DB mapping
     pub preloaded_at: Option<DateTime<Utc>>,
     pub activated_at: Option<DateTime<Utc>>,
 }
@@ -616,4 +616,3 @@ pub struct SipRedirectResponse {
     pub lrn: Option<String>,
     pub spid: Option<String>,
 }
-

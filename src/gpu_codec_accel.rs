@@ -238,7 +238,7 @@ impl GpuCodecAccelerator {
     /// Create new GPU codec accelerator
     pub async fn new(config: GpuCodecConfig) -> Result<Self> {
         let max_pool_size_mb = config.max_pool_size_mb;
-        
+
         if !config.enabled {
             return Ok(Self {
                 config,
@@ -255,12 +255,12 @@ impl GpuCodecAccelerator {
         let mut cuda_device = None;
         #[cfg(not(feature = "cuda"))]
         let cuda_device: Option<Arc<()>> = None;
-        
+
         #[cfg(feature = "rocm")]
         let mut rocm_device = None;
         #[cfg(not(feature = "rocm"))]
         let rocm_device: Option<Arc<()>> = None;
-        
+
         match config.backend {
             #[cfg(feature = "cuda")]
             GpuBackend::Cuda => {

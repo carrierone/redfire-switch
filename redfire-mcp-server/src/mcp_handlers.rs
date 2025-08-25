@@ -60,16 +60,17 @@ impl RedfireMcpServer {
             .and_then(move |args: Value| {
                 let server = server_clone.clone();
                 async move {
-                    let result: Result<Box<dyn Reply>, Infallible> = match server.codec_tools.transcode_audio(args).await {
-                        Ok(result) => Ok(Box::new(warp::reply::json(&result))),
-                        Err(e) => {
-                            error!("Transcode error: {}", e);
-                            Ok(Box::new(warp::reply::json(&json!({
-                                "success": false,
-                                "error": e.to_string()
-                            }))))
-                        }
-                    };
+                    let result: Result<Box<dyn Reply>, Infallible> =
+                        match server.codec_tools.transcode_audio(args).await {
+                            Ok(result) => Ok(Box::new(warp::reply::json(&result))),
+                            Err(e) => {
+                                error!("Transcode error: {}", e);
+                                Ok(Box::new(warp::reply::json(&json!({
+                                    "success": false,
+                                    "error": e.to_string()
+                                }))))
+                            }
+                        };
                     result
                 }
             });
@@ -82,16 +83,17 @@ impl RedfireMcpServer {
             .and_then(move |args: Value| {
                 let server = server_clone.clone();
                 async move {
-                    let result: Result<Box<dyn Reply>, Infallible> = match server.codec_tools.get_codec_info(args).await {
-                        Ok(result) => Ok(Box::new(warp::reply::json(&result))),
-                        Err(e) => {
-                            error!("Codec info error: {}", e);
-                            Ok(Box::new(warp::reply::json(&json!({
-                                "success": false,
-                                "error": e.to_string()
-                            }))))
-                        }
-                    };
+                    let result: Result<Box<dyn Reply>, Infallible> =
+                        match server.codec_tools.get_codec_info(args).await {
+                            Ok(result) => Ok(Box::new(warp::reply::json(&result))),
+                            Err(e) => {
+                                error!("Codec info error: {}", e);
+                                Ok(Box::new(warp::reply::json(&json!({
+                                    "success": false,
+                                    "error": e.to_string()
+                                }))))
+                            }
+                        };
                     result
                 }
             });
@@ -104,16 +106,17 @@ impl RedfireMcpServer {
             .and_then(move |args: Value| {
                 let server = server_clone.clone();
                 async move {
-                    let result: Result<Box<dyn Reply>, Infallible> = match server.codec_tools.benchmark_transcoding(args).await {
-                        Ok(result) => Ok(Box::new(warp::reply::json(&result))),
-                        Err(e) => {
-                            error!("Benchmark error: {}", e);
-                            Ok(Box::new(warp::reply::json(&json!({
-                                "success": false,
-                                "error": e.to_string()
-                            }))))
-                        }
-                    };
+                    let result: Result<Box<dyn Reply>, Infallible> =
+                        match server.codec_tools.benchmark_transcoding(args).await {
+                            Ok(result) => Ok(Box::new(warp::reply::json(&result))),
+                            Err(e) => {
+                                error!("Benchmark error: {}", e);
+                                Ok(Box::new(warp::reply::json(&json!({
+                                    "success": false,
+                                    "error": e.to_string()
+                                }))))
+                            }
+                        };
                     result
                 }
             });
@@ -126,16 +129,17 @@ impl RedfireMcpServer {
             .and_then(move |args: Value| {
                 let server = server_clone.clone();
                 async move {
-                    let result: Result<Box<dyn Reply>, Infallible> = match server.sip_tools.parse_sip_message(args).await {
-                        Ok(result) => Ok(Box::new(warp::reply::json(&result))),
-                        Err(e) => {
-                            error!("SIP parse error: {}", e);
-                            Ok(Box::new(warp::reply::json(&json!({
-                                "success": false,
-                                "error": e.to_string()
-                            }))))
-                        }
-                    };
+                    let result: Result<Box<dyn Reply>, Infallible> =
+                        match server.sip_tools.parse_sip_message(args).await {
+                            Ok(result) => Ok(Box::new(warp::reply::json(&result))),
+                            Err(e) => {
+                                error!("SIP parse error: {}", e);
+                                Ok(Box::new(warp::reply::json(&json!({
+                                    "success": false,
+                                    "error": e.to_string()
+                                }))))
+                            }
+                        };
                     result
                 }
             });
@@ -148,16 +152,17 @@ impl RedfireMcpServer {
             .and_then(move |args: Value| {
                 let server = server_clone.clone();
                 async move {
-                    let result: Result<Box<dyn Reply>, Infallible> = match server.sip_tools.generate_sip_message(args).await {
-                        Ok(result) => Ok(Box::new(warp::reply::json(&result))),
-                        Err(e) => {
-                            error!("SIP generate error: {}", e);
-                            Ok(Box::new(warp::reply::json(&json!({
-                                "success": false,
-                                "error": e.to_string()
-                            }))))
-                        }
-                    };
+                    let result: Result<Box<dyn Reply>, Infallible> =
+                        match server.sip_tools.generate_sip_message(args).await {
+                            Ok(result) => Ok(Box::new(warp::reply::json(&result))),
+                            Err(e) => {
+                                error!("SIP generate error: {}", e);
+                                Ok(Box::new(warp::reply::json(&json!({
+                                    "success": false,
+                                    "error": e.to_string()
+                                }))))
+                            }
+                        };
                     result
                 }
             });

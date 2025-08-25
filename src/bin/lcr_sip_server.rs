@@ -514,7 +514,8 @@ async fn main() -> Result<()> {
         )
         .get_matches();
 
-    let bind_addr_str = matches.get_one::<String>("bind")
+    let bind_addr_str = matches
+        .get_one::<String>("bind")
         .expect("bind argument should have a default value");
     let database_url = matches
         .get_one::<String>("database-url")

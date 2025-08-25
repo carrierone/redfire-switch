@@ -328,9 +328,7 @@ impl NanpaLergDataLoader {
                 let dnis_state = self.get_npa_state(&dnis_area).await?;
 
                 match (ani_state, dnis_state) {
-                    (Some(ani_st), Some(dnis_st)) if ani_st == dnis_st => {
-                        Ok("intra".to_string())
-                    }
+                    (Some(ani_st), Some(dnis_st)) if ani_st == dnis_st => Ok("intra".to_string()),
                     (Some(_), Some(_)) => Ok("inter".to_string()),
                     _ => Ok("indeterminate".to_string()),
                 }

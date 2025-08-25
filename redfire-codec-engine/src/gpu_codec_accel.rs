@@ -274,7 +274,6 @@ impl GpuMemoryPool {
     }
 }
 
-
 impl GpuCodecAccelerator {
     /// Create new GPU codec accelerator
     pub async fn new(config: GpuCodecConfig) -> Result<Self> {
@@ -321,7 +320,7 @@ impl GpuCodecAccelerator {
             memory_pool: Arc::new(RwLock::new(GpuMemoryPool::new(config.max_pool_size_mb))),
             kernel_cache: Arc::new(RwLock::new(HashMap::new())),
         };
-        
+
         // Check if backend is supported
         if !matches!(config.backend, GpuBackend::Cuda | GpuBackend::Rocm) {
             return Err(anyhow!("GPU backend {:?} not supported", config.backend));
@@ -1267,13 +1266,10 @@ impl GpuCodecAccelerator {
         match frames.first().map(|f| &f.codec) {
             Some(AudioCodec::G711Ulaw) => self.gpu_decode_ulaw(frames, target_codec).await,
             Some(AudioCodec::G711Alaw) => self.gpu_decode_alaw(frames, target_codec).await,
-            Some(AudioCodec::G729) | Some(AudioCodec::G729AnnexA) | Some(AudioCodec::G729AnnexB) => {
-                self.gpu_decode_g729(frames, target_codec).await
-            }
-            Some(codec) => Err(anyhow!(
-                "GPU decoding not available for codec {:?}",
-                codec
-            )),
+            Some(AudioCodec::G729)
+            | Some(AudioCodec::G729AnnexA)
+            | Some(AudioCodec::G729AnnexB) => self.gpu_decode_g729(frames, target_codec).await,
+            Some(codec) => Err(anyhow!("GPU decoding not available for codec {:?}", codec)),
             None => Err(anyhow!("No frames to decode")),
         }
     }
@@ -1375,7 +1371,7 @@ impl GpuCodecAccelerator {
     pub async fn get_statistics(&self) -> GpuAccelStats {
         let pool = self.memory_pool.read().await;
         let cache = self.kernel_cache.read().await;
-        
+
         GpuAccelStats {
             kernels_compiled: cache.len() as u32,
             frames_processed: 0, // Would be tracked in real implementation

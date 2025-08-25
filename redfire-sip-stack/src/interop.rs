@@ -46,11 +46,7 @@
 //! - RFC 8225: PASSporT (SHAKEN)
 
 use anyhow::{anyhow, Result};
-use rsip::{
-    headers::Header,
-    message::HeadersExt,
-    Method, Request, Response, Version,
-};
+use rsip::{headers::Header, message::HeadersExt, Method, Request, Response, Version};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::SocketAddr;

@@ -32,9 +32,18 @@ mod end_to_end_tests {
         for (number, expected_country, description) in test_numbers {
             let result = validator.validate(number);
             assert!(result.is_valid, "{} should be valid", description);
-            assert_eq!(result.country_code, Some(expected_country.to_string()), 
-                      "{} should detect {} country", description, expected_country);
-            assert!(result.e164_format.is_some(), "{} should have E164 format", description);
+            assert_eq!(
+                result.country_code,
+                Some(expected_country.to_string()),
+                "{} should detect {} country",
+                description,
+                expected_country
+            );
+            assert!(
+                result.e164_format.is_some(),
+                "{} should have E164 format",
+                description
+            );
         }
 
         // Step 4: Create routing request with phone validation
@@ -63,21 +72,21 @@ mod end_to_end_tests {
         // Test EEA country routing
         let eea_request = create_test_request("+49 30 12345678", Some(1)); // German number, EEA plan
         let eea_validation = validate_number_for_request(&eea_request);
-        
+
         assert!(eea_validation.is_valid);
         assert_eq!(eea_validation.country_code, Some("DE".to_string()));
 
         // Test ROW country routing
         let row_request = create_test_request("+1 555 123 4567", Some(2)); // US number, ROW plan
         let row_validation = validate_number_for_request(&row_request);
-        
+
         assert!(row_validation.is_valid);
         assert_eq!(row_validation.country_code, Some("US".to_string()));
 
         // Test unknown country with strict validation
         let strict_request = create_test_request("+999 123 456 789", Some(3)); // Unknown country, strict plan
         let strict_validation = validate_number_for_request(&strict_request);
-        
+
         // Should be valid with non-strict validation, but country would be None
         assert!(strict_validation.is_valid || strict_validation.country_code.is_none());
     }
@@ -88,7 +97,7 @@ mod end_to_end_tests {
         let enabled_plan = create_mock_routing_plan(1, true, false);
         assert!(enabled_plan.phone_validation_enabled);
         assert!(!enabled_plan.phone_validation_strict);
-        
+
         let request = create_test_request_with_plan("+44 20 7946 0958", &enabled_plan);
         let validation = validate_with_plan(&request, &enabled_plan);
         assert!(validation.is_valid);
@@ -116,7 +125,10 @@ mod end_to_end_tests {
         // Create EEA country preference (should have cost reduction)
         let eea_preference = create_mock_country_preference("DE", InternationalJurisdiction::EEA);
         assert_eq!(eea_preference.jurisdiction, InternationalJurisdiction::EEA);
-        assert_eq!(eea_preference.cost_multiplier, Decimal::from_str("0.9").unwrap()); // 10% reduction
+        assert_eq!(
+            eea_preference.cost_multiplier,
+            Decimal::from_str("0.9").unwrap()
+        ); // 10% reduction
         assert!(eea_preference.require_validation);
 
         // Create ROW country preference (normal pricing)
@@ -139,7 +151,7 @@ mod end_to_end_tests {
     fn test_international_rate_matching_logic() {
         // Test longest-to-shortest prefix matching logic
         let rates = create_mock_international_rates();
-        
+
         // Test exact match
         let london_number = "+442071234567"; // London number
         let matched_rate = find_best_rate_match(&rates, london_number);
@@ -161,14 +173,14 @@ mod end_to_end_tests {
     fn test_route_selection_with_cost_and_priority() {
         // Create multiple routes with different costs and priorities
         let routes = create_mock_call_routes();
-        
+
         // Routes should be sorted by priority first, then by cost
         let sorted_routes = sort_routes_by_priority_and_cost(routes);
-        
+
         // First route should be highest priority (lowest number) and lowest cost
         assert_eq!(sorted_routes[0].priority, 1);
         assert!(sorted_routes[0].cost_per_minute <= sorted_routes[1].cost_per_minute);
-        
+
         // Test profit calculation
         for route in &sorted_routes {
             let expected_profit = route.selling_per_minute - route.cost_per_minute;
@@ -183,21 +195,24 @@ mod end_to_end_tests {
             Decimal::from_str("0.05").unwrap(), // cost
             Decimal::from_str("0.06").unwrap(), // selling
         );
-        
+
         // Profit should be 0.01
         assert_eq!(base_route.profit_margin, Decimal::from_str("0.01").unwrap());
-        
+
         // Test profit protection with minimum margin
         let min_margin = Decimal::from_str("0.02").unwrap();
         let passes_protection = base_route.profit_margin >= min_margin;
         assert!(!passes_protection); // Should fail profit protection
-        
+
         // Test profitable route
         let profitable_route = create_mock_call_route(
             Decimal::from_str("0.05").unwrap(), // cost
             Decimal::from_str("0.08").unwrap(), // selling
         );
-        assert_eq!(profitable_route.profit_margin, Decimal::from_str("0.03").unwrap());
+        assert_eq!(
+            profitable_route.profit_margin,
+            Decimal::from_str("0.03").unwrap()
+        );
         let passes_protection = profitable_route.profit_margin >= min_margin;
         assert!(passes_protection); // Should pass profit protection
     }
@@ -206,7 +221,7 @@ mod end_to_end_tests {
     fn test_call_simulation_workflow() {
         // Create a complete call simulation
         let simulation = create_mock_call_simulation();
-        
+
         assert_eq!(simulation.ani, "15551234567");
         assert!(simulation.dnis.starts_with("+")); // International number
         assert_eq!(simulation.jurisdiction, CallJurisdiction::Indeterminate); // International calls
@@ -217,14 +232,14 @@ mod end_to_end_tests {
         // Routes should be sorted by preference (priority, then cost)
         if simulation.routes.len() > 1 {
             for i in 1..simulation.routes.len() {
-                let prev_route = &simulation.routes[i-1];
+                let prev_route = &simulation.routes[i - 1];
                 let curr_route = &simulation.routes[i];
-                
+
                 // Either priority is better (lower) or same priority with better (lower) cost
                 assert!(
-                    prev_route.priority < curr_route.priority ||
-                    (prev_route.priority == curr_route.priority && 
-                     prev_route.cost_per_minute <= curr_route.cost_per_minute)
+                    prev_route.priority < curr_route.priority
+                        || (prev_route.priority == curr_route.priority
+                            && prev_route.cost_per_minute <= curr_route.cost_per_minute)
                 );
             }
         }
@@ -287,7 +302,10 @@ mod end_to_end_tests {
         }
     }
 
-    fn validate_with_plan(request: &RouteRequest, plan: &InternationalRoutingPlan) -> ValidationResult {
+    fn validate_with_plan(
+        request: &RouteRequest,
+        plan: &InternationalRoutingPlan,
+    ) -> ValidationResult {
         let config = PhoneValidationConfig {
             enabled: plan.phone_validation_enabled,
             strict_validation: plan.phone_validation_strict,
@@ -299,7 +317,11 @@ mod end_to_end_tests {
         validator.validate(&request.dnis)
     }
 
-    fn create_mock_routing_plan(id: i32, validation_enabled: bool, strict: bool) -> InternationalRoutingPlan {
+    fn create_mock_routing_plan(
+        id: i32,
+        validation_enabled: bool,
+        strict: bool,
+    ) -> InternationalRoutingPlan {
         InternationalRoutingPlan {
             id,
             name: format!("Test Plan {}", id),
@@ -322,7 +344,10 @@ mod end_to_end_tests {
         }
     }
 
-    fn create_mock_country_preference(country_code: &str, jurisdiction: InternationalJurisdiction) -> CountryRoutingPreference {
+    fn create_mock_country_preference(
+        country_code: &str,
+        jurisdiction: InternationalJurisdiction,
+    ) -> CountryRoutingPreference {
         let (cost_multiplier, require_validation) = match jurisdiction {
             InternationalJurisdiction::EEA => (Decimal::from_str("0.9").unwrap(), true),
             InternationalJurisdiction::ROW => (Decimal::ONE, false),
@@ -375,11 +400,15 @@ mod end_to_end_tests {
         ]
     }
 
-    fn find_best_rate_match<'a>(rates: &'a [InternationalRate], number: &str) -> Option<&'a InternationalRate> {
+    fn find_best_rate_match<'a>(
+        rates: &'a [InternationalRate],
+        number: &str,
+    ) -> Option<&'a InternationalRate> {
         let normalized = number.trim_start_matches('+');
-        
+
         // Find longest matching prefix
-        rates.iter()
+        rates
+            .iter()
             .filter(|rate| {
                 let full_prefix = match &rate.destination_code {
                     Some(dest) => format!("{}{}", rate.country_code, dest),
@@ -387,11 +416,9 @@ mod end_to_end_tests {
                 };
                 normalized.starts_with(&full_prefix)
             })
-            .max_by_key(|rate| {
-                match &rate.destination_code {
-                    Some(dest) => rate.country_code.len() + dest.len(),
-                    None => rate.country_code.len(),
-                }
+            .max_by_key(|rate| match &rate.destination_code {
+                Some(dest) => rate.country_code.len() + dest.len(),
+                None => rate.country_code.len(),
             })
     }
 
@@ -401,15 +428,31 @@ mod end_to_end_tests {
         let trunk3 = create_mock_trunk(3, "Trunk C", 2);
 
         vec![
-            create_call_route(trunk1, Decimal::from_str("0.01").unwrap(), Decimal::from_str("0.02").unwrap(), 1),
-            create_call_route(trunk2, Decimal::from_str("0.015").unwrap(), Decimal::from_str("0.025").unwrap(), 1),
-            create_call_route(trunk3, Decimal::from_str("0.008").unwrap(), Decimal::from_str("0.018").unwrap(), 2),
+            create_call_route(
+                trunk1,
+                Decimal::from_str("0.01").unwrap(),
+                Decimal::from_str("0.02").unwrap(),
+                1,
+            ),
+            create_call_route(
+                trunk2,
+                Decimal::from_str("0.015").unwrap(),
+                Decimal::from_str("0.025").unwrap(),
+                1,
+            ),
+            create_call_route(
+                trunk3,
+                Decimal::from_str("0.008").unwrap(),
+                Decimal::from_str("0.018").unwrap(),
+                2,
+            ),
         ]
     }
 
     fn sort_routes_by_priority_and_cost(mut routes: Vec<CallRoute>) -> Vec<CallRoute> {
         routes.sort_by(|a, b| {
-            a.priority.cmp(&b.priority)
+            a.priority
+                .cmp(&b.priority)
                 .then(a.cost_per_minute.cmp(&b.cost_per_minute))
         });
         routes
@@ -420,7 +463,12 @@ mod end_to_end_tests {
         create_call_route(trunk, cost, selling, 1)
     }
 
-    fn create_call_route(trunk: EgressTrunk, cost: Decimal, selling: Decimal, priority: i32) -> CallRoute {
+    fn create_call_route(
+        trunk: EgressTrunk,
+        cost: Decimal,
+        selling: Decimal,
+        priority: i32,
+    ) -> CallRoute {
         CallRoute {
             egress_trunk: trunk,
             vendor_rate: None,

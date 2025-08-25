@@ -13,9 +13,9 @@ mod tests {
             deck_id: 1,
             code: "1555001".to_string(),
             inter_rate: Decimal::from_str("0.0150").unwrap(), // 1.5 cents
-            intra_rate: Decimal::from_str("0.0120").unwrap(), // 1.2 cents  
+            intra_rate: Decimal::from_str("0.0120").unwrap(), // 1.2 cents
             ij_rate: Decimal::from_str("0.0140").unwrap(),    // 1.4 cents
-            local_rate: None, // NULL - this is the key test case
+            local_rate: None,                                 // NULL - this is the key test case
             min_increment: 6,
             interval: 6,
             setup_fee: None,
@@ -27,19 +27,19 @@ mod tests {
             Decimal::from_str("0.0150").unwrap(),
             "Inter rate should be inter_rate"
         );
-        
+
         assert_eq!(
             get_rate_for_jurisdiction(&rate, CallJurisdiction::Intra),
             Decimal::from_str("0.0120").unwrap(),
             "Intra rate should be intra_rate"
         );
-        
+
         assert_eq!(
             get_rate_for_jurisdiction(&rate, CallJurisdiction::Indeterminate),
             Decimal::from_str("0.0140").unwrap(),
             "Indeterminate rate should be ij_rate"
         );
-        
+
         // This is the critical test - local_rate is NULL, should fall back to intra_rate
         assert_eq!(
             get_rate_for_jurisdiction(&rate, CallJurisdiction::Local),
@@ -85,7 +85,7 @@ mod tests {
     #[test]
     fn test_call_simulation_with_null_local_rates() {
         use crate::lcr::types::CallSimulation;
-        
+
         // Simulate creating a call simulation for local jurisdiction
         // This would typically come from the routing engine
         let simulation = CallSimulation {
@@ -112,7 +112,7 @@ mod tests {
         // Verify simulation works with Local jurisdiction
         assert_eq!(simulation.jurisdiction, CallJurisdiction::Local);
         assert_eq!(simulation.routes.len(), 1);
-        
+
         // The cost should be the intra_rate since local_rate was NULL
         assert_eq!(
             simulation.routes[0].cost_per_minute,

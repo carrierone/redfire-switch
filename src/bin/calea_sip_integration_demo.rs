@@ -7,7 +7,7 @@
 use anyhow::Result;
 use redfire_sip_stack::core::{SipCoreConfig, SipCoreEngine};
 use redfire_switch::calea_sip_bridge::CaleaSipBridge;
-use redfire_switch::compliance_framework::{ComplianceFramework, ComplianceConfig};
+use redfire_switch::compliance_framework::{ComplianceConfig, ComplianceFramework};
 use std::sync::Arc;
 use tracing::{info, Level};
 

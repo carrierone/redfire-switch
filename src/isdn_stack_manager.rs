@@ -23,8 +23,8 @@ use crate::cesopsn_ni2_integration::{
     CesopsnNi2CircuitConfig, CesopsnNi2Event, CesopsnNi2Integration,
 };
 use crate::pri_timers::{
-    clear_call_action, send_message_action, PriTimerAction, PriTimerExpiredEvent,
-    PriTimerManager, PriTimerType,
+    clear_call_action, send_message_action, PriTimerAction, PriTimerExpiredEvent, PriTimerManager,
+    PriTimerType,
 };
 use crate::q921_lapd::{LapdEvent, LapdStatistics, Q921LapdManager};
 use crate::q931_messages::{

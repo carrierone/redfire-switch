@@ -1,18 +1,17 @@
 /// Example demonstrating SIP 302 redirect LRN dip functionality
-/// 
+///
 /// This example shows how to:
 /// 1. Configure LRN dip settings
 /// 2. Initialize the LRN dip service
 /// 3. Perform LRN lookups with SIP 302 redirects
 /// 4. Handle caching and error conditions
-
 use anyhow::Result;
 use std::net::IpAddr;
 use tokio::time::Duration;
 
-use redfire_switch::lcr::lrn_dip::LrnDipService;
-use redfire_switch::lcr::types::{LrnDipConfig, LrnDipServer, LrnAuthConfig};
 use redfire_switch::config::Config;
+use redfire_switch::lcr::lrn_dip::LrnDipService;
+use redfire_switch::lcr::types::{LrnAuthConfig, LrnDipConfig, LrnDipServer};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -38,7 +37,7 @@ async fn main() -> Result<()> {
             LrnDipServer {
                 server_ip: "192.168.1.201".parse()?,
                 server_port: 5060,
-                priority: 1, // Backup server  
+                priority: 1, // Backup server
                 protocol: "sip_302".to_string(),
                 auth: None,
             },
@@ -49,17 +48,21 @@ async fn main() -> Result<()> {
         backup_timeout_ms: Some(2000), // Try backup after 2 seconds
         max_redirects: 3,
         enabled: true,
-        cache_timeout_sec: 3600, // 1 hour cache
+        cache_timeout_sec: 3600,                // 1 hour cache
         load_balancing: "priority".to_string(), // Failover mode
     };
 
-    println!("Primary LRN Server: {}:{}", 
-             lrn_config.server_ip.unwrap_or("127.0.0.1".parse().unwrap()), 
-             lrn_config.server_port);
+    println!(
+        "Primary LRN Server: {}:{}",
+        lrn_config.server_ip.unwrap_or("127.0.0.1".parse().unwrap()),
+        lrn_config.server_port
+    );
     println!("Backup Servers: {} configured", lrn_config.servers.len());
-    println!("Timeout: {}ms (backup: {}ms)", 
-             lrn_config.timeout_ms, 
-             lrn_config.get_backup_timeout_ms());
+    println!(
+        "Timeout: {}ms (backup: {}ms)",
+        lrn_config.timeout_ms,
+        lrn_config.get_backup_timeout_ms()
+    );
     println!("Load Balancing: {}", lrn_config.load_balancing);
     println!("Max Redirects: {}", lrn_config.max_redirects);
     println!("Cache Duration: {}s", lrn_config.cache_timeout_sec);
@@ -67,7 +70,7 @@ async fn main() -> Result<()> {
     // Example 2: Create and initialize LRN service
     println!("\n2. Initialize LRN Service");
     let service = LrnDipService::new(lrn_config.clone());
-    
+
     if service.is_enabled() {
         println!("✓ LRN dip service is enabled");
         // Note: In a real scenario, you would call service.initialize().await
@@ -81,16 +84,16 @@ async fn main() -> Result<()> {
     println!("\n3. Round-Robin Load Balancing");
     let round_robin_config = LrnDipConfig {
         servers: vec![
-            LrnDipServer { 
-                server_ip: "192.168.1.200".parse()?, 
-                server_port: 5060, 
+            LrnDipServer {
+                server_ip: "192.168.1.200".parse()?,
+                server_port: 5060,
                 priority: 0,
                 protocol: "sip_302".to_string(),
                 auth: None,
             },
-            LrnDipServer { 
-                server_ip: "api.telique.com".parse()?, 
-                server_port: 443, 
+            LrnDipServer {
+                server_ip: "api.telique.com".parse()?,
+                server_port: 443,
                 priority: 0,
                 protocol: "telique_api".to_string(),
                 auth: Some(LrnAuthConfig {
@@ -100,9 +103,9 @@ async fn main() -> Result<()> {
                     token: Some("your-telique-key".to_string()),
                 }),
             },
-            LrnDipServer { 
-                server_ip: "192.168.1.202".parse()?, 
-                server_port: 5060, 
+            LrnDipServer {
+                server_ip: "192.168.1.202".parse()?,
+                server_port: 5060,
                 priority: 0,
                 protocol: "sip_302".to_string(),
                 auth: None,
@@ -115,9 +118,12 @@ async fn main() -> Result<()> {
         cache_timeout_sec: 1800,
         ..Default::default()
     };
-    
+
     println!("Mixed protocols: SIP 302 + Telique API");
-    println!("Round-robin with {} servers", round_robin_config.servers.len());
+    println!(
+        "Round-robin with {} servers",
+        round_robin_config.servers.len()
+    );
     println!("Each request will go to next server in rotation");
     println!("Protocols supported: SIP 302, Telique API, REST API, SOAP");
     println!("Timeout per server: {}ms", round_robin_config.timeout_ms);
@@ -125,7 +131,8 @@ async fn main() -> Result<()> {
     // Example 4: Configuration from file
     println!("\n4. Configuration from File");
     println!("Example configuration file format:");
-    println!(r#"
+    println!(
+        r#"
 {{
   "lrn_dip": {{
     "servers": [
@@ -139,13 +146,14 @@ async fn main() -> Result<()> {
     "cache_timeout_sec": 3600,
     "load_balancing": "priority"
   }}
-}}"#);
+}}"#
+    );
 
     // Example 9: Demonstrate different number formats
     println!("\n5. Number Normalization");
     let test_numbers = vec![
         "2125551234",
-        "12125551234", 
+        "12125551234",
         "+1-212-555-1234",
         "1 (212) 555-1234",
         "212.555.1234",
@@ -158,7 +166,7 @@ async fn main() -> Result<()> {
 
     // Example 9: Simulate LRN dip responses
     println!("\n5. Simulated LRN Dip Responses");
-    
+
     // Simulate successful 302 redirect
     println!("\nScenario A: 302 Redirect with LRN");
     let response_302 = r#"SIP/2.0 302 Moved Temporarily
@@ -167,7 +175,7 @@ X-SPID: 1234
 Content-Length: 0
 
 "#;
-    
+
     if let Some(lrn) = extract_lrn_from_302(response_302) {
         println!("  Original: 12025551234");
         println!("  LRN Found: {}", lrn);
@@ -182,7 +190,7 @@ X-SPID: 5678
 Content-Length: 0
 
 "#;
-    
+
     if let Some(lrn) = extract_lrn_from_headers(response_200) {
         println!("  Original: 17035551111");
         println!("  LRN Found: {}", lrn);
@@ -199,7 +207,10 @@ Content-Length: 0
     // Example 6: Cache management
     println!("\n6. Cache Management");
     println!("Cache operations:");
-    println!("  - Successful LRN dips are cached for {} seconds", lrn_config.cache_timeout_sec);
+    println!(
+        "  - Successful LRN dips are cached for {} seconds",
+        lrn_config.cache_timeout_sec
+    );
     println!("  - Subsequent dips for same number return cached result");
     println!("  - Expired entries are cleaned up automatically");
     println!("  - Cache statistics available via get_cache_stats()");
@@ -210,8 +221,14 @@ Content-Length: 0
     println!("  - Priority/Failover: Try primary first, then backup servers in order");
     println!("  - Round-robin: Distribute requests evenly across all servers");
     println!("Timeout behavior:");
-    println!("  - Primary server: Full timeout ({}ms)", lrn_config.timeout_ms);
-    println!("  - Backup servers: Reduced timeout ({}ms)", lrn_config.get_backup_timeout_ms());
+    println!(
+        "  - Primary server: Full timeout ({}ms)",
+        lrn_config.timeout_ms
+    );
+    println!(
+        "  - Backup servers: Reduced timeout ({}ms)",
+        lrn_config.get_backup_timeout_ms()
+    );
     println!("  - Automatic failover on timeout or error");
 
     // Example 8: Error handling
@@ -244,7 +261,7 @@ Content-Length: 0
 /// Demonstrate telephone number normalization
 fn normalize_tn_demo(tn: &str) -> String {
     let digits: String = tn.chars().filter(|c| c.is_ascii_digit()).collect();
-    
+
     // Convert to 11-digit format (1NPANXXNNNN)
     if digits.starts_with('1') && digits.len() == 11 {
         digits

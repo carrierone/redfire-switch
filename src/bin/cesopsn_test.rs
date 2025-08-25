@@ -24,8 +24,7 @@ use redfire_switch::cesopsn::{
     CesopsnServiceQuality,
 };
 use redfire_switch::cesopsn_ni2_integration::{
-    PcmCodec,
-    CesopsnNi2CircuitConfig, CesopsnNi2Event, CesopsnNi2Integration,
+    CesopsnNi2CircuitConfig, CesopsnNi2Event, CesopsnNi2Integration, PcmCodec,
 };
 use redfire_switch::q931_messages::{IsdnConfig, IsdnSideType, IsdnVariant};
 use redfire_switch::tdmoe_ni2_signaling::Ni2SideType;

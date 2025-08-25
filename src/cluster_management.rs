@@ -174,7 +174,7 @@ impl ClusterManager {
 
         let socket = UdpSocket::bind(format!("{}:{}", local_ip, config.cluster_bind_port)).await?;
         let actual_port = socket.local_addr()?.port();
-        
+
         let local_node = ClusterNode {
             node_id: Uuid::new_v4().to_string(),
             node_name: config.node_name.clone(),
@@ -213,13 +213,16 @@ impl ClusterManager {
 
         // Setup TCP listener for call state synchronization
         let tcp_listener = if config.call_state_sync_enabled {
-            let tcp_port = if config.cluster_bind_port == 0 { 0 } else { config.cluster_bind_port + 1 };
+            let tcp_port = if config.cluster_bind_port == 0 {
+                0
+            } else {
+                config.cluster_bind_port + 1
+            };
             let listener = TcpListener::bind(format!("{}:{}", local_ip, tcp_port)).await?;
             let tcp_actual_port = listener.local_addr()?.port();
             info!(
                 "📞 Call state sync listening on TCP {}:{}",
-                local_ip,
-                tcp_actual_port
+                local_ip, tcp_actual_port
             );
             Some(Arc::new(listener))
         } else {

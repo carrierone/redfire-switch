@@ -916,7 +916,8 @@ impl SipMessageProcessor {
         destination: SocketAddr,
         transport: SipTransport,
     ) -> SipRequestResult {
-        let _status = rsip::StatusCode::try_from(status_code).unwrap_or(rsip::StatusCode::default());
+        let _status =
+            rsip::StatusCode::try_from(status_code).unwrap_or(rsip::StatusCode::default());
         let mut response = rsip::Response::default(); // TODO: Properly set status code
 
         // Copy required headers

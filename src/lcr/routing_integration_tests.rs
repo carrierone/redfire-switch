@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod routing_integration_tests {
-    use super::super::types::*;
     use super::super::phone_validation::*;
+    use super::super::types::*;
     use chrono::Utc;
     use rust_decimal::Decimal;
     use std::str::FromStr;
@@ -41,7 +41,7 @@ mod routing_integration_tests {
     #[test]
     fn test_route_request_creation() {
         let request = create_test_international_request("+44 20 7946 0958", Some(1));
-        
+
         assert_eq!(request.route_type, RouteType::AZ);
         assert!(request.phone_validation.is_some());
         assert_eq!(request.routing_plan_id, Some(1));
@@ -62,7 +62,7 @@ mod routing_integration_tests {
     #[test]
     fn test_phone_validation_config_in_request() {
         let mut request = create_test_international_request("+49 30 12345678", None);
-        
+
         // Test with default validation config
         let config = request.phone_validation.as_ref().unwrap();
         assert!(config.enabled);
@@ -132,7 +132,10 @@ mod routing_integration_tests {
         assert_eq!(preference.country_name, "Germany");
         assert_eq!(preference.jurisdiction, InternationalJurisdiction::EEA);
         assert_eq!(preference.quality_score, 95);
-        assert_eq!(preference.cost_multiplier, Decimal::from_str("0.9").unwrap());
+        assert_eq!(
+            preference.cost_multiplier,
+            Decimal::from_str("0.9").unwrap()
+        );
         assert!(preference.require_validation);
     }
 
@@ -242,7 +245,7 @@ mod routing_integration_tests {
                     setup_fee: Decimal::ZERO,
                     min_increment: 30,
                     interval: 6,
-                }
+                },
             ],
             routing_decision: "ROUTE_FOUND".to_string(),
         };
@@ -270,7 +273,10 @@ mod routing_integration_tests {
 
         // Test that profit protection settings are properly set
         assert!(request.require_profit_protection);
-        assert_eq!(request.min_profit_margin, Some(Decimal::from_str("0.005").unwrap()));
+        assert_eq!(
+            request.min_profit_margin,
+            Some(Decimal::from_str("0.005").unwrap())
+        );
     }
 
     #[test]
@@ -294,7 +300,7 @@ mod routing_integration_tests {
         // Test serialization/deserialization would work
         let eea = InternationalJurisdiction::EEA;
         let row = InternationalJurisdiction::ROW;
-        
+
         assert_ne!(eea, row);
     }
 
@@ -326,7 +332,11 @@ mod routing_integration_tests {
         for (i, j1) in jurisdictions.iter().enumerate() {
             for (k, j2) in jurisdictions.iter().enumerate() {
                 if i != k {
-                    assert_ne!(j1, j2, "Jurisdictions {:?} and {:?} should be different", j1, j2);
+                    assert_ne!(
+                        j1, j2,
+                        "Jurisdictions {:?} and {:?} should be different",
+                        j1, j2
+                    );
                 }
             }
         }
@@ -344,7 +354,11 @@ mod routing_integration_tests {
         for (i, p1) in protocols.iter().enumerate() {
             for (k, p2) in protocols.iter().enumerate() {
                 if i != k {
-                    assert_ne!(p1, p2, "Protocols {:?} and {:?} should be different", p1, p2);
+                    assert_ne!(
+                        p1, p2,
+                        "Protocols {:?} and {:?} should be different",
+                        p1, p2
+                    );
                 }
             }
         }

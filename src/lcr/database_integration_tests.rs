@@ -24,10 +24,19 @@ mod database_integration_tests {
         assert!(eea_plan.eea_routing_enabled);
         assert!(eea_plan.eea_priority_routing);
         assert!(eea_plan.eea_reduced_rates);
-        assert_eq!(eea_plan.eea_rate_reduction, Decimal::from_str("0.1000").unwrap());
-        assert_eq!(eea_plan.default_jurisdiction, InternationalJurisdiction::ROW);
+        assert_eq!(
+            eea_plan.eea_rate_reduction,
+            Decimal::from_str("0.1000").unwrap()
+        );
+        assert_eq!(
+            eea_plan.default_jurisdiction,
+            InternationalJurisdiction::ROW
+        );
         assert!(eea_plan.allow_unknown_destinations);
-        assert_eq!(eea_plan.max_rate_unknown_destinations, Decimal::from_str("1.0000").unwrap());
+        assert_eq!(
+            eea_plan.max_rate_unknown_destinations,
+            Decimal::from_str("1.0000").unwrap()
+        );
         assert!(!eea_plan.require_strict_validation_unknown);
         assert!(eea_plan.active);
     }
@@ -42,9 +51,15 @@ mod database_integration_tests {
         assert!(!row_plan.eea_priority_routing);
         assert!(!row_plan.eea_reduced_rates);
         assert_eq!(row_plan.eea_rate_reduction, Decimal::ZERO);
-        assert_eq!(row_plan.default_jurisdiction, InternationalJurisdiction::ROW);
+        assert_eq!(
+            row_plan.default_jurisdiction,
+            InternationalJurisdiction::ROW
+        );
         assert!(row_plan.allow_unknown_destinations);
-        assert_eq!(row_plan.max_rate_unknown_destinations, Decimal::from_str("2.0000").unwrap());
+        assert_eq!(
+            row_plan.max_rate_unknown_destinations,
+            Decimal::from_str("2.0000").unwrap()
+        );
         assert!(row_plan.require_strict_validation_unknown);
     }
 
@@ -55,21 +70,30 @@ mod database_integration_tests {
         assert!(strict_plan.phone_validation_enabled);
         assert!(strict_plan.phone_validation_strict); // This is the key difference
         assert!(strict_plan.eea_routing_enabled);
-        assert_eq!(strict_plan.eea_rate_reduction, Decimal::from_str("0.0500").unwrap());
+        assert_eq!(
+            strict_plan.eea_rate_reduction,
+            Decimal::from_str("0.0500").unwrap()
+        );
         assert!(!strict_plan.allow_unknown_destinations); // Stricter policy
-        assert_eq!(strict_plan.max_rate_unknown_destinations, Decimal::from_str("0.5000").unwrap());
+        assert_eq!(
+            strict_plan.max_rate_unknown_destinations,
+            Decimal::from_str("0.5000").unwrap()
+        );
         assert!(strict_plan.require_strict_validation_unknown);
     }
 
     #[tokio::test]
     async fn test_eea_country_preferences_creation() {
         let eea_countries = get_mock_eea_countries();
-        
+
         // Test that we have the expected EEA countries
         assert!(eea_countries.len() >= 27); // Minimum EU countries
-        
+
         // Test specific countries
-        let germany = eea_countries.iter().find(|c| c.country_code == "DE").unwrap();
+        let germany = eea_countries
+            .iter()
+            .find(|c| c.country_code == "DE")
+            .unwrap();
         assert_eq!(germany.country_name, "Germany");
         assert_eq!(germany.jurisdiction, InternationalJurisdiction::EEA);
         assert_eq!(germany.quality_score, 95);
@@ -77,11 +101,17 @@ mod database_integration_tests {
         assert!(germany.require_validation);
         assert_eq!(germany.max_duration_minutes, 0); // Unlimited
 
-        let france = eea_countries.iter().find(|c| c.country_code == "FR").unwrap();
+        let france = eea_countries
+            .iter()
+            .find(|c| c.country_code == "FR")
+            .unwrap();
         assert_eq!(france.country_name, "France");
         assert_eq!(france.jurisdiction, InternationalJurisdiction::EEA);
 
-        let italy = eea_countries.iter().find(|c| c.country_code == "IT").unwrap();
+        let italy = eea_countries
+            .iter()
+            .find(|c| c.country_code == "IT")
+            .unwrap();
         assert_eq!(italy.country_name, "Italy");
         assert_eq!(italy.jurisdiction, InternationalJurisdiction::EEA);
 
@@ -95,18 +125,24 @@ mod database_integration_tests {
     #[tokio::test]
     async fn test_row_country_preferences_creation() {
         let row_countries = get_mock_row_countries();
-        
+
         // Test that we have major ROW countries
         assert!(row_countries.len() >= 15);
-        
-        let usa = row_countries.iter().find(|c| c.country_code == "US").unwrap();
+
+        let usa = row_countries
+            .iter()
+            .find(|c| c.country_code == "US")
+            .unwrap();
         assert_eq!(usa.country_name, "United States");
         assert_eq!(usa.jurisdiction, InternationalJurisdiction::ROW);
         assert_eq!(usa.quality_score, 85);
         assert_eq!(usa.cost_multiplier, Decimal::ONE);
         assert!(!usa.require_validation); // ROW countries are less strict
 
-        let japan = row_countries.iter().find(|c| c.country_code == "JP").unwrap();
+        let japan = row_countries
+            .iter()
+            .find(|c| c.country_code == "JP")
+            .unwrap();
         assert_eq!(japan.country_name, "Japan");
         assert_eq!(japan.jurisdiction, InternationalJurisdiction::ROW);
 
@@ -128,7 +164,10 @@ mod database_integration_tests {
         assert_eq!(vendor_rate.rate, Decimal::from_str("0.0125").unwrap());
         assert_eq!(vendor_rate.initial_increment, 30);
         assert_eq!(vendor_rate.subsequent_increment, 6);
-        assert_eq!(vendor_rate.setup_fee, Some(Decimal::from_str("0.001").unwrap()));
+        assert_eq!(
+            vendor_rate.setup_fee,
+            Some(Decimal::from_str("0.001").unwrap())
+        );
 
         // Test client international rate
         let client_rate = create_mock_client_international_rate();
@@ -171,7 +210,10 @@ mod database_integration_tests {
         InternationalRoutingPlan {
             id: 1,
             name: "Default EEA Routing".to_string(),
-            description: Some("Default routing plan with phone validation enabled and EEA optimization".to_string()),
+            description: Some(
+                "Default routing plan with phone validation enabled and EEA optimization"
+                    .to_string(),
+            ),
             phone_validation_enabled: true,
             phone_validation_strict: false,
             phone_validation_default_region: "US".to_string(),
@@ -194,7 +236,10 @@ mod database_integration_tests {
         InternationalRoutingPlan {
             id: 2,
             name: "Default ROW Routing".to_string(),
-            description: Some("Default routing plan for Rest of World destinations with basic validation".to_string()),
+            description: Some(
+                "Default routing plan for Rest of World destinations with basic validation"
+                    .to_string(),
+            ),
             phone_validation_enabled: true,
             phone_validation_strict: false,
             phone_validation_default_region: "US".to_string(),
@@ -217,7 +262,9 @@ mod database_integration_tests {
         InternationalRoutingPlan {
             id: 3,
             name: "Strict Validation Plan".to_string(),
-            description: Some("High-security routing plan with strict phone number validation".to_string()),
+            description: Some(
+                "High-security routing plan with strict phone number validation".to_string(),
+            ),
             phone_validation_enabled: true,
             phone_validation_strict: true,
             phone_validation_default_region: "US".to_string(),
@@ -238,18 +285,42 @@ mod database_integration_tests {
 
     fn get_mock_eea_countries() -> Vec<CountryRoutingPreference> {
         let eea_countries = vec![
-            ("AT", "Austria"), ("BE", "Belgium"), ("BG", "Bulgaria"), ("CY", "Cyprus"),
-            ("CZ", "Czech Republic"), ("DE", "Germany"), ("DK", "Denmark"), ("EE", "Estonia"),
-            ("ES", "Spain"), ("FI", "Finland"), ("FR", "France"), ("GR", "Greece"),
-            ("HR", "Croatia"), ("HU", "Hungary"), ("IE", "Ireland"), ("IS", "Iceland"),
-            ("IT", "Italy"), ("LI", "Liechtenstein"), ("LT", "Lithuania"), ("LU", "Luxembourg"),
-            ("LV", "Latvia"), ("MT", "Malta"), ("NL", "Netherlands"), ("NO", "Norway"),
-            ("PL", "Poland"), ("PT", "Portugal"), ("RO", "Romania"), ("SE", "Sweden"),
-            ("SI", "Slovenia"), ("SK", "Slovakia"),
+            ("AT", "Austria"),
+            ("BE", "Belgium"),
+            ("BG", "Bulgaria"),
+            ("CY", "Cyprus"),
+            ("CZ", "Czech Republic"),
+            ("DE", "Germany"),
+            ("DK", "Denmark"),
+            ("EE", "Estonia"),
+            ("ES", "Spain"),
+            ("FI", "Finland"),
+            ("FR", "France"),
+            ("GR", "Greece"),
+            ("HR", "Croatia"),
+            ("HU", "Hungary"),
+            ("IE", "Ireland"),
+            ("IS", "Iceland"),
+            ("IT", "Italy"),
+            ("LI", "Liechtenstein"),
+            ("LT", "Lithuania"),
+            ("LU", "Luxembourg"),
+            ("LV", "Latvia"),
+            ("MT", "Malta"),
+            ("NL", "Netherlands"),
+            ("NO", "Norway"),
+            ("PL", "Poland"),
+            ("PT", "Portugal"),
+            ("RO", "Romania"),
+            ("SE", "Sweden"),
+            ("SI", "Slovenia"),
+            ("SK", "Slovakia"),
         ];
 
-        eea_countries.into_iter().enumerate().map(|(i, (code, name))| {
-            CountryRoutingPreference {
+        eea_countries
+            .into_iter()
+            .enumerate()
+            .map(|(i, (code, name))| CountryRoutingPreference {
                 id: (i + 1) as i32,
                 routing_plan_id: 1,
                 country_code: code.to_string(),
@@ -260,22 +331,35 @@ mod database_integration_tests {
                 require_validation: true,
                 max_duration_minutes: 0,
                 created_at: Utc::now(),
-            }
-        }).collect()
+            })
+            .collect()
     }
 
     fn get_mock_row_countries() -> Vec<CountryRoutingPreference> {
         let row_countries = vec![
-            ("US", "United States"), ("CA", "Canada"), ("MX", "Mexico"),
-            ("AU", "Australia"), ("NZ", "New Zealand"), ("JP", "Japan"),
-            ("KR", "South Korea"), ("CN", "China"), ("IN", "India"),
-            ("BR", "Brazil"), ("AR", "Argentina"), ("CL", "Chile"),
-            ("ZA", "South Africa"), ("RU", "Russia"), ("TR", "Turkey"),
-            ("AE", "United Arab Emirates"), ("SA", "Saudi Arabia"),
+            ("US", "United States"),
+            ("CA", "Canada"),
+            ("MX", "Mexico"),
+            ("AU", "Australia"),
+            ("NZ", "New Zealand"),
+            ("JP", "Japan"),
+            ("KR", "South Korea"),
+            ("CN", "China"),
+            ("IN", "India"),
+            ("BR", "Brazil"),
+            ("AR", "Argentina"),
+            ("CL", "Chile"),
+            ("ZA", "South Africa"),
+            ("RU", "Russia"),
+            ("TR", "Turkey"),
+            ("AE", "United Arab Emirates"),
+            ("SA", "Saudi Arabia"),
         ];
 
-        row_countries.into_iter().enumerate().map(|(i, (code, name))| {
-            CountryRoutingPreference {
+        row_countries
+            .into_iter()
+            .enumerate()
+            .map(|(i, (code, name))| CountryRoutingPreference {
                 id: (i + 100) as i32,
                 routing_plan_id: 2,
                 country_code: code.to_string(),
@@ -286,8 +370,8 @@ mod database_integration_tests {
                 require_validation: false,
                 max_duration_minutes: 0,
                 created_at: Utc::now(),
-            }
-        }).collect()
+            })
+            .collect()
     }
 
     fn create_mock_vendor_international_rate() -> InternationalRate {
@@ -362,7 +446,7 @@ mod database_integration_tests {
     fn create_mock_ingress_trunk() -> IngressTrunk {
         use std::net::IpAddr;
         use std::str::FromStr;
-        
+
         IngressTrunk {
             id: 1,
             name: "Test Ingress".to_string(),

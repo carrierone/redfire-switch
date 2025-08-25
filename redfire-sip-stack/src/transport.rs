@@ -521,9 +521,7 @@ impl SipTransportManager {
                     match Self::parse_sip_message(message_data) {
                         Ok(message) => {
                             // Update message count
-                            if let Some(conn) =
-                                connections.write().await.get_mut(&connection_id)
-                            {
+                            if let Some(conn) = connections.write().await.get_mut(&connection_id) {
                                 conn.messages_received += 1;
                             }
 
@@ -591,9 +589,7 @@ impl SipTransportManager {
                     match Self::parse_sip_message(message_data) {
                         Ok(message) => {
                             // Update message count
-                            if let Some(conn) =
-                                connections.write().await.get_mut(&connection_id)
-                            {
+                            if let Some(conn) = connections.write().await.get_mut(&connection_id) {
                                 conn.messages_received += 1;
                             }
 
