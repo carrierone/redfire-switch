@@ -183,11 +183,12 @@ async fn demonstrate_codec_translation() -> Result<()> {
         sequence: 1,
     };
 
+    let frame_len = sample_frame.data.len();
     match service.transcode_frame(&session_id, sample_frame).await {
         Ok(transcoded) => {
             println!(
                 "  ✅ Transcoded {} bytes -> {} bytes",
-                sample_frame.data.len(),
+                frame_len,
                 transcoded.data.len()
             );
         }

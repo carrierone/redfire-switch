@@ -2,12 +2,15 @@
 
 # Test script for Redfire Switch libraries
 
+# Get the directory where this script is located
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
 echo "=== Testing Redfire Libraries ==="
 echo
 
 # Test codec engine library
 echo "Testing Redfire Codec Engine..."
-cd /home/justin/projects/redfire-switch/redfire-codec-engine
+cd "$SCRIPT_DIR/redfire-codec-engine"
 if cargo check; then
     echo "✅ Codec engine compiles successfully"
 else
@@ -18,7 +21,7 @@ fi
 # Test SIP stack library
 echo
 echo "Testing Redfire SIP Stack..."
-cd /home/justin/projects/redfire-switch/redfire-sip-stack
+cd "$SCRIPT_DIR/redfire-sip-stack"
 if cargo check; then
     echo "✅ SIP stack compiles successfully"
 else
@@ -29,7 +32,7 @@ fi
 # Test minimal SIP stack library
 echo
 echo "Testing Redfire SIP Stack Minimal..."
-cd /home/justin/projects/redfire-switch/redfire-sip-stack-minimal
+cd "$SCRIPT_DIR/redfire-sip-stack-minimal"
 if cargo check; then
     echo "✅ Minimal SIP stack compiles successfully"
 else
@@ -40,7 +43,7 @@ fi
 # Test workspace
 echo
 echo "Testing entire workspace..."
-cd /home/justin/projects/redfire-switch
+cd "$SCRIPT_DIR"
 if cargo check --workspace; then
     echo "✅ Workspace compiles successfully"
 else

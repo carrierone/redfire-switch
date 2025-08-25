@@ -835,7 +835,8 @@ mod tests {
     #[tokio::test]
     async fn test_call_id_extraction() {
         crate::security_utils::init_security();
-        let config = EnterpriseB2BUAConfig::default();
+        let mut config = EnterpriseB2BUAConfig::default();
+        config.bind_port = 0; // Use system-assigned port for tests
         let b2bua = EnterpriseB2BUA::new(config).await.unwrap();
 
         let message = "INVITE sip:+15551234567@example.com SIP/2.0\r\nCall-ID: test-call-123\r\n";
@@ -846,7 +847,8 @@ mod tests {
     #[tokio::test]
     async fn test_message_type_detection() {
         crate::security_utils::init_security();
-        let config = EnterpriseB2BUAConfig::default();
+        let mut config = EnterpriseB2BUAConfig::default();
+        config.bind_port = 0; // Use system-assigned port for tests
         let b2bua = EnterpriseB2BUA::new(config).await.unwrap();
 
         let invite_msg = "INVITE sip:+15551234567@example.com SIP/2.0\r\n";

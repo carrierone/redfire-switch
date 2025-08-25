@@ -79,7 +79,8 @@ impl PhoneValidator {
 
         // Basic validation logic
         let normalized = self.normalize_number(number);
-        let is_valid = self.basic_validate(&normalized);
+        let contains_invalid_chars = self.contains_invalid_chars(number);
+        let is_valid = self.basic_validate(&normalized) && !contains_invalid_chars;
         
         let country_code = if self.config.use_country_detection {
             self.detect_country_code(&normalized)
@@ -102,13 +103,23 @@ impl PhoneValidator {
 
         ValidationResult {
             original: number.to_string(),
-            is_valid,
+            is_valid: if self.config.strict_validation { 
+                is_valid 
+            } else { 
+                // Non-strict mode - allow formatting variations but reject non-phone strings
+                // Real phone numbers only have digits, +, -, (, ), spaces and dots
+                !contains_invalid_chars && self.is_reasonable_number(&normalized)
+            },
             country_code: country_code.clone(),
             region_code: country_code,
             number_type: Some("unknown".to_string()),
-            e164_format: Some(normalized.clone()),
-            international_format: Some(self.format_international(&normalized)),
-            error: None,
+            e164_format: if is_valid { Some(normalized.clone()) } else { None },
+            international_format: if is_valid { Some(self.format_international(&normalized)) } else { None },
+            error: if !is_valid && self.config.strict_validation { 
+                Some("Number failed validation".to_string()) 
+            } else { 
+                None 
+            },
         }
     }
 
@@ -151,6 +162,47 @@ impl PhoneValidator {
             // Assume domestic number or already normalized
             digits
         }
+    }
+
+    /// Check if string looks phone-like (has digits, +, -, etc.) vs just random text
+    fn looks_phone_like(&self, number: &str) -> bool {
+        // Must have some digits and mostly phone-like characters
+        let digit_count = number.chars().filter(|c| c.is_digit(10)).count();
+        let phone_char_count = number.chars().filter(|c| {
+            c.is_digit(10) || matches!(*c, '+' | '-' | '(' | ')' | ' ' | '.')
+        }).count();
+        
+        // If it has at least 3 digits and most characters are phone-like, consider it phone-like
+        digit_count >= 3 && phone_char_count as f64 / number.len() as f64 > 0.7
+    }
+
+    /// Check if original number contains invalid characters
+    fn contains_invalid_chars(&self, number: &str) -> bool {
+        // Allow digits, +, -, (, ), and space
+        number.chars().any(|c| !c.is_digit(10) && !matches!(c, '+' | '-' | '(' | ')' | ' ' | '.'))
+    }
+
+    /// Check if a number is reasonable (for non-strict mode)
+    /// More lenient than basic_validate but still rejects obviously invalid numbers
+    fn is_reasonable_number(&self, normalized: &str) -> bool {
+        if normalized.is_empty() {
+            return false;
+        }
+        
+        let digits = if normalized.starts_with('+') {
+            &normalized[1..]
+        } else {
+            normalized
+        };
+        
+        // Lenient length check (3-20 digits)
+        let len = digits.len();
+        if len < 3 || len > 20 {
+            return false;
+        }
+        
+        // Must be all digits
+        digits.chars().all(|c| c.is_digit(10))
     }
 
     /// Basic phone number validation

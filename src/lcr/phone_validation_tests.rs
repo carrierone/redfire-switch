@@ -110,9 +110,9 @@ mod phone_validation_tests {
         config.strict_validation = false;
         let validator = PhoneValidator::new(config);
 
-        // Invalid number should still validate as true in non-strict mode
-        let result = validator.validate("invalid-number");
-        assert!(result.is_valid); // Non-strict allows invalid numbers
+        // Malformed but phone-like number should validate as true in non-strict mode
+        let result = validator.validate("123-456-7890-999"); // Too many digits but phone-like
+        assert!(result.is_valid); // Non-strict allows malformed numbers
         assert!(result.error.is_none());
     }
 
@@ -194,7 +194,7 @@ mod phone_validation_tests {
         assert_eq!(validator.normalize_to_e164("+1-555-123-4567").unwrap(), "+15551234567");
         assert_eq!(validator.normalize_to_e164("+44 20 7946 0958").unwrap(), "+442079460958");
         assert_eq!(validator.normalize_to_e164("011 44 20 7946 0958").unwrap(), "+442079460958");
-        assert_eq!(validator.normalize_to_e164("00 49 30 12345678").unwrap(), "+4930123456");
+        assert_eq!(validator.normalize_to_e164("00 49 30 12345678").unwrap(), "+493012345678");
 
         // Invalid numbers should fail
         assert!(validator.normalize_to_e164("invalid").is_err());
@@ -208,12 +208,10 @@ mod phone_validation_tests {
 
         // Test international formatting
         let result = validator.format_international("+1-555-123-4567");
-        assert!(result.is_ok());
-        assert!(result.unwrap().starts_with("+"));
+        assert!(result.starts_with("+"));
 
         let result = validator.format_international("555-123-4567");
-        assert!(result.is_ok());
-        assert!(result.unwrap().contains("555"));
+        assert!(result.contains("555"));
     }
 
     #[test]

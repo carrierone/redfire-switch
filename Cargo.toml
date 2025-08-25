@@ -149,4 +149,10 @@ cuda = ["redfire-codec-engine/cuda"]
 rocm = ["redfire-codec-engine/rocm"]
 gpu = ["cuda"]  # Alias for CUDA
 
+# Assembly optimization features
+g729_asm = []  # Enable G.729 assembly optimizations
+
 # Audio processing dependencies are now in codec engine
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }

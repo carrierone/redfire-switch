@@ -226,7 +226,7 @@ impl JitterBuffer {
         let sequence = packet.sequence_number;
 
         if !self.initialized {
-            self.next_sequence = sequence;
+            self.next_sequence = sequence.wrapping_add(1);
             self.initialized = true;
             return vec![packet]; // First packet, no buffering needed
         }

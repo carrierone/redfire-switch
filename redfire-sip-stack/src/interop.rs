@@ -1047,14 +1047,15 @@ pub mod utils {
     pub fn detect_stack_from_user_agent(user_agent: &str) -> SipStackType {
         let ua_lower = user_agent.to_lowercase();
 
-        if ua_lower.contains("sofia") || ua_lower.contains("freeswitch") {
+        // Check more specific patterns first
+        if ua_lower.contains("mod_sofia") || ua_lower.contains("freeswitch") {
+            SipStackType::FreeSWITCH
+        } else if ua_lower.contains("sofia") {
             SipStackType::Sofia
         } else if ua_lower.contains("pjsua") || ua_lower.contains("pjsip") {
             SipStackType::Pjsip
         } else if ua_lower.contains("asterisk") {
             SipStackType::Asterisk
-        } else if ua_lower.contains("mod_sofia") {
-            SipStackType::FreeSWITCH
         } else {
             SipStackType::Generic
         }

@@ -466,7 +466,7 @@ impl SipParser {
 
         // Copy headers from original INVITE, but update as needed
         if let Ok(via) = invite.via_header() {
-            let mut ack_via = via.clone();
+            let ack_via = via.clone();
             // Generate new branch for ACK
             // TODO: Implement Via parameter modification properly
             // let new_branch = format!("z9hG4bK-ack-{}", Uuid::new_v4());

@@ -375,7 +375,7 @@ mod end_to_end_tests {
         ]
     }
 
-    fn find_best_rate_match(rates: &[InternationalRate], number: &str) -> Option<&InternationalRate> {
+    fn find_best_rate_match<'a>(rates: &'a [InternationalRate], number: &str) -> Option<&'a InternationalRate> {
         let normalized = number.trim_start_matches('+');
         
         // Find longest matching prefix

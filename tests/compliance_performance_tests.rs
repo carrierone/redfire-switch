@@ -33,7 +33,7 @@ struct PerformanceTestConfig {
 }
 
 /// Performance metrics collector
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct PerformanceMetrics {
     calls_processed: AtomicU64,
     events_processed: AtomicU64,
@@ -118,24 +118,17 @@ fn create_performance_config(enable_li: bool) -> ComplianceConfig {
             fraud_detection: false, // Disable for performance testing
             default_currency: "USD".to_string(),
             default_tariff_class: "PERF".to_string(),
+            intercept_targets: Vec::new(),
         },
         li_config: if enable_li {
             LiControllerConfig {
                 enabled: true,
-                delivery_endpoints: DeliveryEndpoints {
-                    hi2_endpoint: Some("127.0.0.1:9001".parse().unwrap()),
-                    hi3_endpoint: Some("127.0.0.1:9002".parse().unwrap()),
-                    encryption_algorithm: EncryptionAlgorithm::Aes256Gcm,
-                    tls_certificate_path: "/tmp/perf_cert.pem".to_string(),
-                    tls_private_key_path: "/tmp/perf_key.pem".to_string(),
-                    auth_method: AuthenticationMethod::MutualTls,
-                    delivery_format: DeliveryFormat::Asn1Ber,
-                },
-                audit_log_path: "/tmp/perf_li_audit.log".to_string(),
-                warrant_storage_path: "/tmp/perf_warrants/".to_string(),
-                compliance_officer_contact: "perf@example.com".to_string(),
-                retention_days: 2555,
-                emergency_contact: None,
+                max_concurrent_warrants: 1000,
+                warrant_check_interval: 60,
+                content_retention_days: 2555,
+                enable_encryption: true,
+                default_delivery_format: DeliveryFormat::Asn1Ber,
+                audit_retention_days: 90,
             }
         } else {
             LiControllerConfig::default()
@@ -212,6 +205,7 @@ async fn test_high_throughput_cdr_generation() -> Result<()> {
 
     let mut call_id = 0u64;
     while start_time.elapsed().as_secs() < test_config.test_duration_seconds {
+        let loop_start = Instant::now();
         let permit = semaphore.clone().acquire_owned().await?;
         let framework_clone = Arc::new(framework);
         let metrics_clone = metrics.clone();
@@ -221,7 +215,7 @@ async fn test_high_throughput_cdr_generation() -> Result<()> {
         join_set.spawn(async move {
             let _permit = permit; // Keep permit alive
 
-            let call_start = Instant::now();
+            let _call_start = Instant::now();
 
             // Simulate complete call flow
             let calling_base = (current_call_id % 1000000) + 1000000;
@@ -273,7 +267,7 @@ async fn test_high_throughput_cdr_generation() -> Result<()> {
 
         // Rate limiting
         let target_interval = Duration::from_millis(1000 / test_config.calls_per_second);
-        let elapsed = call_start.elapsed();
+        let elapsed = loop_start.elapsed();
         if elapsed < target_interval {
             sleep(target_interval - elapsed).await;
         }
@@ -427,8 +421,8 @@ async fn test_memory_usage_under_load() -> Result<()> {
     // Create many long-running calls
     let long_running_calls = 1000;
     for call_id in 0..long_running_calls {
-        let calling_base = (call_id % 1000000) + 1000000;
-        let called_base = (call_id % 1000000) + 2000000;
+        let calling_base = ((call_id as u64) % 1000000) + 1000000;
+        let called_base = ((call_id as u64) % 1000000) + 2000000;
 
         // Start call but don't end it
         let event = create_perf_call_event(
@@ -457,8 +451,8 @@ async fn test_memory_usage_under_load() -> Result<()> {
 
     // Now end all calls
     for call_id in 0..long_running_calls {
-        let calling_base = (call_id % 1000000) + 1000000;
-        let called_base = (call_id % 1000000) + 2000000;
+        let calling_base = ((call_id as u64) % 1000000) + 1000000;
+        let called_base = ((call_id as u64) % 1000000) + 2000000;
 
         let event = create_perf_call_event(
             call_id as u64,

@@ -1,2 +1,9 @@
-// Re-export origination routing from routing module
-pub use crate::routing::origination::*;
+// Origination routing module
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone)]
+pub struct TollFreePrefix;
+
+pub mod utils {
+    // Placeholder utility functions
+}

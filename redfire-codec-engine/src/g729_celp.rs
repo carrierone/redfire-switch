@@ -388,7 +388,7 @@ impl G729Encoder {
 
         let mut best_index = 0;
         let mut best_gain = 0.0;
-        let mut max_criterion = -1e10;
+        let max_criterion = -1e10;
 
         // Simplified search: find best pulse position in each track
         let mut pulse_positions = vec![0; 4];

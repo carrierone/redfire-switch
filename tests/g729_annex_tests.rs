@@ -196,7 +196,15 @@ async fn test_vad_cpu_fallback() {
     };
 
     // Test basic VAD state operations
-    let mut vad_state = VadState::new();
+    let mut vad_state = VadState {
+        energy_history: VecDeque::new(),
+        spectral_history: VecDeque::new(),
+        noise_estimate: 1e-6,
+        snr_threshold: 3.0,
+        hangover_counter: 0,
+        min_energy_threshold: 1e-8,
+        zcr_history: VecDeque::new(),
+    };
 
     // Test energy thresholds
     assert!(vad_state.noise_estimate > 0.0);

@@ -109,7 +109,7 @@ pub fn gpu_available() -> bool {
 
 /// Get available GPU backends
 pub fn available_gpu_backends() -> Vec<&'static str> {
-    let mut backends = Vec::new();
+    let backends = Vec::new();
 
     #[cfg(feature = "cuda")]
     backends.push("cuda");

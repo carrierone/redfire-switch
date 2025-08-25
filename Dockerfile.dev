@@ -1,5 +1,5 @@
 # Development Dockerfile for Redfire Switch
-FROM rust:1.75 AS builder
+FROM rust:latest AS builder
 
 # Install development dependencies
 RUN apt-get update && apt-get install -y \

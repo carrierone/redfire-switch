@@ -44,34 +44,29 @@ jobs:
     
     - name: Run clippy
       run: cargo clippy --all-targets --workspace -- -D warnings -A unused-imports -A dead-code -A unused-variables -A unused-assignments -A clippy::uninlined-format-args -A clippy::needless-borrows-for-generic-args
-      continue-on-error: true
     
     - name: Build core libraries
       run: |
-        cargo build --verbose -p redfire-codec-engine || echo "Codec engine build failed"
-        cargo build --verbose -p redfire-sip-stack || echo "SIP stack build failed"
-      continue-on-error: true
+        cargo build --verbose -p redfire-codec-engine
+        cargo build --verbose -p redfire-sip-stack
     
     - name: Build working binaries
       run: |
-        cargo build --verbose --bin lcr_cli || echo "LCR CLI build failed"
-        cargo build --verbose --bin lcr_test || echo "LCR test build failed"
-        cargo build --verbose --bin lcr_data_loader || echo "LCR data loader build failed"
-        cargo build --verbose --bin simple-b2bua-test || echo "Simple B2BUA build failed"
-      continue-on-error: true
+        cargo build --verbose --bin lcr_cli
+        cargo build --verbose --bin lcr_test
+        cargo build --verbose --bin lcr_data_loader
+        cargo build --verbose --bin simple-b2bua-test
     
     - name: Run available tests
       run: |
-        cargo test --verbose --lib || echo "Library tests failed"
-        cargo test --verbose -p redfire-codec-engine || echo "Codec engine tests failed"
-        cargo test --verbose -p redfire-sip-stack || echo "SIP stack tests failed"
-      continue-on-error: true
+        cargo test --verbose --lib
+        cargo test --verbose -p redfire-codec-engine
+        cargo test --verbose -p redfire-sip-stack
     
     - name: Test libraries independently
       run: |
-        cd redfire-codec-engine && cargo test --all-features || echo "Codec tests failed"
-        cd ../redfire-sip-stack && cargo test --all-features || echo "SIP tests failed"
-      continue-on-error: true
+        cd redfire-codec-engine && cargo test --all-features
+        cd ../redfire-sip-stack && cargo test --all-features
 
   gpu-test:
     name: GPU Tests (CPU Fallback)
@@ -95,15 +90,15 @@ jobs:
         key: ${{ runner.os }}-cargo-gpu-${{ hashFiles('**/Cargo.lock') }}
     
     - name: Test CUDA feature compilation
-      run: cargo check --features cuda
+      run: cargo check --features cuda || echo "CUDA feature check failed (expected without GPU)"
       continue-on-error: true
     
     - name: Test ROCm feature compilation  
-      run: cargo check --features rocm
+      run: cargo check --features rocm || echo "ROCm feature check failed (expected without GPU)"
       continue-on-error: true
     
     - name: Test codec engine with GPU fallback
-      run: cd redfire-codec-engine && cargo test --features cuda
+      run: cd redfire-codec-engine && cargo test --features cuda || echo "GPU tests failed (expected without GPU)"
       continue-on-error: true
 
   security:
@@ -192,7 +187,6 @@ jobs:
     
     - name: Run integration tests
       run: ./test-libraries.sh
-      continue-on-error: true
 
   docs:
     name: Documentation

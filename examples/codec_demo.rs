@@ -13,7 +13,7 @@ use redfire_codec_engine::{
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize tracing
-    tracing_subscriber::init();
+    tracing_subscriber::fmt::init();
 
     println!("Redfire Codec Engine Demo");
     println!("=========================");

@@ -27,7 +27,9 @@ static HEADER_NAME_REGEX: OnceLock<Regex> = OnceLock::new();
 pub fn init_security() {
     // Pre-compile all regex patterns for performance
     SAFE_LOGGING_REGEX.get_or_init(|| {
-        Regex::new(r"[^a-zA-Z0-9+\-().\s@:/_]").expect("Invalid safe logging regex")
+        // Allow alphanumeric, space, and common safe punctuation
+        // Explicitly excludes control characters like \r \n \t
+        Regex::new(r"[^a-zA-Z0-9+\-().\x20@:/_]").expect("Invalid safe logging regex")
     });
 
     PHONE_NUMBER_REGEX
@@ -46,6 +48,9 @@ pub fn init_security() {
 
 /// Sanitize input for safe logging (prevent log injection)
 pub fn sanitize_for_logging(input: &str) -> String {
+    // Initialize if needed
+    init_security();
+    
     // FIXED: Handle missing regex gracefully instead of panicking
     let regex = match SAFE_LOGGING_REGEX.get() {
         Some(regex) => regex,
@@ -337,10 +342,12 @@ mod tests {
 
     #[test]
     fn test_sanitize_for_logging() {
-        init_security();
-
+        // Don't call init_security() here - let sanitize_for_logging do it
+        // This ensures we get a fresh regex in each test run
+        
         assert_eq!(sanitize_for_logging("normal@test.com"), "normal@test.com");
-        assert_eq!(sanitize_for_logging("evil\r\ninjection"), "evil__injection");
+        let result = sanitize_for_logging("evil\r\ninjection");
+        assert_eq!(result, "evil__injection");
         assert_eq!(sanitize_for_logging("script<>alert"), "script__alert");
     }
 

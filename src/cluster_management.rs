@@ -172,12 +172,15 @@ impl ClusterManager {
             info!("🏢 Cluster management disabled - running in single-node mode");
         }
 
+        let socket = UdpSocket::bind(format!("{}:{}", local_ip, config.cluster_bind_port)).await?;
+        let actual_port = socket.local_addr()?.port();
+        
         let local_node = ClusterNode {
             node_id: Uuid::new_v4().to_string(),
             node_name: config.node_name.clone(),
             ip_address: local_ip,
             sip_port,
-            cluster_port: config.cluster_bind_port,
+            cluster_port: actual_port,
             role: NodeRole::Standby, // Start as standby, election will determine primary
             status: NodeStatus::Joining,
             last_heartbeat: SystemTime::now(),
@@ -203,20 +206,20 @@ impl ClusterManager {
             version: "1.0.0".to_string(),
         };
 
-        let socket = UdpSocket::bind(format!("{}:{}", local_ip, config.cluster_bind_port)).await?;
         info!(
             "🏢 Cluster node {} listening on {}:{}",
-            local_node.node_name, local_ip, config.cluster_bind_port
+            local_node.node_name, local_ip, actual_port
         );
 
         // Setup TCP listener for call state synchronization
         let tcp_listener = if config.call_state_sync_enabled {
-            let listener =
-                TcpListener::bind(format!("{}:{}", local_ip, config.cluster_bind_port + 1)).await?;
+            let tcp_port = if config.cluster_bind_port == 0 { 0 } else { config.cluster_bind_port + 1 };
+            let listener = TcpListener::bind(format!("{}:{}", local_ip, tcp_port)).await?;
+            let tcp_actual_port = listener.local_addr()?.port();
             info!(
                 "📞 Call state sync listening on TCP {}:{}",
                 local_ip,
-                config.cluster_bind_port + 1
+                tcp_actual_port
             );
             Some(Arc::new(listener))
         } else {
@@ -739,12 +742,13 @@ mod tests {
     #[tokio::test]
     async fn test_cluster_manager_creation() {
         crate::security_utils::init_security();
-        let config = ClusterConfig::default();
-        let cluster = ClusterManager::new(config, IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 5060)
+        let mut config = ClusterConfig::default();
+        config.cluster_bind_port = 0; // Use system-assigned port
+        let cluster = ClusterManager::new(config, IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0)
             .await
             .unwrap();
 
-        assert_eq!(cluster.local_node.sip_port, 5060);
+        assert!(cluster.local_node.cluster_port > 0); // Port should be auto-assigned
         assert!(cluster.local_node.capabilities.supports_stir_shaken);
     }
 
@@ -754,8 +758,9 @@ mod tests {
         let mut config = ClusterConfig::default();
         config.enabled = true;
         config.call_state_sync_enabled = true;
+        config.cluster_bind_port = 0; // Use system-assigned port
 
-        let cluster = ClusterManager::new(config, IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 5060)
+        let cluster = ClusterManager::new(config, IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0) // Use port 0 for auto-assignment
             .await
             .unwrap();
 

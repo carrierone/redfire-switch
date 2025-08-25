@@ -124,9 +124,13 @@ impl AnomalyDetectionModel {
         // Calculate anomaly score using z-score
         let mut max_z_score: f64 = 0.0;
         for (i, &feature) in features.iter().enumerate() {
-            if self.feature_stddevs[i] > 0.0 {
+            if self.feature_stddevs[i] > 1e-6 { // Avoid division by zero
                 let z_score = ((feature - self.feature_means[i]) / self.feature_stddevs[i]).abs();
                 max_z_score = max_z_score.max(z_score);
+            } else if (feature - self.feature_means[i]).abs() > 1.0 {
+                // If no variation in training but feature differs significantly from mean, it's anomalous
+                // Use 1.0 as threshold instead of 1e-6 to be more lenient with small variations
+                max_z_score = f64::INFINITY;
             }
         }
 
@@ -355,11 +359,12 @@ impl BehavioralProfile {
 
     fn update_reputation_score(&mut self) {
         // Simple reputation scoring based on behavior
-        let error_penalty = (self.error_count as f64 / self.total_messages.max(1) as f64) * 0.3;
+        let error_penalty = (self.error_count as f64 / self.total_messages.max(1) as f64) * 0.5;
         let suspicious_penalty =
-            (self.suspicious_activity_count as f64 / self.total_messages.max(1) as f64) * 0.5;
+            (self.suspicious_activity_count as f64 / self.total_messages.max(1) as f64) * 0.7;
 
-        let base_score = 0.5;
+        // Start with high score and reduce for bad behavior
+        let base_score = 1.0;
         self.reputation_score = (base_score - error_penalty - suspicious_penalty)
             .max(0.0)
             .min(1.0);
@@ -930,7 +935,8 @@ mod tests {
         assert!(!is_anomaly);
 
         // Test anomalous data
-        let (is_anomaly, _) = model.predict_anomaly(&[10.0, 20.0, 30.0]);
+        let (is_anomaly, score) = model.predict_anomaly(&[10.0, 20.0, 30.0]);
+        println!("Anomaly score: {}, is_anomaly: {}", score, is_anomaly);
         assert!(is_anomaly);
     }
 

@@ -812,7 +812,7 @@ pub mod utils {
 
     /// Extract call information from SIP message
     pub fn extract_call_info(message: &SipMessage) -> CallInfo {
-        let mut call_info = CallInfo {
+        let call_info = CallInfo {
             call_id: "unknown".to_string(),
             ani: None,
             dnis: None,

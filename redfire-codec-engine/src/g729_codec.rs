@@ -571,9 +571,14 @@ impl G729Codec {
     fn pack_frame(&self, frame: &G729Frame) -> Result<Vec<u8>> {
         let mut bits = Vec::with_capacity(80); // 80 bits total
 
-        // LSP indices (18 bits)
+        // LSP indices (18 bits) - but lsp_index is u16 so max 16 bits
+        let lsp_bits = frame.lsp_index as u32;
         for i in 0..18 {
-            bits.push(((frame.lsp_index >> (17 - i)) & 1) as u8);
+            if i < 2 {
+                bits.push(0); // Pad with zeros for bits 17-16
+            } else {
+                bits.push(((lsp_bits >> (17 - i)) & 1) as u8);
+            }
         }
 
         // Subframe parameters (31 bits per subframe)
@@ -631,10 +636,12 @@ impl G729Codec {
 
         let mut bit_index = 0;
 
-        // LSP index (18 bits)
+        // LSP index (18 bits) - but we store in u16 so ignore top 2 bits
         let mut lsp_index = 0u16;
         for i in 0..18 {
-            lsp_index |= (bits[bit_index] as u16) << (17 - i);
+            if i >= 2 { // Skip the first 2 bits (they're padding)
+                lsp_index |= (bits[bit_index] as u16) << (17 - i);
+            }
             bit_index += 1;
         }
 

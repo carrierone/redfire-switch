@@ -12,7 +12,7 @@ async fn main() -> Result<()> {
     
     let lcr = LcrEngine::new(&database_url).await?;
     let deck_loader = lcr.get_deck_loader();
-    let routing_v2 = lcr.get_routing_engine_v2();
+    let routing = lcr.get_routing_engine();
     
     println!("🚀 LCR Deck Versioning Demo");
     println!("============================");
@@ -91,10 +91,10 @@ async fn main() -> Result<()> {
     
     // Future effective date (tomorrow at midnight)
     let tomorrow = Utc::now() + chrono::Duration::days(1);
-    let future_effective = Utc.ymd_opt(tomorrow.year(), tomorrow.month(), tomorrow.day())
+    let date = tomorrow.date_naive();
+    let future_effective = date.and_hms_opt(0, 0, 0)
         .unwrap()
-        .and_hms_opt(0, 0, 0)
-        .unwrap();
+        .and_utc();
     
     let future_request = DeckLoadRequest {
         deck_name: "Demo-Vendor-Current".to_string(), // Same name = auto-versioning
@@ -123,9 +123,11 @@ async fn main() -> Result<()> {
         require_profit_protection: false,
         min_profit_margin: None,
         effective_time: None, // Use current time
+        phone_validation: None,
+        routing_plan_id: None,
     };
     
-    match routing_v2.find_routes(&route_request).await {
+    match routing.find_routes(&route_request).await {
         Ok(response) => {
             println!("✓ Found {} routes using current rates", response.total_routes);
             println!("  Jurisdiction: {:?}", response.jurisdiction);
@@ -147,10 +149,12 @@ async fn main() -> Result<()> {
         route_type: RouteType::NANPA,
         require_profit_protection: false,
         min_profit_margin: None,
-        effective_time: Some(future_effective), // Use future time
+        effective_time: Some(future_effective),
+        phone_validation: None,
+        routing_plan_id: None, // Use future time
     };
     
-    match routing_v2.find_routes(&future_route_request).await {
+    match routing.find_routes(&future_route_request).await {
         Ok(response) => {
             println!("✓ Found {} routes using future rates", response.total_routes);
             if let Some(route) = response.routes.first() {

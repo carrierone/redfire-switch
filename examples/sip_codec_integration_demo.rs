@@ -16,7 +16,7 @@ async fn main() -> Result<()> {
         .init();
 
     println!("\n🚀 SIP Stack and Codec Engine Integration Demo");
-    println!("=".repeat(60));
+    println!("{}", "=".repeat(60));
 
     // Create integrated service
     info!("Creating integrated SIP and Codec service...");
@@ -37,26 +37,26 @@ async fn main() -> Result<()> {
 
     // Demo 1: SIP Message Parsing
     println!("\n📞 Demo 1: SIP Message Processing");
-    println!("-".repeat(40));
+    println!("{}", "-".repeat(40));
     demonstrate_sip_parsing(&service)?;
 
     // Demo 2: Codec Translation
     println!("\n🔄 Demo 2: Codec Translation");
-    println!("-".repeat(40));
+    println!("{}", "-".repeat(40));
     demonstrate_codec_translation(&service).await?;
 
     // Demo 3: SIP-I/ISUP Generation
     println!("\n📡 Demo 3: SIP-I/ISUP Integration");
-    println!("-".repeat(40));
+    println!("{}", "-".repeat(40));
     demonstrate_sipi(&service)?;
 
     // Demo 4: Complete Call Flow
     println!("\n🎯 Demo 4: Complete Call Flow");
-    println!("-".repeat(40));
+    println!("{}", "-".repeat(40));
     demonstrate_complete_flow(&service).await?;
 
     println!("\n✨ All demonstrations completed successfully!");
-    println!("=".repeat(60));
+    println!("{}", "=".repeat(60));
 
     Ok(())
 }

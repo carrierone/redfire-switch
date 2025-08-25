@@ -175,7 +175,7 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
     println!("\n🐛 Bug Fixes Demonstration for Redfire Gateway");
-    println!("=".repeat(60));
+    println!("{}", "=".repeat(60));
 
     // Demo 1: Fixed session management with cleanup
     println!("\n1️⃣ Fixed Session Management");
@@ -251,7 +251,7 @@ async fn main() -> Result<()> {
     println!("• Replaced dangerous unwrap() calls with proper error handling");
     println!("• Fixed authentication enum variant names");
     println!("• Added conditional compilation for GPU features");
-    println!("=".repeat(60));
+    println!("{}", "=".repeat(60));
 
     Ok(())
 }

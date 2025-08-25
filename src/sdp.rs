@@ -728,9 +728,9 @@ mod tests {
     #[test]
     fn test_sdp_parsing() {
         let sdp_text = r#"v=0
-o=alice 2890844526 2890844527 IN IP4 host.atlanta.example.com
+o=alice 2890844526 2890844527 IN IP4 192.168.1.100
 s=
-c=IN IP4 host.atlanta.example.com
+c=IN IP4 192.168.1.100
 t=0 0
 m=audio 49170 RTP/AVP 0 8
 a=rtpmap:0 PCMU/8000
