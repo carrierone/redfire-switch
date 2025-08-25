@@ -551,7 +551,7 @@ impl SipAuthenticator {
     }
 
     /// Extract tech prefix from request URI
-    fn extract_tech_prefix(&self, uri: &rsip::Uri) -> Result<Option<String>> {
+    fn extract_tech_prefix(&self, _uri: &rsip::Uri) -> Result<Option<String>> {
         // TODO: Implement tech prefix extraction from URI
         // if let Some(user_info) = &uri.user_info {
         //     let user = &user_info.user;

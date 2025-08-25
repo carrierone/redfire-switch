@@ -359,7 +359,7 @@ impl SipCoreEngine {
         &self,
         event_type: ComplianceEventType,
         context: &SipCallContext,
-        extra_data: Option<ComplianceExtraData>,
+        _extra_data: Option<ComplianceExtraData>,
     ) {
         if let Some(ref framework) = self.compliance_framework {
             match event_type {
@@ -875,12 +875,12 @@ impl SipMessageProcessor {
     fn extract_calling_number(
         &self,
         request: &rsip::Request,
-        tech_prefix: &Option<String>,
+        _tech_prefix: &Option<String>,
     ) -> String {
         let from_uri = self.extract_from_uri(request);
 
         // Extract user part from URI
-        if let Ok(uri) = rsip::Uri::try_from(from_uri.as_str()) {
+        if let Ok(_uri) = rsip::Uri::try_from(from_uri.as_str()) {
             // TODO: Extract user info from URI properly
             /*if let Some(user_info) = uri.user_info {
             let user = user_info.user;*/
@@ -899,7 +899,7 @@ impl SipMessageProcessor {
         "unknown".to_string()
     }
 
-    fn extract_called_number(&self, request: &rsip::Request) -> String {
+    fn extract_called_number(&self, _request: &rsip::Request) -> String {
         // TODO: Extract user part from Request-URI properly
         /*if let Some(user_info) = request.uri.user_info.as_ref() {
             user_info.user.clone()
@@ -912,11 +912,11 @@ impl SipMessageProcessor {
         &self,
         request: &rsip::Request,
         status_code: u16,
-        reason: &str,
+        _reason: &str,
         destination: SocketAddr,
         transport: SipTransport,
     ) -> SipRequestResult {
-        let status = rsip::StatusCode::try_from(status_code).unwrap_or(rsip::StatusCode::default());
+        let _status = rsip::StatusCode::try_from(status_code).unwrap_or(rsip::StatusCode::default());
         let mut response = rsip::Response::default(); // TODO: Properly set status code
 
         // Copy required headers

@@ -355,10 +355,10 @@ impl Default for Config {
             sip_profiles: vec![
                 SipProfile {
                     name: "default".to_string(),
-                    bind_ip: "0.0.0.0".parse().unwrap(),
+                    bind_ip: "0.0.0.0".parse().expect("Invalid default bind IP 0.0.0.0"),
                     port: 5060,
                     protocol: Protocol::Udp,
-                    allowed_ips: vec!["127.0.0.1".parse().unwrap()],
+                    allowed_ips: vec!["127.0.0.1".parse().expect("Invalid default allowed IP 127.0.0.1")],
                     dual_stack: false,
                     bind_ipv6: None,
                     ipv6_port: None,
@@ -366,23 +366,23 @@ impl Default for Config {
                 },
                 SipProfile {
                     name: "dual-stack-udp".to_string(),
-                    bind_ip: "0.0.0.0".parse().unwrap(),
+                    bind_ip: "0.0.0.0".parse().expect("Invalid default bind IP 0.0.0.0"),
                     port: 5060,
                     protocol: Protocol::Udp,
-                    allowed_ips: vec!["127.0.0.1".parse().unwrap(), "::1".parse().unwrap()],
+                    allowed_ips: vec!["127.0.0.1".parse().expect("Invalid default allowed IP 127.0.0.1"), "::1".parse().expect("Invalid default allowed IPv6 ::1")],
                     dual_stack: true,
-                    bind_ipv6: Some("::".parse().unwrap()),
+                    bind_ipv6: Some("::".parse().expect("Invalid default IPv6 bind address ::")),
                     ipv6_port: Some(5060),
                     tls_config: None,
                 },
                 SipProfile {
                     name: "tls-ipv6".to_string(),
-                    bind_ip: "0.0.0.0".parse().unwrap(),
+                    bind_ip: "0.0.0.0".parse().expect("Invalid default bind IP 0.0.0.0"),
                     port: 5061,
                     protocol: Protocol::Tls,
-                    allowed_ips: vec!["127.0.0.1".parse().unwrap(), "::1".parse().unwrap()],
+                    allowed_ips: vec!["127.0.0.1".parse().expect("Invalid default allowed IP 127.0.0.1"), "::1".parse().expect("Invalid default allowed IPv6 ::1")],
                     dual_stack: true,
-                    bind_ipv6: Some("::".parse().unwrap()),
+                    bind_ipv6: Some("::".parse().expect("Invalid default IPv6 bind address ::")),
                     ipv6_port: Some(5061),
                     tls_config: Some(TlsConfig::default()),
                 }
@@ -392,7 +392,7 @@ impl Default for Config {
                 endpoints: vec![
                     SipEndpoint {
                         name: "example-endpoint".to_string(),
-                        address: "192.168.1.100:5060".parse().unwrap(),
+                        address: "192.168.1.100:5060".parse().expect("Invalid default monitoring endpoint address"),
                         protocol: Protocol::Udp,
                         enabled: false,
                         ping_interval_seconds: 30,
