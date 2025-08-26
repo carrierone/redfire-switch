@@ -704,7 +704,7 @@ mod tests {
                     assert_eq!(digit, expected_digit);
                     assert_eq!(source, DtmfSource::Sigtran);
                 }
-                _ => panic!("Expected DigitDetected event"),
+                _ => assert!(false, "Expected DigitDetected event, got: {:?}", event),
             }
         }
 
@@ -717,7 +717,7 @@ mod tests {
                 assert_eq!(sequence, "12345");
                 assert_eq!(source, DtmfSource::Sigtran);
             }
-            _ => panic!("Expected SequenceComplete event"),
+            _ => assert!(false, "Expected SequenceComplete event, got: {:?}", seq_event),
         }
     }
 

@@ -750,7 +750,7 @@ mod tests {
                 assert_eq!(digit, '5');
                 assert_eq!(source, DtmfSource::Rfc2833);
             }
-            _ => panic!("Expected DigitDetected event"),
+            _ => assert!(false, "Expected DigitDetected event, got: {:?}", event),
         }
     }
 

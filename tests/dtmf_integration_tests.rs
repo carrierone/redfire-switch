@@ -180,7 +180,7 @@ async fn test_rfc2833_event_processing() -> Result<()> {
                 assert_eq!(detected_digit, digit);
                 assert_eq!(source, DtmfSource::Rfc2833);
             }
-            _ => panic!("Expected DigitDetected event for digit '{}'", digit),
+            _ => assert!(false, "Expected DigitDetected event for digit '{}', got: {:?}", digit, event),
         }
     }
 
@@ -257,7 +257,7 @@ async fn test_sip_info_dtmf_processing() -> Result<()> {
                 assert_eq!(detected_digit, test_digit);
                 assert_eq!(source, DtmfSource::SipInfo);
             }
-            _ => panic!("Expected DigitDetected event for SIP INFO"),
+            _ => assert!(false, "Expected DigitDetected event for SIP INFO, got: {:?}", event),
         }
     }
 
@@ -306,10 +306,7 @@ async fn test_sigtran_dtmf_processing() -> Result<()> {
                 assert_eq!(digit, expected_digit);
                 assert_eq!(source, DtmfSource::Sigtran);
             }
-            _ => panic!(
-                "Expected DigitDetected event for digit '{}'",
-                expected_digit
-            ),
+            _ => assert!(false, "Expected DigitDetected event for digit '{}', got: {:?}", expected_digit, event),
         }
     }
 
@@ -325,7 +322,7 @@ async fn test_sigtran_dtmf_processing() -> Result<()> {
             assert_eq!(sequence, "456789");
             assert_eq!(source, DtmfSource::Sigtran);
         }
-        _ => panic!("Expected SequenceComplete event"),
+        _ => assert!(false, "Expected SequenceComplete event, got: {:?}", seq_event),
     }
 
     // Test TCAP transaction management
@@ -470,13 +467,13 @@ async fn test_cross_protocol_compatibility() -> Result<()> {
                 continue;
             }
             Ok(Some(other)) => {
-                panic!("Unexpected event type: {:?}", other);
+                assert!(false, "Unexpected event type: {:?}", other);
             }
             Ok(None) => {
-                panic!("Event channel closed unexpectedly");
+                assert!(false, "Event channel closed unexpectedly");
             }
             Err(_) => {
-                panic!("Timeout waiting for DTMF event {}", event_count + 1);
+                assert!(false, "Timeout waiting for DTMF event {}", event_count + 1);;
             }
         }
     }

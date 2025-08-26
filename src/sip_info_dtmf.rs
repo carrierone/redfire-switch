@@ -692,7 +692,7 @@ mod tests {
                 assert_eq!(digit, '7');
                 assert_eq!(source, DtmfSource::SipInfo);
             }
-            _ => panic!("Expected DigitDetected event"),
+            _ => assert!(false, "Expected DigitDetected event, got: {:?}", received_event),
         }
     }
 

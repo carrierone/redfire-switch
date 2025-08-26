@@ -82,3 +82,15 @@ pub mod gpu_codec_accel;
 
 // Least Cost Routing (LCR) engine
 pub mod lcr;
+
+// Routing engines
+pub mod origination_routing;
+pub mod termination_routing;
+pub mod route_advancement;
+
+// Enhanced database connectivity patterns
+pub mod database_connections;
+
+// Class 4 B2BUA implementation
+pub mod class4_b2bua;
+pub mod class4_integration;
