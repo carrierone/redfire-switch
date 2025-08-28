@@ -63,7 +63,10 @@ impl Default for TwilioApiConfig {
             bind_address: "0.0.0.0".to_string(),
             port: 8080,
             account_sid: "AC_redfire_switch_account".to_string(),
-            auth_token: "your_auth_token_here".to_string(),
+            auth_token: std::env::var("TWILIO_AUTH_TOKEN").unwrap_or_else(|_| {
+                tracing::error!("TWILIO_AUTH_TOKEN environment variable not set");
+                "REPLACE_WITH_SECURE_TOKEN".to_string()
+            }),
             base_path: "/2010-04-01".to_string(),
             validate_signatures: true,
             request_timeout: 30,

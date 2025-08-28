@@ -57,27 +57,31 @@ impl OptimizedCodecProcessor {
     /// Fast µ-Law to linear conversion using lookup table
     #[inline(always)]
     pub fn ulaw_to_linear_fast(&self, ulaw: u8) -> i16 {
-        unsafe { *self.ulaw_to_linear_table.get_unchecked(ulaw as usize) }
+        // Safe bounds-checked access - u8 can only be 0-255, table has 256 entries
+        self.ulaw_to_linear_table[ulaw as usize]
     }
 
     /// Fast A-Law to linear conversion using lookup table
     #[inline(always)]
     pub fn alaw_to_linear_fast(&self, alaw: u8) -> i16 {
-        unsafe { *self.alaw_to_linear_table.get_unchecked(alaw as usize) }
+        // Safe bounds-checked access - u8 can only be 0-255, table has 256 entries
+        self.alaw_to_linear_table[alaw as usize]
     }
 
     /// Fast linear to µ-Law conversion using lookup table
     #[inline(always)]
     pub fn linear_to_ulaw_fast(&self, linear: i16) -> u8 {
         let index = (linear as i32 + 32768) as usize;
-        unsafe { *self.linear_to_ulaw_table.get_unchecked(index & 0xFFFF) }
+        // Safe bounds-checked access with proper masking
+        self.linear_to_ulaw_table[index & 0xFFFF]
     }
 
     /// Fast linear to A-Law conversion using lookup table
     #[inline(always)]
     pub fn linear_to_alaw_fast(&self, linear: i16) -> u8 {
         let index = (linear as i32 + 32768) as usize;
-        unsafe { *self.linear_to_alaw_table.get_unchecked(index & 0xFFFF) }
+        // Safe bounds-checked access with proper masking
+        self.linear_to_alaw_table[index & 0xFFFF]
     }
 
     /// SIMD-optimized batch µ-Law to linear conversion
@@ -94,12 +98,11 @@ impl OptimizedCodecProcessor {
             // Load 16 µ-Law values
             let ulaw_vals = _mm_loadu_si128(input.as_ptr().add(offset) as *const __m128i);
 
-            // Convert to 16 linear PCM values using table lookup
+            // Convert to 16 linear PCM values using table lookup (safe bounds-checked access)
             // This is a simplified version - real implementation would use gather operations
             for j in 0..16 {
-                let ulaw_val = *input.get_unchecked(offset + j);
-                *output.get_unchecked_mut(offset + j) =
-                    *self.ulaw_to_linear_table.get_unchecked(ulaw_val as usize);
+                let ulaw_val = input[offset + j];
+                output[offset + j] = self.ulaw_to_linear_table[ulaw_val as usize];
             }
         }
     }
@@ -113,11 +116,10 @@ impl OptimizedCodecProcessor {
         for i in 0..(input.len() / 16) {
             let offset = i * 16;
 
-            // Convert batch using lookup table
+            // Convert batch using lookup table (safe bounds-checked access)
             for j in 0..16 {
-                let alaw_val = *input.get_unchecked(offset + j);
-                *output.get_unchecked_mut(offset + j) =
-                    *self.alaw_to_linear_table.get_unchecked(alaw_val as usize);
+                let alaw_val = input[offset + j];
+                output[offset + j] = self.alaw_to_linear_table[alaw_val as usize];
             }
         }
     }

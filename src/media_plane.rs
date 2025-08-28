@@ -193,8 +193,23 @@ impl DtmfPacket {
         let duration = u16::from_be_bytes([payload[2], payload[3]]);
 
         let event = match event_num {
-            0..=11 => unsafe { std::mem::transmute(event_num) },
-            12..=16 => unsafe { std::mem::transmute(event_num) },
+            0 => DtmfEvent::Digit0,
+            1 => DtmfEvent::Digit1,
+            2 => DtmfEvent::Digit2,
+            3 => DtmfEvent::Digit3,
+            4 => DtmfEvent::Digit4,
+            5 => DtmfEvent::Digit5,
+            6 => DtmfEvent::Digit6,
+            7 => DtmfEvent::Digit7,
+            8 => DtmfEvent::Digit8,
+            9 => DtmfEvent::Digit9,
+            10 => DtmfEvent::Star,
+            11 => DtmfEvent::Hash,
+            12 => DtmfEvent::FlashA,
+            13 => DtmfEvent::FlashB,
+            14 => DtmfEvent::FlashC,
+            15 => DtmfEvent::FlashD,
+            16 => DtmfEvent::Flash,
             _ => return Err(anyhow!("Invalid DTMF event: {}", event_num)),
         };
 
