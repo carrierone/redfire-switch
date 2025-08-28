@@ -6,17 +6,18 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 
+use crate::lcr::types::{CallRoute, RouteRequest};
 use crate::termination_routing::{
     FailedAttempt, RouteAdvanceDecision, SipResponseCode, TerminationRoutingRequest,
     TerminationRoutingResponse, TerminationRoutingService,
 };
-use crate::lcr::types::{CallRoute, RouteRequest};
 
 /// Route advancement manager for B2BUA operations
 pub struct RouteAdvancementEngine {
-    termination_service: Arc<TerminationRoutingService>,
+    termination_service: Arc<Mutex<TerminationRoutingService>>,
     active_calls: HashMap<String, CallRoutingState>,
     max_route_attempts: u32,
 }
@@ -51,15 +52,15 @@ pub struct RouteAdvancementResult {
 /// Route advancement actions
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AdvancementAction {
-    RouteToNext,      // Advance to next available route
+    RouteToNext,       // Advance to next available route
     RetryCurrentRoute, // Retry current route (for temporary failures)
-    CompleteCall,     // Complete call with current response
-    RejectCall,       // No more routes available
+    CompleteCall,      // Complete call with current response
+    RejectCall,        // No more routes available
 }
 
 impl RouteAdvancementEngine {
     pub fn new(
-        termination_service: Arc<TerminationRoutingService>,
+        termination_service: Arc<Mutex<TerminationRoutingService>>,
         max_route_attempts: u32,
     ) -> Self {
         Self {
@@ -77,7 +78,10 @@ impl RouteAdvancementEngine {
         dnis: String,
         route_request: RouteRequest,
     ) -> Result<RouteAdvancementResult> {
-        info!("Starting call routing for {} -> {} (call_id: {})", ani, dnis, call_id);
+        info!(
+            "Starting call routing for {} -> {} (call_id: {})",
+            ani, dnis, call_id
+        );
 
         // Create initial termination request
         let termination_request = TerminationRoutingRequest {
@@ -92,9 +96,10 @@ impl RouteAdvancementEngine {
         };
 
         // Get initial routing decision
-        let routing_response = self.termination_service
-            .route_termination(termination_request)
-            .await?;
+        let routing_response = {
+            let mut service = self.termination_service.lock().await;
+            service.route_termination(termination_request).await?
+        };
 
         let routing_state = CallRoutingState {
             call_id: call_id.clone(),
@@ -144,7 +149,9 @@ impl RouteAdvancementEngine {
         response_code: u16,
         response_reason: &str,
     ) -> Result<RouteAdvancementResult> {
-        let routing_state = self.active_calls.get_mut(call_id)
+        let routing_state = self
+            .active_calls
+            .get_mut(call_id)
             .ok_or_else(|| anyhow!("Call routing state not found for call_id: {}", call_id))?;
 
         debug!(
@@ -154,7 +161,9 @@ impl RouteAdvancementEngine {
 
         // Record this attempt as failed if needed
         if response_code >= 300 {
-            let current_route = routing_state.current_route.as_ref()
+            let current_route = routing_state
+                .current_route
+                .as_ref()
                 .ok_or_else(|| anyhow!("No current route for call {}", call_id))?;
 
             let failed_attempt = FailedAttempt {
@@ -163,7 +172,8 @@ impl RouteAdvancementEngine {
                 response_code,
                 response_reason: response_reason.to_string(),
                 attempt_time: Utc::now(),
-                duration_ms: routing_state.last_attempt_at
+                duration_ms: routing_state
+                    .last_attempt_at
                     .map(|t| Utc::now().signed_duration_since(t).num_milliseconds() as u64)
                     .unwrap_or(0),
             };
@@ -192,7 +202,9 @@ impl RouteAdvancementEngine {
         call_id: &str,
         last_response_code: u16,
     ) -> Result<RouteAdvancementResult> {
-        let routing_state = self.active_calls.get_mut(call_id)
+        let routing_state = self
+            .active_calls
+            .get_mut(call_id)
             .ok_or_else(|| anyhow!("Call routing state not found for call_id: {}", call_id))?;
 
         // Check if we've exceeded maximum attempts
@@ -221,9 +233,10 @@ impl RouteAdvancementEngine {
         };
 
         // Get next routing decision
-        let routing_response = self.termination_service
-            .route_termination(termination_request)
-            .await?;
+        let routing_response = {
+            let mut service = self.termination_service.lock().await;
+            service.route_termination(termination_request).await?
+        };
 
         if routing_response.success {
             // Update routing state with new route
@@ -233,7 +246,12 @@ impl RouteAdvancementEngine {
             info!(
                 "Advanced to next route for call {}: {} (attempt {})",
                 call_id,
-                routing_response.selected_route.as_ref().unwrap().egress_trunk.name,
+                routing_response
+                    .selected_route
+                    .as_ref()
+                    .unwrap()
+                    .egress_trunk
+                    .name,
                 routing_state.current_attempt
             );
 
@@ -248,11 +266,7 @@ impl RouteAdvancementEngine {
             })
         } else {
             // No more routes available
-            self.complete_call_routing(
-                call_id,
-                last_response_code,
-                &routing_response.reason,
-            )
+            self.complete_call_routing(call_id, last_response_code, &routing_response.reason)
         }
     }
 
@@ -263,7 +277,9 @@ impl RouteAdvancementEngine {
         final_response_code: u16,
         reason: &str,
     ) -> Result<RouteAdvancementResult> {
-        let routing_state = self.active_calls.remove(call_id)
+        let routing_state = self
+            .active_calls
+            .remove(call_id)
             .ok_or_else(|| anyhow!("Call routing state not found for call_id: {}", call_id))?;
 
         let action = if final_response_code < 300 {
@@ -289,7 +305,11 @@ impl RouteAdvancementEngine {
     }
 
     /// Determine if route should be advanced based on SIP response
-    pub fn should_advance_route(&self, response_code: u16, _response_reason: &str) -> RouteAdvanceDecision {
+    pub fn should_advance_route(
+        &self,
+        response_code: u16,
+        _response_reason: &str,
+    ) -> RouteAdvanceDecision {
         // Success responses - complete the call
         if (200..300).contains(&response_code) {
             return RouteAdvanceDecision::CompleteCall;
@@ -312,7 +332,7 @@ impl RouteAdvancementEngine {
                     400..=499 => RouteAdvanceDecision::AdvanceToNextRoute, // Client error - usually advance
                     500..=599 => RouteAdvanceDecision::AdvanceToNextRoute, // Server error - usually advance
                     600..=699 => RouteAdvanceDecision::CompleteCall, // Global failure - don't advance
-                    _ => RouteAdvanceDecision::CompleteCall, // Unknown - don't advance
+                    _ => RouteAdvanceDecision::CompleteCall,         // Unknown - don't advance
                 }
             }
         }
@@ -320,20 +340,21 @@ impl RouteAdvancementEngine {
 
     /// Get routing statistics for a call
     pub fn get_call_routing_stats(&self, call_id: &str) -> Option<CallRoutingStats> {
-        self.active_calls.get(call_id).map(|state| {
-            CallRoutingStats {
+        self.active_calls
+            .get(call_id)
+            .map(|state| CallRoutingStats {
                 call_id: call_id.to_string(),
                 current_attempt: state.current_attempt,
                 total_failed_attempts: state.failed_attempts.len() as u32,
                 routing_duration_ms: Utc::now()
                     .signed_duration_since(state.routing_started_at)
                     .num_milliseconds() as u64,
-                current_trunk_name: state.current_route
+                current_trunk_name: state
+                    .current_route
                     .as_ref()
                     .map(|r| r.egress_trunk.name.clone()),
                 remaining_routes: state.remaining_routes.len() as u32,
-            }
-        })
+            })
     }
 
     /// Get all active call routing states
@@ -344,8 +365,9 @@ impl RouteAdvancementEngine {
     /// Clean up expired call states (should be called periodically)
     pub fn cleanup_expired_calls(&mut self, max_age_minutes: u64) {
         let cutoff_time = Utc::now() - chrono::Duration::minutes(max_age_minutes as i64);
-        
-        let expired_calls: Vec<String> = self.active_calls
+
+        let expired_calls: Vec<String> = self
+            .active_calls
             .iter()
             .filter(|(_, state)| state.routing_started_at < cutoff_time)
             .map(|(call_id, _)| call_id.clone())
@@ -402,17 +424,17 @@ mod tests {
             engine.should_advance_route(404, "Not Found"),
             RouteAdvanceDecision::AdvanceToNextRoute
         );
-        
+
         assert_eq!(
             engine.should_advance_route(503, "Service Unavailable"),
             RouteAdvanceDecision::AdvanceToNextRoute
         );
-        
+
         assert_eq!(
             engine.should_advance_route(603, "Decline"),
             RouteAdvanceDecision::CompleteCall
         );
-        
+
         assert_eq!(
             engine.should_advance_route(200, "OK"),
             RouteAdvanceDecision::CompleteCall
@@ -420,16 +442,16 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore] // TODO: Fix compilation issues with TerminationRoutingService interior mutability  
+    #[ignore] // TODO: Fix compilation issues with TerminationRoutingService interior mutability
     async fn test_call_routing_lifecycle() {
-        let termination_service = Arc::new(TerminationRoutingService::new(
-            Arc::new(crate::lcr::LcrEngine::new("test://").await.unwrap())
-        ));
+        let termination_service = Arc::new(TerminationRoutingService::new(Arc::new(
+            crate::lcr::LcrEngine::new("test://").await.unwrap(),
+        )));
         let mut engine = RouteAdvancementEngine::new(termination_service, 3);
-        
+
         let call_id = "test-call-123".to_string();
         let route_request = create_test_route_request();
-        
+
         // This would fail in a real test without proper LCR setup, but shows the interface
         // let result = engine.start_call_routing(
         //     call_id.clone(),
@@ -437,7 +459,7 @@ mod tests {
         //     "18005551234".to_string(),
         //     route_request,
         // ).await;
-        
+
         // Test that the engine correctly tracks active calls
         assert!(!engine.get_active_calls().contains(&call_id));
     }

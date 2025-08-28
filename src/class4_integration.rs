@@ -7,11 +7,11 @@ use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 
 use crate::class4_b2bua::{Class4B2BUA, Class4Config};
-use crate::origination_routing::OriginationRoutingEngine;
-use crate::termination_routing::TerminationRoutingService;
-use crate::route_advancement::RouteAdvancementEngine;
-use crate::lcr::LcrEngine;
 use crate::database_connections::EnhancedDatabasePool;
+use crate::lcr::LcrEngine;
+use crate::origination_routing::OriginationRoutingEngine;
+use crate::route_advancement::RouteAdvancementEngine;
+use crate::termination_routing::TerminationRoutingService;
 
 /// Class 4 Switch Integration Service
 /// This is the main entry point for the Class 4 switching functionality
@@ -104,12 +104,11 @@ impl Class4SwitchBuilder {
         info!("Building Class 4 Switch Service");
 
         // Initialize database connection
-        let database_url = self.database_url
+        let database_url = self
+            .database_url
             .unwrap_or_else(|| "postgres://postgres:password@localhost/redfire_switch".to_string());
-        
-        let database_pool = Arc::new(
-            EnhancedDatabasePool::from_url(&database_url).await?
-        );
+
+        let database_pool = Arc::new(EnhancedDatabasePool::from_url(&database_url).await?);
 
         // Initialize LCR engine if not provided
         let lcr_engine = if let Some(engine) = self.lcr_engine {
@@ -119,11 +118,13 @@ impl Class4SwitchBuilder {
         };
 
         // Initialize routing engines
-        let origination_engine = Arc::new(OriginationRoutingEngine::new());
-        let termination_service = Arc::new(TerminationRoutingService::new(lcr_engine.clone()));
-        let route_advancement = Arc::new(Mutex::new(
-            RouteAdvancementEngine::new(termination_service.clone(), self.config.max_route_attempts)
-        ));
+        let origination_config = crate::origination_routing::OriginationConfig::default();
+        let origination_engine = Arc::new(Mutex::new(OriginationRoutingEngine::new(origination_config)));
+        let termination_service = Arc::new(Mutex::new(TerminationRoutingService::new(lcr_engine.clone())));
+        let route_advancement = Arc::new(Mutex::new(RouteAdvancementEngine::new(
+            termination_service.clone(),
+            self.config.max_route_attempts,
+        )));
 
         // Create Class 4 B2BUA
         let b2bua = Arc::new(
@@ -132,7 +133,8 @@ impl Class4SwitchBuilder {
                 origination_engine,
                 termination_service,
                 route_advancement,
-            ).await?
+            )
+            .await?,
         );
 
         let service = Class4SwitchService {
@@ -160,8 +162,10 @@ impl Class4SwitchService {
 
     /// Start the Class 4 Switch Service
     pub async fn start(&self) -> Result<()> {
-        info!("Starting Class 4 Switch Service on {}:{}", 
-               self.config.bind_address, self.config.bind_port);
+        info!(
+            "Starting Class 4 Switch Service on {}:{}",
+            self.config.bind_address, self.config.bind_port
+        );
 
         // Perform health checks
         self.perform_health_checks().await?;
@@ -177,7 +181,10 @@ impl Class4SwitchService {
         // Database health check
         let db_health = self.database_pool.health_check().await;
         if !db_health.healthy {
-            return Err(anyhow::anyhow!("Database health check failed: {:?}", db_health.last_error));
+            return Err(anyhow::anyhow!(
+                "Database health check failed: {:?}",
+                db_health.last_error
+            ));
         }
 
         info!("All health checks passed");
@@ -186,7 +193,7 @@ impl Class4SwitchService {
 
     /// Get runtime statistics
     pub async fn get_statistics(&self) -> Result<Class4Statistics> {
-        let session_stats = self.b2bua.session_manager.get_stats().await;
+        let session_stats = self.b2bua.session_manager().get_stats().await;
         let db_stats = self.database_pool.get_stats().await;
 
         Ok(Class4Statistics {
@@ -249,7 +256,7 @@ impl Class4SwitchAPI {
     /// Get health status
     pub async fn health_check(&self) -> Result<HealthStatus> {
         let db_health = self.service.database_pool.health_check().await;
-        
+
         Ok(HealthStatus {
             overall_healthy: db_health.healthy,
             database_healthy: db_health.healthy,
@@ -262,7 +269,11 @@ impl Class4SwitchAPI {
     /// Force cleanup of expired sessions
     pub async fn cleanup_sessions(&self) -> Result<()> {
         let timeout = std::time::Duration::from_secs(self.service.config.call_timeout_seconds);
-        self.service.b2bua.session_manager.cleanup_expired_sessions(timeout).await;
+        self.service
+            .b2bua
+            .session_manager()
+            .cleanup_expired_sessions(timeout)
+            .await;
         Ok(())
     }
 }
@@ -312,7 +323,7 @@ mod tests {
 
         let json = serde_json::to_string(&stats).unwrap();
         let deserialized: Class4Statistics = serde_json::from_str(&json).unwrap();
-        
+
         assert_eq!(stats.active_calls, deserialized.active_calls);
         assert_eq!(stats.total_calls, deserialized.total_calls);
     }
@@ -345,7 +356,7 @@ pub mod examples {
     pub async fn advanced_class4_switch_example() -> Result<()> {
         // Pre-initialize LCR engine with custom configuration
         let lcr_engine = Arc::new(
-            LcrEngine::new("postgres://postgres:password@localhost/redfire_switch").await?
+            LcrEngine::new("postgres://postgres:password@localhost/redfire_switch").await?,
         );
 
         let service = Class4SwitchService::builder()
@@ -364,11 +375,11 @@ pub mod examples {
 
         // Create API interface for monitoring
         let api = Class4SwitchAPI::new(Arc::new(service));
-        
+
         // Example monitoring operations
         let stats = api.get_call_stats().await?;
         println!("Current stats: {:?}", stats);
-        
+
         let health = api.health_check().await?;
         println!("Health status: {:?}", health);
 
@@ -386,12 +397,14 @@ pub mod examples {
             .enable_cdr_generation(true)
             .enable_codec_translation(true)
             .rtp_proxy("rtp-proxy.example.com".to_string(), 7000)
-            .database_url("postgres://redfire_user:secure_password@db.example.com:5432/redfire_production")
+            .database_url(
+                "postgres://redfire_user:secure_password@db.example.com:5432/redfire_production",
+            )
             .build()
             .await?;
 
         info!("Starting production Class 4 Switch");
-        
+
         // In production, this would be wrapped with proper signal handling
         // for graceful shutdown
         match service.start().await {

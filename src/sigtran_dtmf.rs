@@ -717,7 +717,11 @@ mod tests {
                 assert_eq!(sequence, "12345");
                 assert_eq!(source, DtmfSource::Sigtran);
             }
-            _ => assert!(false, "Expected SequenceComplete event, got: {:?}", seq_event),
+            _ => assert!(
+                false,
+                "Expected SequenceComplete event, got: {:?}",
+                seq_event
+            ),
         }
     }
 

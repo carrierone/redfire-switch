@@ -85,8 +85,8 @@ pub mod lcr;
 
 // Routing engines
 pub mod origination_routing;
-pub mod termination_routing;
 pub mod route_advancement;
+pub mod termination_routing;
 
 // Enhanced database connectivity patterns
 pub mod database_connections;

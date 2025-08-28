@@ -14,27 +14,27 @@ use crate::security_utils::validate_phone_number;
 /// Origination routing request
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OriginationRequest {
-    pub ani: String,               // Calling number
-    pub dnis: String,              // Dialed number
-    pub source_ip: IpAddr,         // Source IP address
-    pub ingress_trunk_id: i32,     // Ingress trunk identifier
-    pub customer_id: Option<i32>,  // Customer account ID
-    pub route_type: RouteType,     // Routing preference
-    pub timestamp: DateTime<Utc>,  // Request timestamp
+    pub ani: String,              // Calling number
+    pub dnis: String,             // Dialed number
+    pub source_ip: IpAddr,        // Source IP address
+    pub ingress_trunk_id: i32,    // Ingress trunk identifier
+    pub customer_id: Option<i32>, // Customer account ID
+    pub route_type: RouteType,    // Routing preference
+    pub timestamp: DateTime<Utc>, // Request timestamp
 }
 
 /// Origination routing response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OriginationResponse {
-    pub allowed: bool,                    // Call permitted
-    pub customer_id: Option<i32>,         // Resolved customer
-    pub rate_plan_id: Option<i32>,        // Rate plan to use
-    pub routing_plan_id: Option<i32>,     // Routing plan to use
-    pub auth_result: AuthResult,          // Authentication result
-    pub fraud_check_result: FraudResult,  // Fraud analysis
-    pub routing_preference: RouteType,    // Preferred routing type
-    pub tech_prefix: Option<String>,      // Tech prefix to strip/add
-    pub reason: String,                   // Decision reason
+    pub allowed: bool,                   // Call permitted
+    pub customer_id: Option<i32>,        // Resolved customer
+    pub rate_plan_id: Option<i32>,       // Rate plan to use
+    pub routing_plan_id: Option<i32>,    // Routing plan to use
+    pub auth_result: AuthResult,         // Authentication result
+    pub fraud_check_result: FraudResult, // Fraud analysis
+    pub routing_preference: RouteType,   // Preferred routing type
+    pub tech_prefix: Option<String>,     // Tech prefix to strip/add
+    pub reason: String,                  // Decision reason
 }
 
 /// Authentication result for origination
@@ -49,17 +49,17 @@ pub struct AuthResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AuthMethod {
-    IpBased,           // IP-based authentication
-    TechnicalPrefix,   // Tech prefix authentication
-    DigitalSignature,  // STIR/SHAKEN authentication
-    None,              // No authentication required
+    IpBased,          // IP-based authentication
+    TechnicalPrefix,  // Tech prefix authentication
+    DigitalSignature, // STIR/SHAKEN authentication
+    None,             // No authentication required
 }
 
 /// Fraud detection result
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FraudResult {
     pub risk_level: RiskLevel,
-    pub fraud_score: f32,         // 0.0-1.0 fraud probability
+    pub fraud_score: f32, // 0.0-1.0 fraud probability
     pub checks_performed: Vec<String>,
     pub flags: Vec<FraudFlag>,
 }
@@ -155,17 +155,18 @@ impl OriginationRoutingEngine {
     /// Add customer account
     pub fn add_customer(&mut self, customer: CustomerAccount) {
         let customer_id = customer.id;
-        
+
         // Map IP addresses to customer
         for ip in &customer.allowed_ips {
             self.ip_to_customer.insert(*ip, customer_id);
         }
-        
+
         // Map tech prefixes to customer
         for prefix in &customer.tech_prefixes {
-            self.tech_prefix_to_customer.insert(prefix.clone(), customer_id);
+            self.tech_prefix_to_customer
+                .insert(prefix.clone(), customer_id);
         }
-        
+
         let customer_name = customer.name.clone();
         self.customers.insert(customer_id, customer);
         info!("Added customer {} with ID {}", customer_name, customer_id);
@@ -209,7 +210,7 @@ impl OriginationRoutingEngine {
 
         // 2. Authentication
         let auth_result = self.authenticate(&request).await?;
-        
+
         // 3. Fraud detection
         let fraud_result = if self.config.enable_fraud_detection {
             self.detect_fraud(&request, &auth_result).await?
@@ -223,7 +224,7 @@ impl OriginationRoutingEngine {
         };
 
         // 4. Authorization decision
-        let allowed = auth_result.authenticated 
+        let allowed = auth_result.authenticated
             && fraud_result.fraud_score <= self.config.max_fraud_score
             && fraud_result.risk_level != RiskLevel::Critical;
 
@@ -231,22 +232,26 @@ impl OriginationRoutingEngine {
         let routing_preference = self.determine_route_type(&request);
 
         // 6. Get customer details for routing/rating
-        let (rate_plan_id, routing_plan_id) = if let Some(customer_id) = auth_result.customer_account.as_ref() {
-            if let Ok(id) = customer_id.parse::<i32>() {
-                if let Some(customer) = self.customers.get(&id) {
-                    (Some(customer.rate_plan_id), Some(customer.routing_plan_id))
+        let (rate_plan_id, routing_plan_id) =
+            if let Some(customer_id) = auth_result.customer_account.as_ref() {
+                if let Ok(id) = customer_id.parse::<i32>() {
+                    if let Some(customer) = self.customers.get(&id) {
+                        (Some(customer.rate_plan_id), Some(customer.routing_plan_id))
+                    } else {
+                        (None, None)
+                    }
                 } else {
                     (None, None)
                 }
             } else {
                 (None, None)
-            }
-        } else {
-            (None, None)
-        };
+            };
 
-        let customer_id = auth_result.customer_account.clone().and_then(|id| id.parse().ok());
-        
+        let customer_id = auth_result
+            .customer_account
+            .clone()
+            .and_then(|id| id.parse().ok());
+
         let response = OriginationResponse {
             allowed,
             customer_id,
@@ -342,7 +347,8 @@ impl OriginationRoutingEngine {
         // Check call volume from source
         checks.push("call_volume".to_string());
         if let Some(&count) = self.call_counts.get(&request.source_ip) {
-            if count > 100 { // High volume threshold
+            if count > 100 {
+                // High volume threshold
                 fraud_score += 0.2;
                 flags.push(FraudFlag::HighVolumeSource);
             }
@@ -373,7 +379,7 @@ impl OriginationRoutingEngine {
     fn check_rate_limit(&mut self, source_ip: &IpAddr) -> bool {
         let count = self.call_counts.entry(*source_ip).or_insert(0);
         *count += 1;
-        
+
         // Simple rate limiting - in production this would be time-based
         *count <= self.config.rate_limit_per_minute
     }
@@ -405,7 +411,7 @@ impl OriginationRoutingEngine {
         // Look for patterns like *1001* or 1001*
         if dnis.starts_with('*') {
             if let Some(end) = dnis[1..].find('*') {
-                return Some(dnis[1..end+1].to_string());
+                return Some(dnis[1..end + 1].to_string());
             }
         } else if let Some(star_pos) = dnis.find('*') {
             return Some(dnis[..star_pos].to_string());
@@ -480,11 +486,7 @@ pub mod utils {
     }
 
     /// Create test origination request
-    pub fn create_test_request(
-        ani: &str,
-        dnis: &str,
-        source_ip: IpAddr,
-    ) -> OriginationRequest {
+    pub fn create_test_request(ani: &str, dnis: &str, source_ip: IpAddr) -> OriginationRequest {
         OriginationRequest {
             ani: ani.to_string(),
             dnis: dnis.to_string(),
@@ -506,14 +508,14 @@ mod tests {
     async fn test_origination_routing_auth_success() {
         let config = OriginationConfig::default();
         let mut engine = OriginationRoutingEngine::new(config);
-        
+
         let test_ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100));
         let customer = utils::create_test_customer(1, "Test Customer", test_ip);
         engine.add_customer(customer);
-        
+
         let request = utils::create_test_request("15551234567", "18005551234", test_ip);
         let response = engine.route_origination(request).await.unwrap();
-        
+
         assert!(response.allowed);
         assert!(response.auth_result.authenticated);
         assert_eq!(response.customer_id, Some(1));
@@ -523,11 +525,11 @@ mod tests {
     async fn test_origination_routing_auth_failure() {
         let config = OriginationConfig::default();
         let mut engine = OriginationRoutingEngine::new(config);
-        
+
         let unauthorized_ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
         let request = utils::create_test_request("15551234567", "18005551234", unauthorized_ip);
         let response = engine.route_origination(request).await.unwrap();
-        
+
         assert!(!response.allowed);
         assert!(!response.auth_result.authenticated);
         assert_eq!(response.customer_id, None);
@@ -537,23 +539,32 @@ mod tests {
     async fn test_fraud_detection() {
         let config = OriginationConfig::default();
         let mut engine = OriginationRoutingEngine::new(config);
-        
+
         let test_ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100));
         let request = utils::create_test_request("0000000000", "18005551234", test_ip);
         let response = engine.route_origination(request).await.unwrap();
-        
+
         assert!(!response.allowed);
         assert!(response.fraud_check_result.fraud_score > 0.0);
-        assert!(response.fraud_check_result.flags.contains(&FraudFlag::SuspiciousAni));
+        assert!(response
+            .fraud_check_result
+            .flags
+            .contains(&FraudFlag::SuspiciousAni));
     }
 
     #[test]
     fn test_tech_prefix_extraction() {
         let config = OriginationConfig::default();
         let engine = OriginationRoutingEngine::new(config);
-        
-        assert_eq!(engine.extract_tech_prefix("*1001*15551234567"), Some("1001".to_string()));
-        assert_eq!(engine.extract_tech_prefix("1001*15551234567"), Some("1001".to_string()));
+
+        assert_eq!(
+            engine.extract_tech_prefix("*1001*15551234567"),
+            Some("1001".to_string())
+        );
+        assert_eq!(
+            engine.extract_tech_prefix("1001*15551234567"),
+            Some("1001".to_string())
+        );
         assert_eq!(engine.extract_tech_prefix("15551234567"), None);
     }
 }

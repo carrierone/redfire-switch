@@ -625,21 +625,24 @@ impl DeckLoader {
     async fn parse_rates_csv(&self, csv_path: &str) -> Result<Vec<NanpaRate>> {
         use tokio::fs::File;
         use tokio::io::{AsyncBufReadExt, BufReader};
-        
+
         info!("Parsing CSV rates file: {}", csv_path);
-        
-        let file = File::open(csv_path).await
+
+        let file = File::open(csv_path)
+            .await
             .map_err(|e| anyhow!("Failed to open CSV file {}: {}", csv_path, e))?;
-        
+
         let reader = BufReader::new(file);
         let mut lines = reader.lines();
         let mut rates = Vec::new();
         let mut line_number = 0;
-        
+
         // Skip header line if present
         if let Some(first_line) = lines.next_line().await? {
             line_number += 1;
-            if first_line.to_lowercase().contains("code") || first_line.to_lowercase().contains("prefix") {
+            if first_line.to_lowercase().contains("code")
+                || first_line.to_lowercase().contains("prefix")
+            {
                 info!("Detected header line, skipping");
             } else {
                 // First line is data, parse it
@@ -648,44 +651,47 @@ impl DeckLoader {
                 }
             }
         }
-        
+
         // Parse remaining lines
         while let Some(line) = lines.next_line().await? {
             line_number += 1;
-            
+
             // Skip empty lines and comments
             let line = line.trim();
             if line.is_empty() || line.starts_with('#') || line.starts_with("//") {
                 continue;
             }
-            
+
             if let Some(rate) = self.parse_csv_line(&line, line_number)? {
                 rates.push(rate);
             }
         }
-        
+
         info!("Parsed {} rates from CSV file", rates.len());
         Ok(rates)
     }
-    
+
     fn parse_csv_line(&self, line: &str, line_number: u32) -> Result<Option<NanpaRate>> {
         let fields: Vec<&str> = line.split(',').collect();
-        
+
         // Expected CSV format: code,inter_rate,intra_rate,ij_rate,local_rate,min_increment,interval,setup_fee
         // Or simplified: code,rate
         if fields.len() < 2 {
-            warn!("Line {}: Invalid CSV format, skipping: {}", line_number, line);
+            warn!(
+                "Line {}: Invalid CSV format, skipping: {}",
+                line_number, line
+            );
             return Ok(None);
         }
-        
+
         let code = fields[0].trim().trim_matches('"').to_string();
         if code.is_empty() {
             warn!("Line {}: Empty code field, skipping", line_number);
             return Ok(None);
         }
-        
+
         // Parse rates - handle both detailed and simple formats
-        let (inter_rate, intra_rate, ij_rate, local_rate, min_increment, interval, setup_fee) = 
+        let (inter_rate, intra_rate, ij_rate, local_rate, min_increment, interval, setup_fee) =
             if fields.len() >= 8 {
                 // Detailed format
                 (
@@ -693,8 +699,10 @@ impl DeckLoader {
                     self.parse_decimal_field(fields[2], "intra_rate", line_number)?,
                     self.parse_decimal_field(fields[3], "ij_rate", line_number)?,
                     self.parse_optional_decimal_field(fields[4], "local_rate", line_number)?,
-                    self.parse_i32_field(fields[5], "min_increment", line_number)?.max(1), // Ensure positive
-                    self.parse_i32_field(fields[6], "interval", line_number)?.max(1),
+                    self.parse_i32_field(fields[5], "min_increment", line_number)?
+                        .max(1), // Ensure positive
+                    self.parse_i32_field(fields[6], "interval", line_number)?
+                        .max(1),
                     self.parse_optional_decimal_field(fields[7], "setup_fee", line_number)?,
                 )
             } else {
@@ -702,9 +710,9 @@ impl DeckLoader {
                 let rate = self.parse_decimal_field(fields[1], "rate", line_number)?;
                 (rate, rate, rate, Some(rate), 6, 6, None) // Default billing increments
             };
-        
+
         Ok(Some(NanpaRate {
-            id: 0, // Will be set by database
+            id: 0,      // Will be set by database
             deck_id: 0, // Will be set by caller
             code,
             inter_rate,
@@ -716,27 +724,58 @@ impl DeckLoader {
             setup_fee,
         }))
     }
-    
-    fn parse_decimal_field(&self, field: &str, field_name: &str, line_number: u32) -> Result<Decimal> {
+
+    fn parse_decimal_field(
+        &self,
+        field: &str,
+        field_name: &str,
+        line_number: u32,
+    ) -> Result<Decimal> {
         let cleaned = field.trim().trim_matches('"');
-        cleaned.parse::<Decimal>()
-            .map_err(|e| anyhow!("Line {}: Invalid {} '{}': {}", line_number, field_name, field, e))
+        cleaned.parse::<Decimal>().map_err(|e| {
+            anyhow!(
+                "Line {}: Invalid {} '{}': {}",
+                line_number,
+                field_name,
+                field,
+                e
+            )
+        })
     }
-    
-    fn parse_optional_decimal_field(&self, field: &str, field_name: &str, line_number: u32) -> Result<Option<Decimal>> {
+
+    fn parse_optional_decimal_field(
+        &self,
+        field: &str,
+        field_name: &str,
+        line_number: u32,
+    ) -> Result<Option<Decimal>> {
         let cleaned = field.trim().trim_matches('"');
         if cleaned.is_empty() || cleaned.eq_ignore_ascii_case("null") || cleaned == "0" {
             Ok(None)
         } else {
-            Ok(Some(cleaned.parse::<Decimal>()
-                .map_err(|e| anyhow!("Line {}: Invalid {} '{}': {}", line_number, field_name, field, e))?))
+            Ok(Some(cleaned.parse::<Decimal>().map_err(|e| {
+                anyhow!(
+                    "Line {}: Invalid {} '{}': {}",
+                    line_number,
+                    field_name,
+                    field,
+                    e
+                )
+            })?))
         }
     }
-    
+
     fn parse_i32_field(&self, field: &str, field_name: &str, line_number: u32) -> Result<i32> {
         let cleaned = field.trim().trim_matches('"');
-        cleaned.parse::<i32>()
-            .map_err(|e| anyhow!("Line {}: Invalid {} '{}': {}", line_number, field_name, field, e))
+        cleaned.parse::<i32>().map_err(|e| {
+            anyhow!(
+                "Line {}: Invalid {} '{}': {}",
+                line_number,
+                field_name,
+                field,
+                e
+            )
+        })
     }
 
     /// Safely soft delete a vendor deck (prevents ID reuse)

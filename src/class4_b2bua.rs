@@ -10,22 +10,22 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::net::UdpSocket;
-use tokio::sync::{RwLock, Mutex, mpsc};
+use tokio::sync::{mpsc, Mutex, RwLock};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
-use crate::origination_routing::{OriginationRoutingEngine, OriginationRequest};
-use crate::termination_routing::{TerminationRoutingService, TerminationRoutingRequest};
-use crate::route_advancement::{RouteAdvancementEngine, RouteAdvancementResult};
 use crate::lcr::types::{RouteRequest, RouteType};
+use crate::origination_routing::{OriginationRequest, OriginationRoutingEngine};
+use crate::route_advancement::{RouteAdvancementEngine, RouteAdvancementResult};
+use crate::termination_routing::{TerminationRoutingRequest, TerminationRoutingService};
 
 /// Class 4 B2BUA main structure
 pub struct Class4B2BUA {
     config: Arc<Class4Config>,
     socket: Arc<UdpSocket>,
     session_manager: Arc<SessionManager>,
-    origination_engine: Arc<OriginationRoutingEngine>,
-    termination_service: Arc<TerminationRoutingService>,
+    origination_engine: Arc<Mutex<OriginationRoutingEngine>>,
+    termination_service: Arc<Mutex<TerminationRoutingService>>,
     route_advancement: Arc<Mutex<RouteAdvancementEngine>>,
     call_processor: Arc<CallProcessor>,
     cdr_generator: Arc<CDRGenerator>,
@@ -107,14 +107,14 @@ pub struct CallLeg {
 #[derive(Debug, Clone, PartialEq)]
 pub enum SessionState {
     Initial,
-    Originating,      // Processing origination
-    Routing,          // Finding termination route
-    Terminating,      // Attempting termination
-    Connecting,       // Both legs trying to connect
-    Connected,        // Call established
-    Disconnecting,    // One or both legs terminating
-    Terminated,       // Call ended
-    Failed,           // Call failed
+    Originating,   // Processing origination
+    Routing,       // Finding termination route
+    Terminating,   // Attempting termination
+    Connecting,    // Both legs trying to connect
+    Connected,     // Call established
+    Disconnecting, // One or both legs terminating
+    Terminated,    // Call ended
+    Failed,        // Call failed
 }
 
 /// Individual leg state
@@ -190,7 +190,7 @@ pub struct TranscodingProfile {
 }
 
 /// Session statistics
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct SessionStats {
     pub total_sessions: u64,
     pub active_sessions: u32,
@@ -205,27 +205,27 @@ impl Class4B2BUA {
     /// Create a new Class 4 B2BUA instance
     pub async fn new(
         config: Class4Config,
-        origination_engine: Arc<OriginationRoutingEngine>,
-        termination_service: Arc<TerminationRoutingService>,
+        origination_engine: Arc<Mutex<OriginationRoutingEngine>>,
+        termination_service: Arc<Mutex<TerminationRoutingService>>,
         route_advancement: Arc<Mutex<RouteAdvancementEngine>>,
     ) -> Result<Self> {
         let bind_addr = SocketAddr::new(config.bind_address, config.bind_port);
         let socket = UdpSocket::bind(bind_addr).await?;
-        
+
         info!("Class 4 B2BUA starting on {}", bind_addr);
-        
+
         let config_arc = Arc::new(config);
         let session_manager = Arc::new(SessionManager::new());
         let call_processor = Arc::new(CallProcessor::new(config_arc.clone()));
-        
+
         let (cdr_sender, cdr_receiver) = mpsc::unbounded_channel();
         let cdr_generator = Arc::new(CDRGenerator::new(config_arc.clone(), cdr_sender));
-        
+
         // Start CDR processing task
         CDRGenerator::start_cdr_processor(cdr_receiver);
-        
+
         let codec_translator = Arc::new(CodecTranslator::new());
-        
+
         let b2bua = Self {
             config: config_arc,
             socket: Arc::new(socket),
@@ -237,25 +237,30 @@ impl Class4B2BUA {
             cdr_generator,
             codec_translator,
         };
-        
+
         // Start background tasks
         b2bua.start_session_cleanup_task();
-        
+
         info!("Class 4 B2BUA initialized successfully");
         Ok(b2bua)
     }
-    
+
+    /// Get session manager for external access
+    pub fn session_manager(&self) -> &Arc<SessionManager> {
+        &self.session_manager
+    }
+
     /// Start the main B2BUA processing loop
     pub async fn run(&self) -> Result<()> {
         info!("Class 4 B2BUA starting main processing loop");
-        
+
         let mut buffer = [0u8; 4096];
-        
+
         loop {
             match self.socket.recv_from(&mut buffer).await {
                 Ok((size, addr)) => {
                     let data = &buffer[..size];
-                    
+
                     if let Ok(message) = std::str::from_utf8(data) {
                         if let Err(e) = self.process_sip_message(message, addr).await {
                             error!("Failed to process SIP message from {}: {}", addr, e);
@@ -271,13 +276,17 @@ impl Class4B2BUA {
             }
         }
     }
-    
+
     /// Process incoming SIP messages
     async fn process_sip_message(&self, message: &str, addr: SocketAddr) -> Result<()> {
-        debug!("Processing SIP message from {}: {}", addr, message.lines().next().unwrap_or(""));
-        
+        debug!(
+            "Processing SIP message from {}: {}",
+            addr,
+            message.lines().next().unwrap_or("")
+        );
+
         let sip_message = self.parse_sip_message(message)?;
-        
+
         match sip_message.method.as_deref() {
             Some("INVITE") => self.handle_invite(sip_message, addr).await,
             Some("ACK") => self.handle_ack(sip_message, addr).await,
@@ -293,67 +302,76 @@ impl Class4B2BUA {
             }
         }
     }
-    
+
     /// Handle INVITE messages (call setup)
     async fn handle_invite(&self, sip_message: SipMessage, addr: SocketAddr) -> Result<()> {
-        let call_id = sip_message.headers.get("Call-ID")
+        let call_id = sip_message
+            .headers
+            .get("Call-ID")
             .ok_or_else(|| anyhow!("Missing Call-ID header"))?;
-            
+
         info!("Processing INVITE for call {}", call_id);
-        
+
         // Check if this is a new call or retransmission
         if self.session_manager.session_exists(call_id).await {
             debug!("Retransmission detected for call {}", call_id);
             return Ok(());
         }
-        
+
         // Extract call information
         let calling_number = self.extract_calling_number(&sip_message)?;
         let called_number = self.extract_called_number(&sip_message)?;
-        
+
         // Create origination request
         let origination_request = OriginationRequest {
             ani: calling_number.clone(),
             dnis: called_number.clone(),
             source_ip: addr.ip(),
-            tech_prefix: None,
-            auth_username: None,
-            auth_password: None,
-            user_agent: sip_message.headers.get("User-Agent").cloned(),
+            ingress_trunk_id: 0, // TODO: Extract from actual trunk mapping
+            customer_id: None,   // TODO: Extract from authentication
+            route_type: RouteType::NANPA, // Default to NANPA routing
             timestamp: Utc::now(),
         };
-        
+
         // Process origination routing
-        let origination_result = self.origination_engine
-            .route_origination(origination_request)
-            .await?;
-            
+        let origination_result = {
+            let mut engine = self.origination_engine.lock().await;
+            engine.route_origination(origination_request).await?
+        };
+
         if !origination_result.allowed {
-            info!("Call rejected by origination routing: {}", origination_result.reason);
-            self.send_sip_response(addr, call_id, 403, "Forbidden", &origination_result.reason).await?;
+            info!(
+                "Call rejected by origination routing: {}",
+                origination_result.reason
+            );
+            self.send_sip_response(addr, call_id, 403, "Forbidden", &origination_result.reason)
+                .await?;
             return Ok(());
         }
-        
+
         // Create call session
-        let session = self.create_call_session(sip_message, addr, calling_number, called_number).await?;
-        
+        let session = self
+            .create_call_session(&sip_message, addr, calling_number, called_number)
+            .await?;
+
         // Store session
         self.session_manager.add_session(session.clone()).await;
-        
+
         // Send 100 Trying
-        self.send_sip_response(addr, call_id, 100, "Trying", "").await?;
-        
+        self.send_sip_response(addr, call_id, 100, "Trying", "")
+            .await?;
+
         // Begin termination routing
         self.begin_termination_routing(session).await?;
-        
+
         Ok(())
     }
-    
+
     /// Begin termination routing process
     async fn begin_termination_routing(&self, mut session: CallSession) -> Result<()> {
         session.state = SessionState::Routing;
         self.session_manager.update_session(session.clone()).await;
-        
+
         let route_request = RouteRequest {
             ani: session.cdr.calling_number.clone(),
             dnis: session.cdr.called_number.clone(),
@@ -366,7 +384,7 @@ impl Class4B2BUA {
             phone_validation: None,
             routing_plan_id: None,
         };
-        
+
         let termination_request = TerminationRoutingRequest {
             call_id: session.session_id.clone(),
             ani: session.cdr.calling_number.clone(),
@@ -377,235 +395,321 @@ impl Class4B2BUA {
             max_attempts: self.config.max_route_attempts,
             timestamp: Utc::now(),
         };
-        
+
         // Get route from termination service
-        let routing_response = self.termination_service
-            .route_termination(termination_request)
-            .await?;
-            
+        let routing_response = {
+            let mut service = self.termination_service.lock().await;
+            service.route_termination(termination_request).await?
+        };
+
         if !routing_response.success {
-            info!("No routes available for call {}: {}", session.session_id, routing_response.reason);
-            self.terminate_session(&session.session_id, 503, "Service Unavailable").await?;
+            info!(
+                "No routes available for call {}: {}",
+                session.session_id, routing_response.reason
+            );
+            self.terminate_session(&session.session_id, 503, "Service Unavailable")
+                .await?;
             return Ok(());
         }
-        
+
         if let Some(route) = routing_response.selected_route {
             session.current_route = Some(route.clone());
             session.state = SessionState::Terminating;
             self.session_manager.update_session(session.clone()).await;
-            
+
             // Attempt termination
             self.attempt_termination(session, route).await?;
         }
-        
+
         Ok(())
     }
-    
+
     /// Attempt call termination to selected route
-    async fn attempt_termination(&self, session: CallSession, route: crate::lcr::types::CallRoute) -> Result<()> {
-        info!("Attempting termination for call {} via trunk {}", session.session_id, route.egress_trunk.name);
-        
+    async fn attempt_termination(
+        &self,
+        session: CallSession,
+        route: crate::lcr::types::CallRoute,
+    ) -> Result<()> {
+        info!(
+            "Attempting termination for call {} via trunk {}",
+            session.session_id, route.egress_trunk.name
+        );
+
         // Create B-leg INVITE
         let b_leg_invite = self.create_b_leg_invite(&session, &route).await?;
-        
+
         // Send INVITE to termination gateway
-        let term_addr = SocketAddr::new(
-            route.egress_trunk.host.parse()?,
-            route.egress_trunk.port
-        );
-        
+        let term_addr = SocketAddr::new(route.egress_trunk.host.parse()?, route.egress_trunk.port);
+
         self.send_sip_message(term_addr, &b_leg_invite).await?;
-        
+
         // Update session state
         let mut updated_session = session;
         updated_session.state = SessionState::Terminating;
         updated_session.route_attempts += 1;
         self.session_manager.update_session(updated_session).await;
-        
+
         Ok(())
     }
-    
+
     /// Handle SIP responses
     async fn handle_sip_response(&self, sip_message: SipMessage, addr: SocketAddr) -> Result<()> {
-        let call_id = sip_message.headers.get("Call-ID")
+        let call_id = sip_message
+            .headers
+            .get("Call-ID")
             .ok_or_else(|| anyhow!("Missing Call-ID header"))?;
-            
-        let response_code = sip_message.status_code
+
+        let response_code = sip_message
+            .status_code
             .ok_or_else(|| anyhow!("Missing status code in response"))?;
-            
-        debug!("Processing SIP response {} for call {}", response_code, call_id);
-        
-        let session = self.session_manager.get_session_by_any_call_id(call_id).await;
+
+        debug!(
+            "Processing SIP response {} for call {}",
+            response_code, call_id
+        );
+
+        let session = self
+            .session_manager
+            .get_session_by_any_call_id(call_id)
+            .await;
         if session.is_none() {
             debug!("Received response for unknown call: {}", call_id);
             return Ok(());
         }
-        
+
         let session = session.unwrap();
-        
+
         match response_code {
-            100..=199 => self.handle_provisional_response(session, response_code, &sip_message).await,
-            200..=299 => self.handle_success_response(session, response_code, &sip_message).await,
-            300..=699 => self.handle_error_response(session, response_code, &sip_message).await,
+            100..=199 => {
+                self.handle_provisional_response(session, response_code, &sip_message)
+                    .await
+            }
+            200..=299 => {
+                self.handle_success_response(session, response_code, &sip_message)
+                    .await
+            }
+            300..=699 => {
+                self.handle_error_response(session, response_code, &sip_message)
+                    .await
+            }
             _ => Ok(()),
         }
     }
-    
+
     /// Handle provisional responses (100-199)
-    async fn handle_provisional_response(&self, session: CallSession, code: u16, _message: &SipMessage) -> Result<()> {
-        debug!("Provisional response {} for call {}", code, session.session_id);
-        
+    async fn handle_provisional_response(
+        &self,
+        session: CallSession,
+        code: u16,
+        _message: &SipMessage,
+    ) -> Result<()> {
+        debug!(
+            "Provisional response {} for call {}",
+            code, session.session_id
+        );
+
         // Forward provisional response to A-leg
         if let Some(a_leg_addr) = self.get_a_leg_address(&session).await? {
-            self.send_sip_response(a_leg_addr, &session.a_leg.call_id, code, "Progress", "").await?;
+            self.send_sip_response(a_leg_addr, &session.a_leg.call_id, code, "Progress", "")
+                .await?;
         }
-        
+
         Ok(())
     }
-    
+
     /// Handle success responses (200-299)  
-    async fn handle_success_response(&self, mut session: CallSession, code: u16, message: &SipMessage) -> Result<()> {
+    async fn handle_success_response(
+        &self,
+        mut session: CallSession,
+        code: u16,
+        message: &SipMessage,
+    ) -> Result<()> {
         info!("Success response {} for call {}", code, session.session_id);
-        
+
         if code == 200 {
             // Call answered
             session.state = SessionState::Connected;
             session.cdr.answer_time = Some(Utc::now());
-            
+
             // Perform codec negotiation
             if self.config.enable_codec_translation {
                 self.negotiate_codecs(&mut session, message).await?;
             }
-            
+
             self.session_manager.update_session(session.clone()).await;
-            
+
             // Forward 200 OK to A-leg
             if let Some(a_leg_addr) = self.get_a_leg_address(&session).await? {
-                let forwarded_response = self.create_forwarded_response(&session, code, "OK", message).await?;
-                self.send_sip_message(a_leg_addr, &forwarded_response).await?;
+                let forwarded_response = self
+                    .create_forwarded_response(&session, code, "OK", message)
+                    .await?;
+                self.send_sip_message(a_leg_addr, &forwarded_response)
+                    .await?;
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Handle error responses (300-699)
-    async fn handle_error_response(&self, session: CallSession, code: u16, message: &SipMessage) -> Result<()> {
+    async fn handle_error_response(
+        &self,
+        session: CallSession,
+        code: u16,
+        message: &SipMessage,
+    ) -> Result<()> {
         warn!("Error response {} for call {}", code, session.session_id);
-        
+
         let reason = message.reason_phrase.as_deref().unwrap_or("Error");
-        
+
         // Check if we should attempt route advancement
         let advancement_result = {
             let mut route_advancement = self.route_advancement.lock().await;
-            route_advancement.handle_sip_response(&session.session_id, code, reason).await?
+            route_advancement
+                .handle_sip_response(&session.session_id, code, reason)
+                .await?
         };
-        
+
         match advancement_result.action {
             crate::route_advancement::AdvancementAction::RouteToNext => {
                 info!("Advancing to next route for call {}", session.session_id);
-                
+
                 if let Some(new_route) = advancement_result.new_route {
                     self.attempt_termination(session, new_route).await?;
                 } else {
-                    self.terminate_session(&session.session_id, code, reason).await?;
+                    self.terminate_session(&session.session_id, code, reason)
+                        .await?;
                 }
             }
             _ => {
                 // Complete or reject call
-                self.terminate_session(&session.session_id, code, reason).await?;
+                self.terminate_session(&session.session_id, code, reason)
+                    .await?;
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Handle BYE messages (call termination)
     async fn handle_bye(&self, sip_message: SipMessage, addr: SocketAddr) -> Result<()> {
-        let call_id = sip_message.headers.get("Call-ID")
+        let call_id = sip_message
+            .headers
+            .get("Call-ID")
             .ok_or_else(|| anyhow!("Missing Call-ID header"))?;
-            
+
         info!("Processing BYE for call {}", call_id);
-        
-        if let Some(session) = self.session_manager.get_session_by_any_call_id(call_id).await {
-            self.terminate_session(&session.session_id, 200, "Normal clearing").await?;
+
+        if let Some(session) = self
+            .session_manager
+            .get_session_by_any_call_id(call_id)
+            .await
+        {
+            self.terminate_session(&session.session_id, 200, "Normal clearing")
+                .await?;
             self.send_sip_response(addr, call_id, 200, "OK", "").await?;
         }
-        
+
         Ok(())
     }
-    
+
     /// Handle ACK messages
     async fn handle_ack(&self, sip_message: SipMessage, _addr: SocketAddr) -> Result<()> {
-        let call_id = sip_message.headers.get("Call-ID")
+        let call_id = sip_message
+            .headers
+            .get("Call-ID")
             .ok_or_else(|| anyhow!("Missing Call-ID header"))?;
-            
+
         debug!("Processing ACK for call {}", call_id);
-        
+
         // Forward ACK to appropriate leg
-        if let Some(session) = self.session_manager.get_session_by_any_call_id(call_id).await {
+        if let Some(session) = self
+            .session_manager
+            .get_session_by_any_call_id(call_id)
+            .await
+        {
             // Forward ACK to B-leg if this is from A-leg
             // Implementation depends on which leg sent the ACK
         }
-        
+
         Ok(())
     }
-    
+
     /// Handle CANCEL messages
     async fn handle_cancel(&self, sip_message: SipMessage, addr: SocketAddr) -> Result<()> {
-        let call_id = sip_message.headers.get("Call-ID")
+        let call_id = sip_message
+            .headers
+            .get("Call-ID")
             .ok_or_else(|| anyhow!("Missing Call-ID header"))?;
-            
+
         info!("Processing CANCEL for call {}", call_id);
-        
-        if let Some(session) = self.session_manager.get_session_by_any_call_id(call_id).await {
-            self.terminate_session(&session.session_id, 487, "Request Cancelled").await?;
+
+        if let Some(session) = self
+            .session_manager
+            .get_session_by_any_call_id(call_id)
+            .await
+        {
+            self.terminate_session(&session.session_id, 487, "Request Cancelled")
+                .await?;
             self.send_sip_response(addr, call_id, 200, "OK", "").await?;
         }
-        
+
         Ok(())
     }
-    
+
     /// Terminate a call session
-    async fn terminate_session(&self, session_id: &str, cause_code: u16, reason: &str) -> Result<()> {
+    async fn terminate_session(
+        &self,
+        session_id: &str,
+        cause_code: u16,
+        reason: &str,
+    ) -> Result<()> {
         if let Some(mut session) = self.session_manager.get_session(session_id).await {
             session.state = SessionState::Terminated;
             session.cdr.end_time = Some(Utc::now());
             session.cdr.termination_cause = Some(cause_code);
             session.cdr.termination_reason = Some(reason.to_string());
-            
+
             // Calculate duration
             if let Some(answer_time) = session.cdr.answer_time {
                 session.cdr.duration_seconds = Some(
-                    session.cdr.end_time.unwrap().signed_duration_since(answer_time).num_seconds() as u64
+                    session
+                        .cdr
+                        .end_time
+                        .unwrap()
+                        .signed_duration_since(answer_time)
+                        .num_seconds() as u64,
                 );
             }
-            
+
             // Send CDR
             if self.config.enable_cdr_generation {
                 self.cdr_generator.generate_cdr(session.cdr.clone()).await;
             }
-            
+
             self.session_manager.remove_session(session_id).await;
-            
-            info!("Terminated session {} with cause {}: {}", session_id, cause_code, reason);
+
+            info!(
+                "Terminated session {} with cause {}: {}",
+                session_id, cause_code, reason
+            );
         }
-        
+
         Ok(())
     }
-    
+
     // Helper methods for SIP message processing
-    
+
     fn parse_sip_message(&self, message: &str) -> Result<SipMessage> {
         // Simple SIP message parser - in production would use a proper SIP parser
         let mut lines = message.lines();
         let first_line = lines.next().ok_or_else(|| anyhow!("Empty SIP message"))?;
-        
+
         let mut headers = HashMap::new();
         let mut method = None;
         let mut status_code = None;
         let mut reason_phrase = None;
-        
+
         // Parse first line
         if first_line.starts_with("SIP/2.0") {
             // This is a response
@@ -621,20 +725,20 @@ impl Class4B2BUA {
                 method = Some(parts[0].to_string());
             }
         }
-        
+
         // Parse headers
         for line in lines {
             if line.trim().is_empty() {
                 break; // End of headers
             }
-            
+
             if let Some(colon_pos) = line.find(':') {
                 let name = line[..colon_pos].trim().to_string();
                 let value = line[colon_pos + 1..].trim().to_string();
                 headers.insert(name, value);
             }
         }
-        
+
         Ok(SipMessage {
             method,
             status_code,
@@ -642,12 +746,18 @@ impl Class4B2BUA {
             headers,
         })
     }
-    
-    async fn create_call_session(&self, sip_message: SipMessage, addr: SocketAddr, calling: String, called: String) -> Result<CallSession> {
+
+    async fn create_call_session(
+        &self,
+        sip_message: &SipMessage,
+        addr: SocketAddr,
+        calling: String,
+        called: String,
+    ) -> Result<CallSession> {
         let session_id = Uuid::new_v4().to_string();
         let call_id = sip_message.headers.get("Call-ID").unwrap().clone();
         let from_tag = self.extract_tag(&sip_message.headers, "From")?;
-        
+
         let a_leg = CallLeg {
             call_id: call_id.clone(),
             from_tag,
@@ -660,7 +770,7 @@ impl Class4B2BUA {
             selected_codec: None,
             last_cseq: 1,
         };
-        
+
         let cdr = CallDetailRecord {
             session_id: session_id.clone(),
             a_leg_call_id: call_id,
@@ -680,7 +790,7 @@ impl Class4B2BUA {
             codec_negotiated: None,
             transcoding_used: false,
         };
-        
+
         Ok(CallSession {
             session_id,
             a_leg,
@@ -700,9 +810,9 @@ impl Class4B2BUA {
             cdr,
         })
     }
-    
+
     // Additional helper methods would be implemented here...
-    
+
     fn extract_calling_number(&self, sip_message: &SipMessage) -> Result<String> {
         // Extract from From header
         if let Some(from) = sip_message.headers.get("From") {
@@ -716,13 +826,13 @@ impl Class4B2BUA {
         }
         Err(anyhow!("Could not extract calling number"))
     }
-    
+
     fn extract_called_number(&self, sip_message: &SipMessage) -> Result<String> {
         // Extract from Request-URI or To header
         // Implementation similar to calling number extraction
         Ok("18005551234".to_string()) // Placeholder
     }
-    
+
     fn extract_tag(&self, headers: &HashMap<String, String>, header_name: &str) -> Result<String> {
         if let Some(header_value) = headers.get(header_name) {
             if let Some(tag_start) = header_value.find("tag=") {
@@ -735,54 +845,81 @@ impl Class4B2BUA {
         }
         Err(anyhow!("Could not extract tag from {}", header_name))
     }
-    
+
     fn extract_codecs(&self, sip_message: &SipMessage) -> Vec<String> {
         // Extract codecs from SDP in message body
         // Placeholder implementation
         vec!["G711U".to_string(), "G729".to_string()]
     }
-    
-    async fn negotiate_codecs(&self, session: &mut CallSession, message: &SipMessage) -> Result<()> {
+
+    async fn negotiate_codecs(
+        &self,
+        session: &mut CallSession,
+        message: &SipMessage,
+    ) -> Result<()> {
         // Codec negotiation logic
-        self.codec_translator.negotiate_codecs(&mut session.codec_negotiation, message).await
+        self.codec_translator
+            .negotiate_codecs(&mut session.codec_negotiation, message)
+            .await
     }
-    
-    async fn create_b_leg_invite(&self, session: &CallSession, route: &crate::lcr::types::CallRoute) -> Result<String> {
+
+    async fn create_b_leg_invite(
+        &self,
+        session: &CallSession,
+        route: &crate::lcr::types::CallRoute,
+    ) -> Result<String> {
         // Create B-leg INVITE message
-        Ok(format!("INVITE sip:{}@{}:{} SIP/2.0\r\n\r\n", 
-                  session.cdr.called_number,
-                  route.egress_trunk.host,
-                  route.egress_trunk.port))
+        Ok(format!(
+            "INVITE sip:{}@{}:{} SIP/2.0\r\n\r\n",
+            session.cdr.called_number, route.egress_trunk.host, route.egress_trunk.port
+        ))
     }
-    
-    async fn create_forwarded_response(&self, session: &CallSession, code: u16, reason: &str, original: &SipMessage) -> Result<String> {
+
+    async fn create_forwarded_response(
+        &self,
+        session: &CallSession,
+        code: u16,
+        reason: &str,
+        original: &SipMessage,
+    ) -> Result<String> {
         // Create forwarded response message
         Ok(format!("SIP/2.0 {} {}\r\n\r\n", code, reason))
     }
-    
+
     async fn get_a_leg_address(&self, session: &CallSession) -> Result<Option<SocketAddr>> {
         Ok(Some(session.a_leg.remote_addr))
     }
-    
+
     async fn send_sip_message(&self, addr: SocketAddr, message: &str) -> Result<()> {
         self.socket.send_to(message.as_bytes(), addr).await?;
         debug!("Sent SIP message to {}", addr);
         Ok(())
     }
-    
-    async fn send_sip_response(&self, addr: SocketAddr, call_id: &str, code: u16, reason: &str, body: &str) -> Result<()> {
+
+    async fn send_sip_response(
+        &self,
+        addr: SocketAddr,
+        call_id: &str,
+        code: u16,
+        reason: &str,
+        body: &str,
+    ) -> Result<()> {
         let response = format!(
             "SIP/2.0 {} {}\r\nCall-ID: {}\r\nContent-Length: {}\r\n\r\n{}",
-            code, reason, call_id, body.len(), body
+            code,
+            reason,
+            call_id,
+            body.len(),
+            body
         );
         self.send_sip_message(addr, &response).await
     }
-    
+
     fn start_session_cleanup_task(&self) {
         let session_manager = self.session_manager.clone();
         let cleanup_interval = Duration::from_secs(self.config.session_cleanup_interval_seconds);
         let call_timeout = Duration::from_secs(self.config.call_timeout_seconds);
-        
+
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(cleanup_interval);
             loop {
@@ -810,31 +947,31 @@ impl SessionManager {
             stats: RwLock::new(SessionStats::default()),
         }
     }
-    
+
     pub async fn add_session(&self, session: CallSession) {
         let mut sessions = self.active_sessions.write().await;
         let mut mapping = self.call_id_mapping.write().await;
         let mut stats = self.stats.write().await;
-        
+
         // Add call ID mappings
         mapping.insert(session.a_leg.call_id.clone(), session.session_id.clone());
         if let Some(ref b_leg) = session.b_leg {
             mapping.insert(b_leg.call_id.clone(), session.session_id.clone());
         }
-        
+
         sessions.insert(session.session_id.clone(), session);
-        
+
         stats.total_sessions += 1;
         stats.active_sessions += 1;
         if stats.active_sessions > stats.peak_concurrent_calls {
             stats.peak_concurrent_calls = stats.active_sessions;
         }
     }
-    
+
     pub async fn get_session(&self, session_id: &str) -> Option<CallSession> {
         self.active_sessions.read().await.get(session_id).cloned()
     }
-    
+
     pub async fn get_session_by_any_call_id(&self, call_id: &str) -> Option<CallSession> {
         let mapping = self.call_id_mapping.read().await;
         if let Some(session_id) = mapping.get(call_id) {
@@ -843,30 +980,30 @@ impl SessionManager {
             None
         }
     }
-    
+
     pub async fn session_exists(&self, call_id: &str) -> bool {
         self.call_id_mapping.read().await.contains_key(call_id)
     }
-    
+
     pub async fn update_session(&self, session: CallSession) {
         let mut sessions = self.active_sessions.write().await;
         sessions.insert(session.session_id.clone(), session);
     }
-    
+
     pub async fn remove_session(&self, session_id: &str) {
         let mut sessions = self.active_sessions.write().await;
         let mut mapping = self.call_id_mapping.write().await;
         let mut stats = self.stats.write().await;
-        
+
         if let Some(session) = sessions.remove(session_id) {
             // Remove call ID mappings
             mapping.remove(&session.a_leg.call_id);
             if let Some(ref b_leg) = session.b_leg {
                 mapping.remove(&b_leg.call_id);
             }
-            
+
             stats.active_sessions = stats.active_sessions.saturating_sub(1);
-            
+
             if session.state == SessionState::Connected {
                 stats.successful_calls += 1;
                 if let Some(duration) = session.cdr.duration_seconds {
@@ -877,11 +1014,11 @@ impl SessionManager {
             }
         }
     }
-    
+
     pub async fn cleanup_expired_sessions(&self, timeout: Duration) {
         let now = Utc::now();
         let cutoff = now - chrono::Duration::seconds(timeout.as_secs() as i64);
-        
+
         let expired_sessions: Vec<String> = {
             let sessions = self.active_sessions.read().await;
             sessions
@@ -890,13 +1027,13 @@ impl SessionManager {
                 .map(|(id, _)| id.clone())
                 .collect()
         };
-        
+
         for session_id in expired_sessions {
             warn!("Cleaning up expired session: {}", session_id);
             self.remove_session(&session_id).await;
         }
     }
-    
+
     pub async fn get_stats(&self) -> SessionStats {
         self.stats.read().await.clone()
     }
@@ -915,7 +1052,7 @@ impl CDRGenerator {
             cdr_sender: sender,
         }
     }
-    
+
     pub async fn generate_cdr(&self, cdr: CallDetailRecord) {
         if self.config.enable_cdr_generation {
             if let Err(e) = self.cdr_sender.send(cdr) {
@@ -923,15 +1060,15 @@ impl CDRGenerator {
             }
         }
     }
-    
+
     pub fn start_cdr_processor(mut receiver: mpsc::UnboundedReceiver<CallDetailRecord>) {
         tokio::spawn(async move {
             while let Some(cdr) = receiver.recv().await {
                 // In production, this would write to database or file
-                info!("CDR: {} -> {} duration: {:?}s", 
-                      cdr.calling_number, 
-                      cdr.called_number, 
-                      cdr.duration_seconds);
+                info!(
+                    "CDR: {} -> {} duration: {:?}s",
+                    cdr.calling_number, cdr.called_number, cdr.duration_seconds
+                );
             }
         });
     }
@@ -941,30 +1078,37 @@ impl CodecTranslator {
     pub fn new() -> Self {
         let supported_codecs = vec![
             "G711U".to_string(),
-            "G711A".to_string(), 
+            "G711A".to_string(),
             "G729".to_string(),
             "G722".to_string(),
         ];
-        
+
         let mut transcoding_profiles = HashMap::new();
-        transcoding_profiles.insert("G711U_to_G729".to_string(), TranscodingProfile {
-            name: "G711U to G729".to_string(),
-            source_codec: "G711U".to_string(),
-            target_codec: "G729".to_string(),
-            quality_profile: "standard".to_string(),
-            bandwidth_optimization: true,
-        });
-        
+        transcoding_profiles.insert(
+            "G711U_to_G729".to_string(),
+            TranscodingProfile {
+                name: "G711U to G729".to_string(),
+                source_codec: "G711U".to_string(),
+                target_codec: "G729".to_string(),
+                quality_profile: "standard".to_string(),
+                bandwidth_optimization: true,
+            },
+        );
+
         Self {
             supported_codecs,
             transcoding_profiles,
         }
     }
-    
-    pub async fn negotiate_codecs(&self, negotiation: &mut CodecNegotiation, message: &SipMessage) -> Result<()> {
+
+    pub async fn negotiate_codecs(
+        &self,
+        negotiation: &mut CodecNegotiation,
+        message: &SipMessage,
+    ) -> Result<()> {
         // Extract B-leg codecs from SDP
         negotiation.b_leg_codecs = self.extract_codecs_from_sdp(message);
-        
+
         // Find common codec
         for a_codec in &negotiation.a_leg_codecs {
             if negotiation.b_leg_codecs.contains(a_codec) {
@@ -973,7 +1117,7 @@ impl CodecTranslator {
                 return Ok(());
             }
         }
-        
+
         // No common codec, check if transcoding is possible
         for a_codec in &negotiation.a_leg_codecs {
             for b_codec in &negotiation.b_leg_codecs {
@@ -986,10 +1130,10 @@ impl CodecTranslator {
                 }
             }
         }
-        
+
         Err(anyhow!("No compatible codecs found"))
     }
-    
+
     fn extract_codecs_from_sdp(&self, _message: &SipMessage) -> Vec<String> {
         // Extract codecs from SDP body
         // Placeholder implementation

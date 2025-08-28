@@ -50,7 +50,7 @@ pub enum SipResponseCode {
     BusyHere = 486,
     RequestTerminated = 487,
     NotAcceptableHere = 488,
-    
+
     // 5xx Server Error responses
     InternalServerError = 500,
     NotImplemented = 501,
@@ -130,22 +130,22 @@ impl SipResponseCode {
 /// Response code categories for routing logic
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResponseCategory {
-    ClientError,    // 4xx - usually advance to next route
-    ServerError,    // 5xx - usually advance to next route
-    GlobalFailure,  // 6xx - usually don't advance
-    Unknown,        // Other codes
+    ClientError,   // 4xx - usually advance to next route
+    ServerError,   // 5xx - usually advance to next route
+    GlobalFailure, // 6xx - usually don't advance
+    Unknown,       // Other codes
 }
 
 /// Termination routing request
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TerminationRoutingRequest {
     pub call_id: String,
-    pub ani: String,                    // A-number (caller)
-    pub dnis: String,                   // B-number (called)
-    pub route_request: RouteRequest,    // LCR request
-    pub attempt_number: u32,            // Current routing attempt
+    pub ani: String,                            // A-number (caller)
+    pub dnis: String,                           // B-number (called)
+    pub route_request: RouteRequest,            // LCR request
+    pub attempt_number: u32,                    // Current routing attempt
     pub previous_responses: Vec<FailedAttempt>, // Previous failed attempts
-    pub max_attempts: u32,              // Maximum routing attempts
+    pub max_attempts: u32,                      // Maximum routing attempts
     pub timestamp: DateTime<Utc>,
 }
 
@@ -211,9 +211,9 @@ pub struct TrunkCodecConfig {
 /// DTMF relay methods
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DtmfRelayMethod {
-    Rfc2833,    // RFC 4733 RTP events
-    SipInfo,    // SIP INFO messages
-    Inband,     // Inband audio
+    Rfc2833, // RFC 4733 RTP events
+    SipInfo, // SIP INFO messages
+    Inband,  // Inband audio
 }
 
 /// Caller Name (CNAM) configuration
@@ -228,10 +228,10 @@ pub struct TrunkCnamConfig {
 /// CNAM lookup methods
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CnamLookupMethod {
-    Database,   // Internal database lookup
-    Sip,       // SIP header (P-Asserted-Identity)
-    External,  // External CNAM service
-    None,      // No CNAM lookup
+    Database, // Internal database lookup
+    Sip,      // SIP header (P-Asserted-Identity)
+    External, // External CNAM service
+    None,     // No CNAM lookup
 }
 
 /// QoS requirements for trunk
@@ -299,24 +299,30 @@ impl TerminationRoutingService {
     pub fn add_trunk(&self, trunk: TerminationTrunk) {
         let trunk_id = trunk.id;
         let trunk_name = trunk.name.clone();
-        
+
         // Initialize CPS tracker if configured
         if let Some(cps_limit) = trunk.cps_limit {
-            self.cps_trackers.lock().unwrap().insert(trunk_id, CpsTracker::new(cps_limit));
+            self.cps_trackers
+                .lock()
+                .unwrap()
+                .insert(trunk_id, CpsTracker::new(cps_limit));
         }
-        
+
         self.active_calls.lock().unwrap().insert(trunk_id, 0);
         self.trunks.lock().unwrap().insert(trunk_id, trunk);
-        info!("Added termination trunk {} with ID {}", trunk_name, trunk_id);
+        info!(
+            "Added termination trunk {} with ID {}",
+            trunk_name, trunk_id
+        );
     }
 
     /// Route termination call with route advancement on SIP failures
     pub async fn route_termination(
-        &self,
+        &mut self,
         request: TerminationRoutingRequest,
     ) -> Result<TerminationRoutingResponse> {
         let start_time = Instant::now();
-        
+
         info!(
             "Processing termination request: {} -> {} (attempt {})",
             request.ani, request.dnis, request.attempt_number
@@ -336,7 +342,12 @@ impl TerminationRoutingService {
         }
 
         // Get routes from LCR engine
-        let lcr_response = match self.lcr_engine.get_routing_engine().find_routes(&request.route_request).await {
+        let lcr_response = match self
+            .lcr_engine
+            .get_routing_engine()
+            .find_routes(&request.route_request)
+            .await
+        {
             Ok(response) => response,
             Err(e) => {
                 warn!("LCR routing failed: {}", e);
@@ -365,8 +376,9 @@ impl TerminationRoutingService {
         }
 
         // Filter out previously failed routes that shouldn't be retried
-        let available_routes = self.filter_available_routes(&lcr_response.routes, &request.previous_responses);
-        
+        let available_routes =
+            self.filter_available_routes(&lcr_response.routes, &request.previous_responses);
+
         if available_routes.is_empty() {
             return Ok(TerminationRoutingResponse {
                 success: false,
@@ -396,8 +408,11 @@ impl TerminationRoutingService {
         };
 
         // Update active call count
-        if let Some(count) = self.active_calls.get_mut(&selected_route.egress_trunk.id) {
-            *count += 1;
+        {
+            let mut active_calls_map = self.active_calls.lock().unwrap();
+            if let Some(count) = active_calls_map.get_mut(&selected_route.egress_trunk.id) {
+                *count += 1;
+            }
         }
 
         let mut remaining_routes = available_routes;
@@ -429,7 +444,8 @@ impl TerminationRoutingService {
 
         // Update active call count on call completion/failure
         if response_code >= 300 || response_code < 200 {
-            if let Some(count) = self.active_calls.get_mut(&trunk_id) {
+            let mut active_calls_map = self.active_calls.lock().unwrap();
+            if let Some(count) = active_calls_map.get_mut(&trunk_id) {
                 if *count > 0 {
                     *count -= 1;
                 }
@@ -437,20 +453,22 @@ impl TerminationRoutingService {
         }
 
         // Determine if we should advance to next route
-        let should_advance = if let Ok(sip_code) = TryInto::<SipResponseCode>::try_into(response_code) {
-            sip_code.should_advance_route()
-        } else {
-            // For non-standard codes, check trunk-specific configuration
-            if let Some(trunk) = self.trunks.get(&trunk_id) {
-                trunk.route_advance_codes.contains(&response_code)
+        let should_advance =
+            if let Ok(sip_code) = TryInto::<SipResponseCode>::try_into(response_code) {
+                sip_code.should_advance_route()
             } else {
-                // Default behavior: advance on 4xx/5xx, don't advance on 6xx
-                match response_code {
-                    400..=599 => true,
-                    _ => false,
+                // For non-standard codes, check trunk-specific configuration
+                let trunks_map = self.trunks.lock().unwrap();
+                if let Some(trunk) = trunks_map.get(&trunk_id) {
+                    trunk.route_advance_codes.contains(&response_code)
+                } else {
+                    // Default behavior: advance on 4xx/5xx, don't advance on 6xx
+                    match response_code {
+                        400..=599 => true,
+                        _ => false,
+                    }
                 }
-            }
-        };
+            };
 
         if should_advance {
             RouteAdvanceDecision::AdvanceToNextRoute
@@ -482,24 +500,29 @@ impl TerminationRoutingService {
     async fn select_best_route(&mut self, routes: &[CallRoute]) -> Option<CallRoute> {
         for route in routes {
             let trunk_id = route.egress_trunk.id;
-            
+
             // Check if trunk exists and is enabled
-            let trunk = match self.trunks.get(&trunk_id) {
+            let trunks_map = self.trunks.lock().unwrap();
+            let trunk = match trunks_map.get(&trunk_id) {
                 Some(trunk) if trunk.enabled => trunk,
                 _ => continue,
             };
 
             // Check CPS limits
-            if let Some(cps_tracker) = self.cps_trackers.get_mut(&trunk_id) {
-                if !cps_tracker.can_place_call() {
-                    debug!("Trunk {} CPS limit exceeded", trunk_id);
-                    continue;
+            {
+                let mut cps_trackers = self.cps_trackers.lock().unwrap();
+                if let Some(cps_tracker) = cps_trackers.get_mut(&trunk_id) {
+                    if !cps_tracker.can_place_call() {
+                        debug!("Trunk {} CPS limit exceeded", trunk_id);
+                        continue;
+                    }
                 }
             }
 
             // Check concurrent call limits
             if let Some(limit) = trunk.concurrent_call_limit {
-                let active_calls = self.active_calls.get(&trunk_id).unwrap_or(&0);
+                let active_calls_map = self.active_calls.lock().unwrap();
+                let active_calls = active_calls_map.get(&trunk_id).unwrap_or(&0);
                 if *active_calls >= limit {
                     debug!("Trunk {} concurrent call limit exceeded", trunk_id);
                     continue;
@@ -526,13 +549,18 @@ impl TerminationRoutingService {
 
     /// Get trunk statistics
     pub fn get_trunk_stats(&self, trunk_id: i32) -> Option<TrunkStats> {
-        self.trunks.get(&trunk_id).map(|trunk| TrunkStats {
-            trunk_id,
-            trunk_name: trunk.name.clone(),
-            enabled: trunk.enabled,
-            active_calls: *self.active_calls.get(&trunk_id).unwrap_or(&0),
-            concurrent_limit: trunk.concurrent_call_limit,
-            cps_limit: trunk.cps_limit,
+        let trunks_map = self.trunks.lock().unwrap();
+        trunks_map.get(&trunk_id).map(|trunk| {
+            let active_calls_map = self.active_calls.lock().unwrap();
+            let active_calls = *active_calls_map.get(&trunk_id).unwrap_or(&0);
+            TrunkStats {
+                trunk_id,
+                trunk_name: trunk.name.clone(),
+                enabled: trunk.enabled,
+                active_calls,
+                concurrent_limit: trunk.concurrent_call_limit,
+                cps_limit: trunk.cps_limit,
+            }
         })
     }
 }
@@ -540,8 +568,8 @@ impl TerminationRoutingService {
 /// Route advancement decision
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RouteAdvanceDecision {
-    AdvanceToNextRoute,  // Try next route
-    CompleteCall,        // Don't advance, complete call
+    AdvanceToNextRoute, // Try next route
+    CompleteCall,       // Don't advance, complete call
 }
 
 /// Trunk statistics
@@ -687,7 +715,7 @@ mod tests {
         assert!(SipResponseCode::NotFound.should_advance_route());
         assert!(SipResponseCode::ServiceUnavailable.should_advance_route());
         assert!(SipResponseCode::TemporarilyUnavailable.should_advance_route());
-        
+
         // Should not advance
         assert!(!SipResponseCode::Decline.should_advance_route());
         assert!(!SipResponseCode::BusyEverywhere.should_advance_route());
@@ -696,19 +724,25 @@ mod tests {
 
     #[test]
     fn test_response_code_conversion() {
-        assert_eq!(SipResponseCode::try_from(404).unwrap(), SipResponseCode::NotFound);
-        assert_eq!(SipResponseCode::try_from(503).unwrap(), SipResponseCode::ServiceUnavailable);
+        assert_eq!(
+            SipResponseCode::try_from(404).unwrap(),
+            SipResponseCode::NotFound
+        );
+        assert_eq!(
+            SipResponseCode::try_from(503).unwrap(),
+            SipResponseCode::ServiceUnavailable
+        );
         assert!(SipResponseCode::try_from(999).is_err());
     }
 
     #[test]
     fn test_cps_tracker() {
         let mut tracker = CpsTracker::new(2);
-        
+
         // Should allow first two calls
         assert!(tracker.can_place_call());
         assert!(tracker.can_place_call());
-        
+
         // Should block third call
         assert!(!tracker.can_place_call());
     }
@@ -717,7 +751,7 @@ mod tests {
     async fn test_termination_routing_no_routes() {
         let lcr_engine = Arc::new(crate::lcr::LcrEngine::new("test://").await.unwrap());
         let mut service = TerminationRoutingService::new(lcr_engine);
-        
+
         let route_request = RouteRequest {
             ani: "15551234567".to_string(),
             dnis: "18005551234".to_string(),
@@ -730,15 +764,15 @@ mod tests {
             phone_validation: None,
             routing_plan_id: None,
         };
-        
-        let request = utils::create_test_termination_request(
-            "15551234567",
-            "18005551234",
-            route_request,
-        );
-        
+
+        let request =
+            utils::create_test_termination_request("15551234567", "18005551234", route_request);
+
         let response = service.route_termination(request).await.unwrap();
         assert!(!response.success);
-        assert_eq!(response.routing_decision, RoutingDecision::NoRoutesAvailable);
+        assert_eq!(
+            response.routing_decision,
+            RoutingDecision::NoRoutesAvailable
+        );
     }
 }

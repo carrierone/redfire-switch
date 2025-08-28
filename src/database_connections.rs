@@ -6,7 +6,7 @@ use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::{PgPool, PgPoolOptions};
-use sqlx::{Postgres, Transaction, Row};
+use sqlx::{Postgres, Row, Transaction};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
@@ -42,7 +42,7 @@ impl Default for DatabaseConfig {
             max_connections: 20,
             min_connections: 5,
             max_lifetime: Duration::from_secs(30 * 60), // 30 minutes
-            idle_timeout: Duration::from_secs(10 * 60),  // 10 minutes
+            idle_timeout: Duration::from_secs(10 * 60), // 10 minutes
             acquire_timeout: Duration::from_secs(30),
             enable_health_checks: true,
             health_check_interval: Duration::from_secs(30),
@@ -88,22 +88,29 @@ pub struct HealthCheckResult {
 impl EnhancedDatabasePool {
     /// Create a new enhanced database pool with configuration
     pub async fn new(config: DatabaseConfig) -> Result<Self> {
-        info!("Creating enhanced database pool with {} max connections", config.max_connections);
-        
+        info!(
+            "Creating enhanced database pool with {} max connections",
+            config.max_connections
+        );
+
         let pool = PgPoolOptions::new()
             .max_connections(config.max_connections)
             .min_connections(config.min_connections)
             .max_lifetime(config.max_lifetime)
             .idle_timeout(config.idle_timeout)
             .acquire_timeout(config.acquire_timeout)
-            .before_acquire(|_conn, _meta| Box::pin(async move {
-                debug!("Acquiring database connection");
-                Ok(true)
-            }))
-            .after_release(|_conn, _meta| Box::pin(async move {
-                debug!("Released database connection");
-                Ok(())
-            }))
+            .before_acquire(|_conn, _meta| {
+                Box::pin(async move {
+                    debug!("Acquiring database connection");
+                    Ok(true)
+                })
+            })
+            .after_release(|_conn, _meta| {
+                Box::pin(async move {
+                    debug!("Released database connection");
+                    Ok(true)
+                })
+            })
             .connect(&config.database_url)
             .await?;
 
@@ -137,11 +144,11 @@ impl EnhancedDatabasePool {
     /// Begin a new database transaction with automatic rollback
     pub async fn begin_transaction(&self) -> Result<DatabaseTransaction> {
         let start_time = Instant::now();
-        
+
         let transaction = self.pool.begin().await?;
-        
+
         self.record_query_stats(start_time, true).await;
-        
+
         Ok(DatabaseTransaction {
             transaction: Some(transaction),
             committed: false,
@@ -154,27 +161,30 @@ impl EnhancedDatabasePool {
         F: FnOnce(&PgPool) -> Result<R>,
     {
         let start_time = Instant::now();
-        
+
         debug!("Executing database operation: {}", operation_name);
-        
+
         let result = query_fn(&self.pool);
         let success = result.is_ok();
-        
+
         if let Err(ref e) = result {
             error!("Database operation '{}' failed: {}", operation_name, e);
         }
-        
+
         self.record_query_stats(start_time, success).await;
-        
+
         if self.config.enable_query_logging {
             let duration = start_time.elapsed();
             if duration >= self.config.slow_query_threshold {
-                warn!("Slow query detected: '{}' took {:?}", operation_name, duration);
+                warn!(
+                    "Slow query detected: '{}' took {:?}",
+                    operation_name, duration
+                );
                 let mut stats = self.stats.write().await;
                 stats.slow_queries += 1;
             }
         }
-        
+
         result
     }
 
@@ -182,14 +192,14 @@ impl EnhancedDatabasePool {
     pub async fn health_check(&self) -> HealthCheckResult {
         let start_time = Instant::now();
         let timestamp = Utc::now();
-        
+
         let result = sqlx::query_scalar::<_, i32>("SELECT 1")
             .fetch_one(&self.pool)
             .await;
-        
+
         let response_time_ms = start_time.elapsed().as_millis() as u64;
         let stats = self.stats.read().await;
-        
+
         match result {
             Ok(_) => {
                 debug!("Database health check passed ({} ms)", response_time_ms);
@@ -219,12 +229,12 @@ impl EnhancedDatabasePool {
     /// Get current connection pool statistics
     pub async fn get_stats(&self) -> ConnectionStats {
         let mut stats = self.stats.write().await;
-        
+
         // Update connection counts from pool
         stats.total_connections = self.pool.size();
-        stats.active_connections = self.pool.size() - self.pool.num_idle();
-        stats.idle_connections = self.pool.num_idle();
-        
+        stats.active_connections = self.pool.size() - self.pool.num_idle() as u32;
+        stats.idle_connections = self.pool.num_idle() as u32;
+
         // Clone the stats to return (need to manually implement the fields)
         ConnectionStats {
             total_connections: stats.total_connections,
@@ -251,21 +261,23 @@ impl EnhancedDatabasePool {
     async fn record_query_stats(&self, start_time: Instant, success: bool) {
         let duration = start_time.elapsed();
         let mut stats = self.stats.write().await;
-        
+
         stats.total_queries += 1;
         if success {
             stats.successful_queries += 1;
         } else {
             stats.failed_queries += 1;
         }
-        
+
         // Update average query time (simple moving average)
         if stats.total_queries == 1 {
             stats.average_query_time = duration;
         } else {
-            let total_time = stats.average_query_time.as_nanos() * (stats.total_queries - 1) as u128
+            let total_time = stats.average_query_time.as_nanos()
+                * (stats.total_queries - 1) as u128
                 + duration.as_nanos();
-            stats.average_query_time = Duration::from_nanos((total_time / stats.total_queries as u128) as u64);
+            stats.average_query_time =
+                Duration::from_nanos((total_time / stats.total_queries as u128) as u64);
         }
     }
 
@@ -273,18 +285,18 @@ impl EnhancedDatabasePool {
     fn start_health_check_task(&self) {
         let pool_clone = self.clone();
         let interval = self.config.health_check_interval;
-        
+
         tokio::spawn(async move {
             let mut interval_timer = tokio::time::interval(interval);
-            
+
             loop {
                 interval_timer.tick().await;
-                
+
                 let health_result = pool_clone.health_check().await;
                 let mut stats = pool_clone.stats.write().await;
-                
+
                 stats.last_health_check = Some(health_result.timestamp);
-                
+
                 if health_result.healthy {
                     stats.consecutive_health_failures = 0;
                     stats.connection_pool_healthy = true;
@@ -292,8 +304,10 @@ impl EnhancedDatabasePool {
                     stats.consecutive_health_failures += 1;
                     if stats.consecutive_health_failures >= 3 {
                         stats.connection_pool_healthy = false;
-                        error!("Database pool marked unhealthy after {} consecutive failures", 
-                               stats.consecutive_health_failures);
+                        error!(
+                            "Database pool marked unhealthy after {} consecutive failures",
+                            stats.consecutive_health_failures
+                        );
                     }
                 }
             }
@@ -303,7 +317,7 @@ impl EnhancedDatabasePool {
     /// Ensure database schema is properly initialized
     async fn ensure_database_schema(&self) -> Result<()> {
         debug!("Ensuring database schema is initialized");
-        
+
         // Check if our monitoring table exists, create if not
         sqlx::query(
             r#"
@@ -334,9 +348,13 @@ impl EnhancedDatabasePool {
     }
 
     /// Log database connection events
-    pub async fn log_connection_event(&self, event_type: &str, error_message: Option<&str>) -> Result<()> {
+    pub async fn log_connection_event(
+        &self,
+        event_type: &str,
+        error_message: Option<&str>,
+    ) -> Result<()> {
         let stats = self.get_stats().await;
-        
+
         sqlx::query(
             r#"
             INSERT INTO database_connection_log (event_type, connection_count, query_count, error_message)
@@ -408,7 +426,9 @@ impl<'a> DatabaseTransaction<'a> {
         if let Some(ref mut tx) = self.transaction {
             query_fn(tx)
         } else {
-            Err(anyhow!("Transaction has already been committed or rolled back"))
+            Err(anyhow!(
+                "Transaction has already been committed or rolled back"
+            ))
         }
     }
 }
@@ -517,7 +537,10 @@ mod tests {
         assert!(stats.total_connections > 0);
 
         // Test transaction
-        let mut tx = pool.begin_transaction().await.expect("Failed to begin transaction");
+        let mut tx = pool
+            .begin_transaction()
+            .await
+            .expect("Failed to begin transaction");
         tx.commit().await.expect("Failed to commit transaction");
 
         pool.close().await;

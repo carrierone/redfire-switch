@@ -2,7 +2,7 @@
 //! Demonstrates the complete Class 4 switching functionality
 
 use anyhow::Result;
-use redfire_switch::class4_integration::{Class4SwitchService, Class4SwitchAPI};
+use redfire_switch::class4_integration::{Class4SwitchAPI, Class4SwitchService};
 use std::sync::Arc;
 use tokio::signal;
 use tracing::{error, info, warn};
@@ -23,25 +23,25 @@ async fn main() -> Result<()> {
     // Build the Class 4 Switch Service
     let service = build_demo_service().await?;
     let service_arc = Arc::new(service);
-    
+
     // Create API for monitoring
     let api = Class4SwitchAPI::new(service_arc.clone());
-    
+
     // Start monitoring task
     start_monitoring_task(api).await;
-    
+
     // Set up graceful shutdown
     let shutdown_service = service_arc.clone();
     tokio::spawn(async move {
         if let Err(e) = signal::ctrl_c().await {
             error!("Failed to listen for shutdown signal: {}", e);
         }
-        
+
         info!("Shutdown signal received, stopping Class 4 Switch");
         if let Err(e) = shutdown_service.shutdown().await {
             error!("Error during shutdown: {}", e);
         }
-        
+
         std::process::exit(0);
     });
 
@@ -56,19 +56,19 @@ async fn main() -> Result<()> {
 
 async fn build_demo_service() -> Result<Class4SwitchService> {
     info!("Building Class 4 Switch Service for demo");
-    
+
     // Use environment variables or defaults for configuration
     let bind_address = std::env::var("CLASS4_BIND_ADDRESS")
         .unwrap_or_else(|_| "127.0.0.1".to_string())
         .parse()?;
-    
+
     let bind_port: u16 = std::env::var("CLASS4_BIND_PORT")
         .unwrap_or_else(|_| "5060".to_string())
         .parse()?;
-    
+
     let database_url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://postgres:password@localhost/redfire_switch".to_string());
-    
+
     let max_calls: u32 = std::env::var("CLASS4_MAX_CALLS")
         .unwrap_or_else(|_| "1000".to_string())
         .parse()?;
@@ -97,15 +97,17 @@ async fn build_demo_service() -> Result<Class4SwitchService> {
 async fn start_monitoring_task(api: Class4SwitchAPI) {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
-        
+
         loop {
             interval.tick().await;
-            
+
             match api.health_check().await {
                 Ok(health) => {
                     if health.overall_healthy {
-                        info!("Health Check: OK - {} active calls, DB response time: {}ms", 
-                              health.active_calls, health.database_response_time_ms);
+                        info!(
+                            "Health Check: OK - {} active calls, DB response time: {}ms",
+                            health.active_calls, health.database_response_time_ms
+                        );
                     } else {
                         warn!("Health Check: UNHEALTHY - Database issues detected");
                     }
@@ -114,15 +116,17 @@ async fn start_monitoring_task(api: Class4SwitchAPI) {
                     error!("Health check failed: {}", e);
                 }
             }
-            
+
             match api.get_call_stats().await {
                 Ok(stats) => {
-                    info!("Call Stats: Active={}, Total={}, Success={}, Failed={}, Peak={}", 
-                          stats.active_calls,
-                          stats.total_calls,
-                          stats.successful_calls, 
-                          stats.failed_calls,
-                          stats.peak_concurrent_calls);
+                    info!(
+                        "Call Stats: Active={}, Total={}, Success={}, Failed={}, Peak={}",
+                        stats.active_calls,
+                        stats.total_calls,
+                        stats.successful_calls,
+                        stats.failed_calls,
+                        stats.peak_concurrent_calls
+                    );
                 }
                 Err(e) => {
                     error!("Failed to get call stats: {}", e);
@@ -154,7 +158,7 @@ mod tests {
         let masked = mask_password(url);
         assert_eq!(masked, "postgres://user:****@localhost/db");
     }
-    
+
     #[test]
     fn test_password_masking_no_password() {
         let url = "postgres://localhost/db";
