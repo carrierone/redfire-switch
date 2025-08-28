@@ -183,7 +183,7 @@ async fn test_rfc2833_event_processing() -> Result<()> {
             _ => assert!(
                 false,
                 "Expected DigitDetected event for digit '{}', got: {:?}",
-                digit, event
+                digit, received_event
             ),
         }
     }
@@ -264,7 +264,7 @@ async fn test_sip_info_dtmf_processing() -> Result<()> {
             _ => assert!(
                 false,
                 "Expected DigitDetected event for SIP INFO, got: {:?}",
-                event
+                received_event
             ),
         }
     }
@@ -317,7 +317,7 @@ async fn test_sigtran_dtmf_processing() -> Result<()> {
             _ => assert!(
                 false,
                 "Expected DigitDetected event for digit '{}', got: {:?}",
-                expected_digit, event
+                expected_digit, received_event
             ),
         }
     }
@@ -337,7 +337,7 @@ async fn test_sigtran_dtmf_processing() -> Result<()> {
         _ => assert!(
             false,
             "Expected SequenceComplete event, got: {:?}",
-            seq_event
+            sequence_event
         ),
     }
 

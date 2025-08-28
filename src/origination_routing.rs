@@ -72,7 +72,7 @@ pub enum RiskLevel {
     Critical,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum FraudFlag {
     SuspiciousAni,
     HighVolumeSource,

@@ -173,7 +173,7 @@ pub struct TerminationRoutingResponse {
 }
 
 /// Routing decision outcome
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum RoutingDecision {
     RouteFound,         // Route found and selected
     NoRoutesAvailable,  // No routes available for destination

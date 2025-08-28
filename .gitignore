@@ -1,6 +1,6 @@
 # Rust
 target/
-Cargo.lock
+# Cargo.lock - tracking this since this is an application, not a library
 **/*.rs.bk
 
 # IDE
