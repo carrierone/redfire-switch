@@ -119,8 +119,12 @@ impl Class4SwitchBuilder {
 
         // Initialize routing engines
         let origination_config = crate::origination_routing::OriginationConfig::default();
-        let origination_engine = Arc::new(Mutex::new(OriginationRoutingEngine::new(origination_config)));
-        let termination_service = Arc::new(Mutex::new(TerminationRoutingService::new(lcr_engine.clone())));
+        let origination_engine = Arc::new(Mutex::new(OriginationRoutingEngine::new(
+            origination_config,
+        )));
+        let termination_service = Arc::new(Mutex::new(TerminationRoutingService::new(
+            lcr_engine.clone(),
+        )));
         let route_advancement = Arc::new(Mutex::new(RouteAdvancementEngine::new(
             termination_service.clone(),
             self.config.max_route_attempts,

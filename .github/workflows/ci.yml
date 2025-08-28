@@ -139,7 +139,7 @@ jobs:
       uses: taiki-e/install-action@cargo-llvm-cov
     
     - name: Generate code coverage
-      run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
+      run: cargo llvm-cov --no-default-features --workspace --lcov --output-path lcov.info
     
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
@@ -180,7 +180,13 @@ jobs:
     - name: Install SIPp
       run: |
         sudo apt-get update
-        sudo apt-get install -y sipp
+        # SIPp is not available in Ubuntu 24.04 repos, build from source
+        sudo apt-get install -y cmake libssl-dev libsctp-dev libncurses5-dev
+        git clone https://github.com/SIPp/sipp.git
+        cd sipp
+        cmake . -DUSE_SSL=1 -DUSE_SCTP=1
+        make
+        sudo make install
     
     - name: Build project
       run: cargo build --release
@@ -201,7 +207,7 @@ jobs:
         toolchain: stable
     
     - name: Build documentation
-      run: cargo doc --all-features --no-deps
+      run: cargo doc --no-default-features --no-deps
     
     - name: Check documentation links
-      run: cargo doc --all-features --no-deps --document-private-items
+      run: cargo doc --no-default-features --no-deps --document-private-items

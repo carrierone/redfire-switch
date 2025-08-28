@@ -24,7 +24,7 @@ RUN rm -rf src
 
 # Copy actual source code
 COPY src ./src
-COPY config-dev.json ./
+COPY config-dev.example.json ./config-dev.json
 
 # Build in debug mode for better debugging
 RUN cargo build
