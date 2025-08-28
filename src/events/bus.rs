@@ -38,7 +38,6 @@ impl Default for EventBusConfig {
 }
 
 /// High-performance event bus with async handlers and filtering
-#[derive(Debug)]
 pub struct EventBus {
     /// Broadcast channel for real-time event distribution
     sender: broadcast::Sender<Arc<TelecomEvent>>,

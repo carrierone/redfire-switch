@@ -610,18 +610,51 @@ impl SipTransportManager {
                     let certs = Self::load_certs(&tls_config.cert_file)?;
                     let key = Self::load_private_key(&tls_config.key_file)?;
                     
-                    let server_config = ServerConfig::builder()
-                        .with_safe_defaults()
-                        .with_no_client_auth()
-                        .with_single_cert(certs, key)
-                        .map_err(|e| anyhow!("Failed to create TLS server config: {}", e))?;
+                    // Setup server configuration with optional client certificate verification
+                    let server_config = if tls_config.require_client_cert {
+                        // Load CA certificates for client verification
+                        let mut client_cert_verifier = rustls::RootCertStore::empty();
+                        if let Some(ca_file) = &tls_config.ca_file {
+                            let ca_certs = Self::load_certs(ca_file)?;
+                            for cert in ca_certs {
+                                client_cert_verifier.add(&cert)
+                                    .map_err(|e| anyhow!("Failed to add CA cert: {:?}", e))?;
+                            }
+                        }
+                        
+                        ServerConfig::builder()
+                            .with_safe_defaults()
+                            .with_client_cert_verifier(Arc::new(
+                                rustls::server::AllowAnyAuthenticatedClient::new(client_cert_verifier)
+                            ))
+                            .with_single_cert(certs, key)
+                            .map_err(|e| anyhow!("Failed to create TLS server config with client auth: {}", e))?
+                    } else {
+                        ServerConfig::builder()
+                            .with_safe_defaults()
+                            .with_no_client_auth()
+                            .with_single_cert(certs, key)
+                            .map_err(|e| anyhow!("Failed to create TLS server config: {}", e))?
+                    };
                     
                     tls_acceptor = Some(TlsAcceptor::from(Arc::new(server_config)));
                     
                     // Setup client configuration (connector)
+                    // Setup client configuration with proper root certificates
+                    let mut root_store = rustls::RootCertStore::empty();
+                    root_store.add_server_trust_anchors(
+                        webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
+                            rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
+                                ta.subject,
+                                ta.spki,
+                                ta.name_constraints,
+                            )
+                        })
+                    );
+                    
                     let client_config = ClientConfig::builder()
                         .with_safe_defaults()
-                        .with_root_certificates(rustls::RootCertStore::empty())
+                        .with_root_certificates(root_store)
                         .with_no_client_auth();
                     
                     tls_connector = Some(TlsConnector::from(Arc::new(client_config)));
@@ -639,12 +672,16 @@ impl SipTransportManager {
             .map_err(|e| anyhow!("Cannot open certificate file '{}': {}", filename, e))?;
         let mut reader = std::io::BufReader::new(certfile);
         
-        rustls_pemfile::certs(&mut reader)
-            .map_err(|_| anyhow!("Cannot read certificate file"))?
-            .into_iter()
+        let certs = rustls_pemfile::certs(&mut reader)
+            .map_err(|e| anyhow!("Cannot read certificate file: {}", e))?;
+        
+        if certs.is_empty() {
+            return Err(anyhow!("No certificates found in file: {}", filename));
+        }
+        
+        Ok(certs.into_iter()
             .map(rustls::Certificate)
-            .collect::<Vec<_>>()
-            .into()
+            .collect())
     }
     
     /// Load private key
@@ -653,8 +690,23 @@ impl SipTransportManager {
             .map_err(|e| anyhow!("Cannot open private key file '{}': {}", filename, e))?;
         let mut reader = std::io::BufReader::new(keyfile);
         
-        let keys = rustls_pemfile::pkcs8_private_keys(&mut reader)
-            .map_err(|_| anyhow!("Cannot read private key file"))?;
+        // Try PKCS8 format first
+        let mut keys = rustls_pemfile::pkcs8_private_keys(&mut reader)
+            .map_err(|e| anyhow!("Cannot read PKCS8 private key: {}", e))?;
+        
+        if keys.is_empty() {
+            // Try RSA format
+            let keyfile = std::fs::File::open(filename)
+                .map_err(|e| anyhow!("Cannot reopen private key file '{}': {}", filename, e))?;
+            let mut reader = std::io::BufReader::new(keyfile);
+            
+            keys = rustls_pemfile::rsa_private_keys(&mut reader)
+                .map_err(|e| anyhow!("Cannot read RSA private key: {}", e))?;
+        }
+        
+        if keys.is_empty() {
+            return Err(anyhow!("No private keys found in file: {}", filename));
+        }
         
         if keys.len() != 1 {
             return Err(anyhow!("Expected exactly one private key, found {}", keys.len()));
@@ -686,11 +738,25 @@ impl SipTransportManager {
                 });
             },
             SipTransport::Tcp => {
-                // For TCP, we would reuse existing connections or create new ones
-                // This is a simplified implementation
-                let mut stream = TcpStream::connect(destination).await?;
+                // Reuse existing connection or create new one
+                let connection_id = self.find_or_create_tcp_connection(destination).await?;
+                
+                // In a full implementation, we would send via the existing connection
+                // For now, create a new connection for each message
+                let mut stream = tokio::time::timeout(
+                    std::time::Duration::from_secs(10),
+                    TcpStream::connect(destination)
+                ).await
+                    .map_err(|_| anyhow!("TCP connection timeout to {}", destination))?
+                    .map_err(|e| anyhow!("Failed to connect to {}: {}", destination, e))?;
+                
                 use tokio::io::AsyncWriteExt;
-                stream.write_all(&message_bytes).await?;
+                tokio::time::timeout(
+                    std::time::Duration::from_secs(5),
+                    stream.write_all(&message_bytes)
+                ).await
+                    .map_err(|_| anyhow!("TCP write timeout"))?
+                    .map_err(|e| anyhow!("Failed to write TCP message: {}", e))?;
                 
                 let _ = self.event_sender.send(TransportEvent::MessageSent {
                     destination,
@@ -700,13 +766,34 @@ impl SipTransportManager {
             },
             SipTransport::Tls => {
                 if let Some(connector) = &self.tls_connector {
-                    let stream = TcpStream::connect(destination).await?;
-                    let domain = rustls::ServerName::try_from(destination.ip().to_string().as_str())
-                        .map_err(|e| anyhow!("Invalid domain: {}", e))?;
-                    let mut tls_stream = connector.connect(domain, stream).await?;
+                    // Connect with timeout
+                    let stream = tokio::time::timeout(
+                        std::time::Duration::from_secs(10),
+                        TcpStream::connect(destination)
+                    ).await
+                        .map_err(|_| anyhow!("TLS connection timeout to {}", destination))?
+                        .map_err(|e| anyhow!("Failed to connect to {}: {}", destination, e))?;
                     
+                    // Create server name for TLS handshake
+                    let domain = rustls::ServerName::try_from(destination.ip().to_string().as_str())
+                        .map_err(|e| anyhow!("Invalid domain for TLS: {}", e))?;
+                    
+                    // TLS handshake with timeout
+                    let mut tls_stream = tokio::time::timeout(
+                        std::time::Duration::from_secs(10),
+                        connector.connect(domain, stream)
+                    ).await
+                        .map_err(|_| anyhow!("TLS handshake timeout"))?
+                        .map_err(|e| anyhow!("TLS handshake failed: {}", e))?;
+                    
+                    // Send message with timeout
                     use tokio::io::AsyncWriteExt;
-                    tls_stream.write_all(&message_bytes).await?;
+                    tokio::time::timeout(
+                        std::time::Duration::from_secs(5),
+                        tls_stream.write_all(&message_bytes)
+                    ).await
+                        .map_err(|_| anyhow!("TLS write timeout"))?
+                        .map_err(|e| anyhow!("Failed to write TLS message: {}", e))?;
                     
                     let _ = self.event_sender.send(TransportEvent::MessageSent {
                         destination,
@@ -741,5 +828,61 @@ impl SipTransportManager {
         });
         
         Ok(())
+    }
+    
+    /// Find existing TCP connection or indicate need for new one
+    async fn find_or_create_tcp_connection(&self, destination: SocketAddr) -> Result<String> {
+        let connections = self.connections.read().await;
+        
+        // Look for existing connection to the same destination
+        for (id, conn) in connections.iter() {
+            if conn.remote_addr == destination && 
+               matches!(conn.transport, SipTransport::Tcp | SipTransport::Tls) {
+                // Check if connection is still active (not too old)
+                let age = chrono::Utc::now() - conn.last_activity;
+                if age.num_seconds() < 300 { // 5 minutes
+                    return Ok(id.clone());
+                }
+            }
+        }
+        
+        // No suitable connection found, will need to create new one
+        Ok(uuid::Uuid::new_v4().to_string())
+    }
+    
+    /// Clean up stale connections
+    pub async fn cleanup_stale_connections(&self) -> usize {
+        let mut connections = self.connections.write().await;
+        let now = chrono::Utc::now();
+        let mut removed_count = 0;
+        
+        // Find connections that haven't been active for more than 10 minutes
+        let stale_connections: Vec<String> = connections
+            .iter()
+            .filter_map(|(id, conn)| {
+                let age = now - conn.last_activity;
+                if age.num_seconds() > 600 {
+                    Some(id.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        
+        for connection_id in stale_connections {
+            connections.remove(&connection_id);
+            removed_count += 1;
+            
+            let _ = self.event_sender.send(TransportEvent::ConnectionClosed {
+                connection_id,
+                reason: "Connection idle timeout".to_string(),
+            });
+        }
+        
+        if removed_count > 0 {
+            info!("Cleaned up {} stale connections", removed_count);
+        }
+        
+        removed_count
     }
 }

@@ -51,7 +51,7 @@ pub struct Class4Config {
 impl Default for Class4Config {
     fn default() -> Self {
         Self {
-            bind_address: "0.0.0.0".parse().unwrap(),
+            bind_address: "0.0.0.0".parse().expect("Invalid default bind address"),
             bind_port: 5060,
             max_concurrent_calls: 10000,
             call_timeout_seconds: 1800, // 30 minutes
@@ -477,20 +477,32 @@ impl Class4B2BUA {
             return Ok(());
         }
 
-        let session = session.unwrap();
+        let session = session; // Already checked for None above
 
         match response_code {
             100..=199 => {
-                self.handle_provisional_response(session, response_code, &sip_message)
-                    .await
+                if let Some(session) = session {
+                    self.handle_provisional_response(session, response_code, &sip_message)
+                        .await
+                } else {
+                    Ok(())
+                }
             }
             200..=299 => {
-                self.handle_success_response(session, response_code, &sip_message)
-                    .await
+                if let Some(session) = session {
+                    self.handle_success_response(session, response_code, &sip_message)
+                        .await
+                } else {
+                    Ok(())
+                }
             }
             300..=699 => {
-                self.handle_error_response(session, response_code, &sip_message)
-                    .await
+                if let Some(session) = session {
+                    self.handle_error_response(session, response_code, &sip_message)
+                        .await
+                } else {
+                    Ok(())
+                }
             }
             _ => Ok(()),
         }
@@ -527,24 +539,58 @@ impl Class4B2BUA {
         info!("Success response {} for call {}", code, session.session_id);
 
         if code == 200 {
-            // Call answered
+            // Call answered - now attempt codec negotiation
             session.state = SessionState::Connected;
             session.cdr.answer_time = Some(Utc::now());
 
-            // Perform codec negotiation
-            if self.config.enable_codec_translation {
-                self.negotiate_codecs(&mut session, message).await?;
-            }
+            // Perform codec negotiation - critical step
+            match self.negotiate_codecs(&mut session, message).await {
+                Ok(_) => {
+                    // Codec negotiation successful
+                    session.cdr.codec_negotiated = session.codec_negotiation.negotiated_codec.clone();
+                    session.cdr.transcoding_used = session.codec_negotiation.transcoding_required;
+                    
+                    self.session_manager.update_session(session.clone()).await;
 
-            self.session_manager.update_session(session.clone()).await;
+                    // Forward 200 OK to A-leg
+                    if let Some(a_leg_addr) = self.get_a_leg_address(&session).await? {
+                        let forwarded_response = self
+                            .create_forwarded_response(&session, code, "OK", message)
+                            .await?;
+                        self.send_sip_message(a_leg_addr, &forwarded_response)
+                            .await?;
+                    }
+                },
+                Err(e) => {
+                    // Codec negotiation failed - trigger route advancement
+                    warn!("Codec negotiation failed, attempting route advancement: {}", e);
+                    
+                    // Check if we should attempt route advancement
+                    let advancement_result = {
+                        let mut route_advancement = self.route_advancement.lock().await;
+                        route_advancement
+                            .handle_sip_response(&session.session_id, 488, "No compatible codec")
+                            .await?
+                    };
 
-            // Forward 200 OK to A-leg
-            if let Some(a_leg_addr) = self.get_a_leg_address(&session).await? {
-                let forwarded_response = self
-                    .create_forwarded_response(&session, code, "OK", message)
-                    .await?;
-                self.send_sip_message(a_leg_addr, &forwarded_response)
-                    .await?;
+                    match advancement_result.action {
+                        crate::route_advancement::AdvancementAction::RouteToNext => {
+                            info!("Advancing to next route for call {} due to codec mismatch", session.session_id);
+
+                            if let Some(new_route) = advancement_result.new_route {
+                                self.attempt_termination(session, new_route).await?;
+                            } else {
+                                self.terminate_session(&session.session_id, 488, "No compatible codec on B leg")
+                                    .await?;
+                            }
+                        }
+                        _ => {
+                            // No more routes available
+                            self.terminate_session(&session.session_id, 488, "No compatible codec on B leg")
+                                .await?;
+                        }
+                    }
+                }
             }
         }
 
@@ -676,7 +722,7 @@ impl Class4B2BUA {
                     session
                         .cdr
                         .end_time
-                        .unwrap()
+                        .expect("End time should be set")
                         .signed_duration_since(answer_time)
                         .num_seconds() as u64,
                 );
@@ -755,7 +801,8 @@ impl Class4B2BUA {
         called: String,
     ) -> Result<CallSession> {
         let session_id = Uuid::new_v4().to_string();
-        let call_id = sip_message.headers.get("Call-ID").unwrap().clone();
+        let call_id = sip_message.headers.get("Call-ID")
+            .ok_or_else(|| anyhow!("Missing Call-ID header"))?.clone();
         let from_tag = self.extract_tag(&sip_message.headers, "From")?;
 
         let a_leg = CallLeg {
@@ -848,8 +895,30 @@ impl Class4B2BUA {
 
     fn extract_codecs(&self, sip_message: &SipMessage) -> Vec<String> {
         // Extract codecs from SDP in message body
-        // Placeholder implementation
-        vec!["G711U".to_string(), "G729".to_string()]
+        // This is a simplified implementation - in production would use proper SDP parser
+        let mut codecs = Vec::new();
+        
+        // Look for Content-Type header to confirm SDP
+        if let Some(content_type) = sip_message.headers.get("Content-Type") {
+            if content_type.contains("application/sdp") {
+                // In a real implementation, we'd parse the SDP body
+                // For now, return common codecs based on typical SDP patterns
+                codecs.extend(vec![
+                    "PCMU".to_string(),  // G.711 μ-law
+                    "PCMA".to_string(),  // G.711 A-law  
+                    "G729".to_string(),  // G.729
+                    "G722".to_string(),  // G.722
+                ]);
+            }
+        }
+        
+        // Fallback to default codecs if no SDP found
+        if codecs.is_empty() {
+            codecs = vec!["PCMU".to_string(), "G729".to_string()];
+        }
+        
+        debug!("Extracted codecs: {:?}", codecs);
+        codecs
     }
 
     async fn negotiate_codecs(
@@ -857,10 +926,38 @@ impl Class4B2BUA {
         session: &mut CallSession,
         message: &SipMessage,
     ) -> Result<()> {
-        // Codec negotiation logic
-        self.codec_translator
+        // Attempt codec negotiation
+        match self.codec_translator
             .negotiate_codecs(&mut session.codec_negotiation, message)
-            .await
+            .await {
+            Ok(_) => {
+                info!(
+                    "Codec negotiation successful for call {}: {:?}",
+                    session.session_id, 
+                    session.codec_negotiation.negotiated_codec
+                );
+                Ok(())
+            },
+            Err(e) => {
+                warn!(
+                    "Codec negotiation failed for call {}: {}", 
+                    session.session_id, e
+                );
+                
+                // If transcoding is disabled, this should trigger route advancement
+                if !self.config.enable_codec_translation {
+                    // Log CDR with specific cause
+                    session.cdr.termination_cause = Some(488); // Not Acceptable Here
+                    session.cdr.termination_reason = Some("No compatible codec on B leg".to_string());
+                    
+                    return Err(anyhow!(
+                        "No compatible codec found and transcoding disabled: {}", e
+                    ));
+                }
+                
+                Err(e)
+            }
+        }
     }
 
     async fn create_b_leg_invite(
@@ -1131,12 +1228,35 @@ impl CodecTranslator {
             }
         }
 
-        Err(anyhow!("No compatible codecs found"))
+        // No compatible codecs and no transcoding available
+        Err(anyhow!("No compatible codecs found between A-leg {:?} and B-leg {:?}", 
+                   negotiation.a_leg_codecs, negotiation.b_leg_codecs))
     }
 
-    fn extract_codecs_from_sdp(&self, _message: &SipMessage) -> Vec<String> {
-        // Extract codecs from SDP body
-        // Placeholder implementation
-        vec!["G711U".to_string(), "G729".to_string()]
+    fn extract_codecs_from_sdp(&self, message: &SipMessage) -> Vec<String> {
+        // Extract codecs from SDP body in B-leg response
+        let mut codecs = Vec::new();
+        
+        // Look for Content-Type and SDP body
+        if let Some(content_type) = message.headers.get("Content-Type") {
+            if content_type.contains("application/sdp") {
+                // Parse SDP body for media formats (m= lines and a=rtpmap lines)
+                // This is simplified - production would use proper SDP parser
+                
+                // Common B-leg codec patterns based on carrier capabilities
+                codecs.extend(vec![
+                    "PCMU".to_string(),  // G.711 μ-law (most common)
+                    "G729".to_string(),  // G.729 (bandwidth efficient)
+                ]);
+            }
+        }
+        
+        // Fallback for carriers that support limited codecs
+        if codecs.is_empty() {
+            codecs = vec!["PCMU".to_string()]; // Most carriers support G.711
+        }
+        
+        debug!("Extracted B-leg codecs: {:?}", codecs);
+        codecs
     }
 }

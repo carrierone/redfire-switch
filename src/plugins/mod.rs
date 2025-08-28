@@ -242,7 +242,7 @@ impl PluginManager {
 
         // Register plugin
         let mut registry = self.registry.write().await;
-        registry.register_plugin(config.name.clone(), Box::new(plugin_mut)).await?;
+        registry.register_plugin(config.name.clone(), plugin_mut).await?;
 
         // Initialize statistics
         let mut stats = self.stats.write().await;

@@ -1,31 +1,46 @@
 //! Security utilities and configurations
 //! 
-//! This module provides security-focused utilities including secure configuration
-//! management, input validation, and security audit logging.
+//! This module provides comprehensive security features including secure configuration
+//! management, input validation, security audit logging, threat detection, and IP blacklisting.
+//! All features support global and per-trunk configuration overrides.
 
 pub mod config;
 pub mod validation;
 pub mod audit;
 pub mod rate_limiting;
+pub mod threat_detection;
+pub mod blacklist;
 
 pub use config::*;
 pub use validation::*;
 pub use audit::*;
 pub use rate_limiting::*;
+pub use threat_detection::*;
+pub use blacklist::*;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use tracing::{error, warn, info};
 
-/// Security configuration for the entire system
+/// Comprehensive security configuration with global and per-trunk settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecurityConfig {
-    /// Enable security audit logging
+    /// Enable security audit logging globally
     pub enable_audit_logging: bool,
+    /// Enable rate limiting globally
+    pub enable_rate_limiting: bool,
+    /// Enable input validation globally
+    pub enable_input_validation: bool,
+    /// Enable threat detection globally
+    pub enable_threat_detection: bool,
+    /// Enable IP blacklisting globally
+    pub enable_blacklisting: bool,
+    /// Enable reputation scoring globally
+    pub enable_reputation_scoring: bool,
     /// Maximum request rate per IP (requests per minute)
     pub max_requests_per_minute: u32,
-    /// Enable input validation
-    pub enable_input_validation: bool,
+    /// Maximum concurrent connections per IP
+    pub max_connections_per_ip: u32,
     /// Maximum SIP message size in bytes
     pub max_sip_message_size: usize,
     /// Timeout for security operations in seconds
@@ -34,29 +49,37 @@ pub struct SecurityConfig {
     pub require_tls: bool,
     /// Allowed IP ranges for administrative access
     pub admin_allowed_ips: Vec<String>,
-    /// Enable rate limiting
-    pub enable_rate_limiting: bool,
-    /// Maximum concurrent connections per IP
-    pub max_connections_per_ip: u32,
+    /// Enable per-trunk security overrides
+    pub enable_per_trunk_overrides: bool,
+    /// Threat detection configuration
+    pub threat_detection: threat_detection::ThreatDetectionConfig,
+    /// Blacklist and reputation configuration
+    pub blacklist: blacklist::BlacklistConfig,
 }
 
 impl Default for SecurityConfig {
     fn default() -> Self {
         Self {
             enable_audit_logging: true,
-            max_requests_per_minute: 60,
+            enable_rate_limiting: true,
             enable_input_validation: true,
+            enable_threat_detection: true,
+            enable_blacklisting: true,
+            enable_reputation_scoring: true,
+            max_requests_per_minute: 60,
+            max_connections_per_ip: 100,
             max_sip_message_size: 65536, // 64KB max SIP message
             security_timeout_seconds: 30,
             require_tls: false, // Default to false for compatibility, should be true in production
             admin_allowed_ips: vec!["127.0.0.1".to_string(), "::1".to_string()],
-            enable_rate_limiting: true,
-            max_connections_per_ip: 100,
+            enable_per_trunk_overrides: true,
+            threat_detection: threat_detection::ThreatDetectionConfig::default(),
+            blacklist: blacklist::BlacklistConfig::default(),
         }
     }
 }
 
-/// Security context for operations
+/// Security context for operations with trunk-specific information
 #[derive(Debug, Clone)]
 pub struct SecurityContext {
     /// Source IP address
@@ -71,6 +94,10 @@ pub struct SecurityContext {
     pub session_id: Option<String>,
     /// Operation timestamp
     pub timestamp: chrono::DateTime<chrono::Utc>,
+    /// Trunk ID for per-trunk security settings
+    pub trunk_id: Option<String>,
+    /// Additional security metadata
+    pub metadata: std::collections::HashMap<String, String>,
 }
 
 impl SecurityContext {
@@ -83,6 +110,22 @@ impl SecurityContext {
             user_id: None,
             session_id: None,
             timestamp: chrono::Utc::now(),
+            trunk_id: None,
+            metadata: std::collections::HashMap::new(),
+        }
+    }
+    
+    /// Create security context with trunk information
+    pub fn with_trunk(source_ip: std::net::IpAddr, trunk_id: String) -> Self {
+        Self {
+            source_ip,
+            user_agent: None,
+            authenticated: false,
+            user_id: None,
+            session_id: None,
+            timestamp: chrono::Utc::now(),
+            trunk_id: Some(trunk_id),
+            metadata: std::collections::HashMap::new(),
         }
     }
 
@@ -98,6 +141,17 @@ impl SecurityContext {
     pub fn with_user_agent(mut self, user_agent: String) -> Self {
         self.user_agent = Some(user_agent);
         self
+    }
+    
+    /// Add metadata
+    pub fn with_metadata(mut self, key: String, value: String) -> Self {
+        self.metadata.insert(key, value);
+        self
+    }
+    
+    /// Get effective trunk ID (for trunk-specific security rules)
+    pub fn get_trunk_id(&self) -> Option<&str> {
+        self.trunk_id.as_deref()
     }
 
     /// Check if the source IP is in the allowed admin IP list

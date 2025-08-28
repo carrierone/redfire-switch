@@ -270,7 +270,7 @@ pub struct EventStats {
 }
 
 /// Event filter for selective subscription
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct EventFilter {
     pub event_types: Vec<EventType>,
     pub call_id_pattern: Option<String>,
