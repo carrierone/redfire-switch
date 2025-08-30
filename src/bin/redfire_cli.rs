@@ -89,7 +89,7 @@ async fn main() -> Result<()> {
 
 /// Setup logging based on command line arguments
 fn setup_logging(args: &Args) -> Result<()> {
-    let log_level = match args.log_level.as_str() {
+    let _log_level = match args.log_level.as_str() {
         "trace" => tracing::Level::TRACE,
         "debug" => tracing::Level::DEBUG,
         "info" => tracing::Level::INFO,
@@ -145,25 +145,52 @@ fn print_startup_banner() {
 
 /// Execute a single command in non-interactive mode
 async fn execute_single_command(
-    _cli: &mut InteractiveCli,
+    cli: &mut InteractiveCli,
     command: &str,
     _args: &Args,
 ) -> Result<()> {
     info!("Executing command: {}", command);
     
-    // In a real implementation, we would:
-    // 1. Parse the command
-    // 2. Execute it through the CLI
-    // 3. Output the results
-    // 4. Exit with appropriate code
-    
-    println!("Executing: {}", command.bright_cyan());
-    println!("Non-interactive mode not fully implemented yet");
+    // Parse the command and execute it
+    let parts: Vec<&str> = command.split_whitespace().collect();
+    if parts.is_empty() {
+        return Ok(());
+    }
+
+    let command_name = parts[0];
+    let args = parts[1..].to_vec();
+
+    // Handle built-in commands
+    match command_name {
+        "help" | "?" => {
+            cli.handle_help_command(&args).await?;
+            return Ok(());
+        }
+        "version" => {
+            println!("RedFire Switch v0.1.0");
+            println!("Built with Rust");
+            println!("GPU acceleration enabled");
+            return Ok(());
+        }
+        _ => {}
+    }
+
+    // Execute command through the command executor
+    match cli.command_executor.execute(command_name, args).await {
+        Ok(result) => {
+            cli.display_command_result(result).await;
+        }
+        Err(e) => {
+            eprintln!("{}: {}", "Command Error".red().bold(), e);
+            std::process::exit(1);
+        }
+    }
     
     Ok(())
 }
 
 /// Handle graceful shutdown
+#[allow(dead_code)]
 async fn handle_shutdown() {
     info!("Received shutdown signal");
     println!("\n{}", "Shutting down...".yellow());

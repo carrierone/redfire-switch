@@ -597,7 +597,7 @@ impl CommandExecutor {
         let port = args.get(1).unwrap_or(&"8080");
 
         let mut session = self.session.write().await;
-        session.connect(format!("{}:{}", host, port)).await;
+        let _ = session.connect(format!("{}:{}", host, port)).await;
 
         Ok(CommandResult::Success(format!("Connected to {}:{}", host, port)))
     }

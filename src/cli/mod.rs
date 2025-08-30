@@ -26,7 +26,7 @@ use session::CliSession;
 pub struct InteractiveCli {
     editor: Editor<RedFireCompleter, rustyline::history::DefaultHistory>,
     session: Arc<RwLock<CliSession>>,
-    command_executor: CommandExecutor,
+    pub command_executor: CommandExecutor,
     help_system: HelpSystem,
     running: Arc<RwLock<bool>>,
 }
@@ -184,8 +184,8 @@ impl InteractiveCli {
         Ok(())
     }
 
-    /// Handle help command
-    async fn handle_help_command(&self, args: &[&str]) -> Result<()> {
+    /// Handle help command  
+    pub async fn handle_help_command(&self, args: &[&str]) -> Result<()> {
         if args.is_empty() {
             self.help_system.print_general_help();
         } else {
@@ -196,7 +196,7 @@ impl InteractiveCli {
     }
 
     /// Display command execution result
-    async fn display_command_result(&self, result: CommandResult) {
+    pub async fn display_command_result(&self, result: CommandResult) {
         match result {
             CommandResult::Success(message) => {
                 if !message.is_empty() {
