@@ -458,8 +458,8 @@ mod tests {
     async fn test_routing_service_creation() {
         let config = RoutingConfig::default();
         let lcr_engine = Arc::new(LcrEngine::new("test://").await.unwrap());
-        let origination_routes = Arc::new(RwLock::new(OriginationRoutingEngine::new(Default::default())));
-        let termination_routes = Arc::new(RwLock::new(TerminationRoutingService::new(lcr_engine.clone())));
+        let origination_routes = Arc::new(tokio::sync::Mutex::new(OriginationRoutingEngine::new(Default::default())));
+        let termination_routes = Arc::new(tokio::sync::Mutex::new(TerminationRoutingService::new(lcr_engine.clone())));
         let event_bus = Arc::new(EventBus::new());
 
         let _service = RoutingService::new(
@@ -475,8 +475,8 @@ mod tests {
     async fn test_routing_request() {
         let config = RoutingConfig::default();
         let lcr_engine = Arc::new(LcrEngine::new("test://").await.unwrap());
-        let origination_routes = Arc::new(RwLock::new(OriginationRoutingEngine::new(Default::default())));
-        let termination_routes = Arc::new(RwLock::new(TerminationRoutingService::new(lcr_engine.clone())));
+        let origination_routes = Arc::new(tokio::sync::Mutex::new(OriginationRoutingEngine::new(Default::default())));
+        let termination_routes = Arc::new(tokio::sync::Mutex::new(TerminationRoutingService::new(lcr_engine.clone())));
         let event_bus = Arc::new(EventBus::new());
 
         let service = RoutingService::new(

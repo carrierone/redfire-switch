@@ -488,6 +488,7 @@ pub fn retry_action(max_retries: u8) -> PriTimerAction {
 mod tests {
     use super::*;
     use tokio::time::{timeout, Duration as TokioDuration};
+    use anyhow::anyhow;
 
     #[tokio::test]
     async fn test_timer_creation_and_expiration() -> Result<()> {
