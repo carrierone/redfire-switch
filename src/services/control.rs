@@ -1,5 +1,5 @@
 //! Control Service - Handles configuration management and system monitoring
-//! 
+//!
 //! This service provides centralized configuration management, health monitoring,
 //! and administrative functions for the entire telecommunications system.
 
@@ -251,7 +251,10 @@ impl ControlService {
         let (response_tx, response_rx) = tokio::sync::oneshot::channel();
 
         self.request_sender
-            .send(ControlServiceMessage::UpdateConfiguration { request, response_tx })
+            .send(ControlServiceMessage::UpdateConfiguration {
+                request,
+                response_tx,
+            })
             .map_err(|_| anyhow::anyhow!("Failed to send configuration update request"))?;
 
         response_rx
@@ -260,11 +263,17 @@ impl ControlService {
     }
 
     /// Get system configuration
-    pub async fn get_configuration(&self, service_name: Option<String>) -> Result<SystemConfiguration> {
+    pub async fn get_configuration(
+        &self,
+        service_name: Option<String>,
+    ) -> Result<SystemConfiguration> {
         let (response_tx, response_rx) = tokio::sync::oneshot::channel();
 
         self.request_sender
-            .send(ControlServiceMessage::GetConfiguration { service_name, response_tx })
+            .send(ControlServiceMessage::GetConfiguration {
+                service_name,
+                response_tx,
+            })
             .map_err(|_| anyhow::anyhow!("Failed to send get configuration request"))?;
 
         response_rx
@@ -273,11 +282,19 @@ impl ControlService {
     }
 
     /// Update service health information
-    pub async fn update_service_health(&self, service_name: String, health: ServiceHealth) -> Result<()> {
+    pub async fn update_service_health(
+        &self,
+        service_name: String,
+        health: ServiceHealth,
+    ) -> Result<()> {
         let (response_tx, response_rx) = tokio::sync::oneshot::channel();
 
         self.request_sender
-            .send(ControlServiceMessage::UpdateServiceHealth { service_name, health, response_tx })
+            .send(ControlServiceMessage::UpdateServiceHealth {
+                service_name,
+                health,
+                response_tx,
+            })
             .map_err(|_| anyhow::anyhow!("Failed to send health update request"))?;
 
         response_rx
@@ -299,11 +316,17 @@ impl ControlService {
     }
 
     /// Execute administrative command
-    pub async fn execute_admin_command(&self, command: AdminCommand) -> Result<AdminCommandResponse> {
+    pub async fn execute_admin_command(
+        &self,
+        command: AdminCommand,
+    ) -> Result<AdminCommandResponse> {
         let (response_tx, response_rx) = tokio::sync::oneshot::channel();
 
         self.request_sender
-            .send(ControlServiceMessage::ExecuteAdminCommand { command, response_tx })
+            .send(ControlServiceMessage::ExecuteAdminCommand {
+                command,
+                response_tx,
+            })
             .map_err(|_| anyhow::anyhow!("Failed to send admin command"))?;
 
         response_rx
@@ -314,7 +337,7 @@ impl ControlService {
     /// Shutdown the control service
     pub async fn shutdown(&self) -> Result<()> {
         info!("Shutting down control service");
-        
+
         // Save current configuration if needed
         if let Err(e) = self.backup_configuration().await {
             warn!("Failed to backup configuration during shutdown: {}", e);
@@ -327,17 +350,21 @@ impl ControlService {
     async fn backup_configuration(&self) -> Result<()> {
         if let Some(backup_dir) = &self.config.backup_dir {
             let config = self.system_config.read().await;
-            let backup_file = backup_dir.join(format!("config-backup-{}.json", Utc::now().format("%Y%m%d-%H%M%S")));
-            
+            let backup_file = backup_dir.join(format!(
+                "config-backup-{}.json",
+                Utc::now().format("%Y%m%d-%H%M%S")
+            ));
+
             let config_json = serde_json::to_string_pretty(&*config)
                 .context("Failed to serialize configuration")?;
-            
-            fs::write(&backup_file, config_json).await
+
+            fs::write(&backup_file, config_json)
+                .await
                 .with_context(|| format!("Failed to write backup to {:?}", backup_file))?;
-            
+
             info!("Configuration backed up to {:?}", backup_file);
         }
-        
+
         Ok(())
     }
 
@@ -374,7 +401,7 @@ impl ControlProcessor {
         // Start periodic tasks
         self.start_health_check_task().await;
         self.start_metrics_collection_task().await;
-        
+
         if self.config.enable_hot_reload {
             self.start_config_watch_task().await;
         }
@@ -382,15 +409,25 @@ impl ControlProcessor {
         // Process incoming requests
         while let Some(message) = self.request_receiver.recv().await {
             match message {
-                ControlServiceMessage::UpdateConfiguration { request, response_tx } => {
+                ControlServiceMessage::UpdateConfiguration {
+                    request,
+                    response_tx,
+                } => {
                     let response = self.handle_configuration_update(request).await;
                     let _ = response_tx.send(response);
                 }
-                ControlServiceMessage::GetConfiguration { service_name, response_tx } => {
+                ControlServiceMessage::GetConfiguration {
+                    service_name,
+                    response_tx,
+                } => {
                     let response = self.handle_get_configuration(service_name).await;
                     let _ = response_tx.send(response);
                 }
-                ControlServiceMessage::UpdateServiceHealth { service_name, health, response_tx } => {
+                ControlServiceMessage::UpdateServiceHealth {
+                    service_name,
+                    health,
+                    response_tx,
+                } => {
                     let response = self.handle_health_update(service_name, health).await;
                     let _ = response_tx.send(response);
                 }
@@ -398,7 +435,10 @@ impl ControlProcessor {
                     let response = self.handle_get_system_status().await;
                     let _ = response_tx.send(response);
                 }
-                ControlServiceMessage::ExecuteAdminCommand { command, response_tx } => {
+                ControlServiceMessage::ExecuteAdminCommand {
+                    command,
+                    response_tx,
+                } => {
                     let response = self.handle_admin_command(command).await;
                     let _ = response_tx.send(response);
                 }
@@ -415,28 +455,38 @@ impl ControlProcessor {
         // Apply configuration change
         {
             let mut config = self.system_config.write().await;
-            
+
             // Update the specific configuration section
             match request.service_name.as_str() {
                 "routing" => {
-                    config.routing = Some(serde_json::from_str(&request.new_value)
-                        .context("Failed to parse routing configuration")?);
+                    config.routing = Some(
+                        serde_json::from_str(&request.new_value)
+                            .context("Failed to parse routing configuration")?,
+                    );
                 }
                 "media" => {
-                    config.media = Some(serde_json::from_str(&request.new_value)
-                        .context("Failed to parse media configuration")?);
+                    config.media = Some(
+                        serde_json::from_str(&request.new_value)
+                            .context("Failed to parse media configuration")?,
+                    );
                 }
                 "signaling" => {
-                    config.signaling = Some(serde_json::from_str(&request.new_value)
-                        .context("Failed to parse signaling configuration")?);
+                    config.signaling = Some(
+                        serde_json::from_str(&request.new_value)
+                            .context("Failed to parse signaling configuration")?,
+                    );
                 }
                 "events" => {
-                    config.events = Some(serde_json::from_str(&request.new_value)
-                        .context("Failed to parse events configuration")?);
+                    config.events = Some(
+                        serde_json::from_str(&request.new_value)
+                            .context("Failed to parse events configuration")?,
+                    );
                 }
                 "global" => {
-                    config.global = Some(serde_json::from_str(&request.new_value)
-                        .context("Failed to parse global configuration")?);
+                    config.global = Some(
+                        serde_json::from_str(&request.new_value)
+                            .context("Failed to parse global configuration")?,
+                    );
                 }
                 service_name => {
                     // Plugin or custom service configuration
@@ -444,8 +494,11 @@ impl ControlProcessor {
                         config.plugins = Some(HashMap::new());
                     }
                     if let Some(ref mut plugins) = config.plugins {
-                        plugins.insert(service_name.to_string(), serde_json::from_str(&request.new_value)
-                            .context("Failed to parse plugin configuration")?);
+                        plugins.insert(
+                            service_name.to_string(),
+                            serde_json::from_str(&request.new_value)
+                                .context("Failed to parse plugin configuration")?,
+                        );
                     }
                 }
             }
@@ -457,19 +510,24 @@ impl ControlProcessor {
         // Save configuration to disk
         self.save_configuration_to_disk().await?;
 
-        info!("Configuration updated for service: {} key: {}", 
-              request.service_name, request.config_key);
+        info!(
+            "Configuration updated for service: {} key: {}",
+            request.service_name, request.config_key
+        );
 
         Ok(())
     }
 
-    async fn handle_get_configuration(&self, service_name: Option<String>) -> Result<SystemConfiguration> {
+    async fn handle_get_configuration(
+        &self,
+        service_name: Option<String>,
+    ) -> Result<SystemConfiguration> {
         let config = self.system_config.read().await;
-        
+
         if let Some(service) = service_name {
             // Return configuration for specific service
             let mut filtered_config = SystemConfiguration::default();
-            
+
             match service.as_str() {
                 "routing" => filtered_config.routing = config.routing.clone(),
                 "media" => filtered_config.media = config.media.clone(),
@@ -486,7 +544,7 @@ impl ControlProcessor {
                     }
                 }
             }
-            
+
             Ok(filtered_config)
         } else {
             // Return full configuration
@@ -494,27 +552,44 @@ impl ControlProcessor {
         }
     }
 
-    async fn handle_health_update(&self, service_name: String, health: ServiceHealth) -> Result<()> {
+    async fn handle_health_update(
+        &self,
+        service_name: String,
+        health: ServiceHealth,
+    ) -> Result<()> {
         let mut service_health = self.service_health.write().await;
         service_health.insert(service_name.clone(), health.clone());
 
         // Publish health status event if status changed
-        self.publish_health_status_event(&service_name, &health).await?;
+        self.publish_health_status_event(&service_name, &health)
+            .await?;
 
-        debug!("Updated health for service: {} status: {:?}", service_name, health.status);
+        debug!(
+            "Updated health for service: {} status: {:?}",
+            service_name, health.status
+        );
         Ok(())
     }
 
     async fn handle_get_system_status(&self) -> Result<SystemStatus> {
         let service_health = self.service_health.read().await;
         let metrics = self.metrics.read().await;
-        
+
         // Calculate overall health
-        let overall_health = if service_health.values().all(|h| h.status == HealthStatus::Healthy) {
+        let overall_health = if service_health
+            .values()
+            .all(|h| h.status == HealthStatus::Healthy)
+        {
             HealthStatus::Healthy
-        } else if service_health.values().any(|h| h.status == HealthStatus::Critical) {
+        } else if service_health
+            .values()
+            .any(|h| h.status == HealthStatus::Critical)
+        {
             HealthStatus::Critical
-        } else if service_health.values().any(|h| h.status == HealthStatus::Unhealthy) {
+        } else if service_health
+            .values()
+            .any(|h| h.status == HealthStatus::Unhealthy)
+        {
             HealthStatus::Unhealthy
         } else {
             HealthStatus::Degraded
@@ -529,7 +604,7 @@ impl ControlProcessor {
             services: service_health.clone(),
             metrics: metrics.clone(),
             configuration_version: "1.0".to_string(), // TODO: Track actual version
-            last_config_change: None, // TODO: Track last change time
+            last_config_change: None,                 // TODO: Track last change time
         };
 
         Ok(status)
@@ -544,7 +619,7 @@ impl ControlProcessor {
                 } else {
                     "System configuration reloaded".to_string()
                 };
-                
+
                 Ok(AdminCommandResponse {
                     success: true,
                     message,
@@ -561,7 +636,9 @@ impl ControlProcessor {
                     timestamp: Utc::now(),
                 })
             }
-            AdminCommand::GetMetrics { duration_seconds: _ } => {
+            AdminCommand::GetMetrics {
+                duration_seconds: _,
+            } => {
                 let metrics = self.metrics.read().await;
                 Ok(AdminCommandResponse {
                     success: true,
@@ -579,7 +656,10 @@ impl ControlProcessor {
                     timestamp: Utc::now(),
                 })
             }
-            AdminCommand::ToggleService { service_name, enable } => {
+            AdminCommand::ToggleService {
+                service_name,
+                enable,
+            } => {
                 // TODO: Implement service enable/disable
                 let action = if enable { "enabled" } else { "disabled" };
                 Ok(AdminCommandResponse {
@@ -610,13 +690,19 @@ impl ControlProcessor {
         }
     }
 
-    async fn validate_configuration_change(&self, _request: &ConfigurationChangeRequest) -> Result<()> {
+    async fn validate_configuration_change(
+        &self,
+        _request: &ConfigurationChangeRequest,
+    ) -> Result<()> {
         // TODO: Implement configuration validation
         // This would validate JSON schema, check dependencies, etc.
         Ok(())
     }
 
-    async fn publish_config_change_event(&self, request: &ConfigurationChangeRequest) -> Result<()> {
+    async fn publish_config_change_event(
+        &self,
+        request: &ConfigurationChangeRequest,
+    ) -> Result<()> {
         let event = TelecomEvent::ConfigChanged(crate::events::ConfigChangedEvent {
             service_name: request.service_name.clone(),
             config_key: request.config_key.clone(),
@@ -626,13 +712,19 @@ impl ControlProcessor {
             timestamp: Utc::now(),
         });
 
-        self.event_bus.publish(event).await
+        self.event_bus
+            .publish(event)
+            .await
             .context("Failed to publish configuration change event")?;
 
         Ok(())
     }
 
-    async fn publish_health_status_event(&self, service_name: &str, health: &ServiceHealth) -> Result<()> {
+    async fn publish_health_status_event(
+        &self,
+        service_name: &str,
+        health: &ServiceHealth,
+    ) -> Result<()> {
         let event = TelecomEvent::health_status(
             service_name.to_string(),
             "main".to_string(), // TODO: Use actual instance ID
@@ -640,7 +732,9 @@ impl ControlProcessor {
             health.metrics.clone(),
         );
 
-        self.event_bus.publish(event).await
+        self.event_bus
+            .publish(event)
+            .await
             .context("Failed to publish health status event")?;
 
         Ok(())
@@ -649,13 +743,14 @@ impl ControlProcessor {
     async fn save_configuration_to_disk(&self) -> Result<()> {
         let config = self.system_config.read().await;
         let config_file = self.config.config_dir.join("system.json");
-        
-        let config_json = serde_json::to_string_pretty(&*config)
-            .context("Failed to serialize configuration")?;
-        
-        fs::write(&config_file, config_json).await
+
+        let config_json =
+            serde_json::to_string_pretty(&*config).context("Failed to serialize configuration")?;
+
+        fs::write(&config_file, config_json)
+            .await
             .with_context(|| format!("Failed to write configuration to {:?}", config_file))?;
-        
+
         Ok(())
     }
 
@@ -664,25 +759,26 @@ impl ControlProcessor {
         let event_bus = self.event_bus.clone();
         let interval_seconds = self.config.health_check_interval_seconds;
         let mut shutdown_rx = self.shutdown_sender.subscribe();
-        
+
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(interval_seconds));
-            
+            let mut interval =
+                tokio::time::interval(std::time::Duration::from_secs(interval_seconds));
+
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
                         // Perform health checks on all registered services
                         let health_map = service_health.read().await;
-                        
+
                         for (service_name, health) in health_map.iter() {
                             // Check if health status is stale
                             let age = (Utc::now() - health.last_check).num_seconds();
                             if age > interval_seconds as i64 * 2 {
-                                warn!("Health status for service {} is stale ({} seconds old)", 
+                                warn!("Health status for service {} is stale ({} seconds old)",
                                       service_name, age);
                             }
                         }
-                        
+
                         debug!("Health check completed for {} services", health_map.len());
                     }
                     _ = shutdown_rx.recv() => {
@@ -697,23 +793,24 @@ impl ControlProcessor {
     async fn start_metrics_collection_task(&self) {
         let metrics = self.metrics.clone();
         let interval_seconds = self.config.metrics_export_interval_seconds;
-        
+
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(interval_seconds));
-            
+            let mut interval =
+                tokio::time::interval(std::time::Duration::from_secs(interval_seconds));
+
             loop {
                 interval.tick().await;
-                
+
                 // Collect system metrics
                 let mut metrics_guard = metrics.write().await;
                 metrics_guard.timestamp = Utc::now();
-                
+
                 // TODO: Implement actual metrics collection
                 // - CPU usage from /proc/stat
                 // - Memory usage from /proc/meminfo
                 // - Network stats from /proc/net/dev
                 // - Disk usage from filesystem
-                
+
                 debug!("System metrics updated");
             }
         });
@@ -721,25 +818,28 @@ impl ControlProcessor {
 
     async fn start_config_watch_task(&self) {
         let config_dir = self.config.config_dir.clone();
-        
+
         tokio::spawn(async move {
             // TODO: Implement filesystem watching for configuration files
             // This would use inotify on Linux to watch for file changes
             // and automatically reload configuration when files are modified
-            
-            info!("Configuration hot reload monitoring started for {:?}", config_dir);
+
+            info!(
+                "Configuration hot reload monitoring started for {:?}",
+                config_dir
+            );
         });
     }
 
     /// Gracefully shutdown the control service and all background tasks
     pub async fn shutdown(&self) -> Result<()> {
         info!("Initiating graceful shutdown of ControlService");
-        
+
         // Send shutdown signal to all background tasks
         if let Err(e) = self.shutdown_sender.send(()) {
             warn!("Failed to send shutdown signal: {}", e);
         }
-        
+
         info!("ControlService shutdown completed");
         Ok(())
     }
@@ -808,7 +908,9 @@ mod tests {
             dependencies: vec!["database".to_string()],
         };
 
-        let result = service.update_service_health("routing".to_string(), health).await;
+        let result = service
+            .update_service_health("routing".to_string(), health)
+            .await;
         assert!(result.is_ok());
 
         let status = service.get_system_status().await?;

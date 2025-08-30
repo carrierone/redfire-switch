@@ -1,5 +1,5 @@
 //! Routing Service - Handles LCR and call routing decisions
-//! 
+//!
 //! This service encapsulates least cost routing logic and integrates
 //! with the event-driven architecture for real-time routing decisions.
 
@@ -92,7 +92,10 @@ pub struct RoutingService {
     /// Route cache for performance
     route_cache: Arc<RwLock<HashMap<String, CachedRoute>>>,
     /// Request processing channel
-    request_sender: mpsc::UnboundedSender<(RouteRequest, tokio::sync::oneshot::Sender<Result<RouteResponse>>)>,
+    request_sender: mpsc::UnboundedSender<(
+        RouteRequest,
+        tokio::sync::oneshot::Sender<Result<RouteResponse>>,
+    )>,
 }
 
 impl RoutingService {
@@ -147,8 +150,10 @@ impl RoutingService {
             .await
             .map_err(|_| anyhow::anyhow!("Failed to receive routing response"))??;
 
-        debug!("Routing completed for call {} in {}ms", 
-               request.call_id, response.routing_time_ms);
+        debug!(
+            "Routing completed for call {} in {}ms",
+            request.call_id, response.routing_time_ms
+        );
 
         Ok(response)
     }
@@ -164,7 +169,7 @@ impl RoutingService {
             cache_size,
             cache_hit_rate,
             average_routing_time_ms: 0.0, // TODO: Track this
-            active_routes: 0, // TODO: Track this
+            active_routes: 0,             // TODO: Track this
         })
     }
 
@@ -191,7 +196,10 @@ struct RoutingProcessor {
     termination_routes: Arc<tokio::sync::Mutex<TerminationRoutingService>>,
     event_bus: Arc<EventBus>,
     route_cache: Arc<RwLock<HashMap<String, CachedRoute>>>,
-    request_receiver: mpsc::UnboundedReceiver<(RouteRequest, tokio::sync::oneshot::Sender<Result<RouteResponse>>)>,
+    request_receiver: mpsc::UnboundedReceiver<(
+        RouteRequest,
+        tokio::sync::oneshot::Sender<Result<RouteResponse>>,
+    )>,
 }
 
 impl RoutingProcessor {
@@ -251,10 +259,10 @@ impl RoutingProcessor {
             routing_time_ms,
             cache_hit: false,
             fraud_check_passed,
-            routing_decision: if primary_route.is_some() { 
-                "ROUTE_FOUND".to_string() 
-            } else { 
-                "NO_ROUTE_AVAILABLE".to_string() 
+            routing_decision: if primary_route.is_some() {
+                "ROUTE_FOUND".to_string()
+            } else {
+                "NO_ROUTE_AVAILABLE".to_string()
             },
         };
 
@@ -272,7 +280,7 @@ impl RoutingProcessor {
     async fn check_cache(&self, request: &RouteRequest) -> Result<Option<RouteResponse>> {
         let cache_key = self.generate_cache_key(request);
         let cache = self.route_cache.read().await;
-        
+
         if let Some(cached) = cache.get(&cache_key) {
             let age = (Utc::now() - cached.created_at).num_seconds() as u64;
             if age < self.config.cache_ttl_seconds {
@@ -288,16 +296,18 @@ impl RoutingProcessor {
     async fn perform_fraud_check(&self, request: &RouteRequest) -> Result<bool> {
         // TODO: Implement actual fraud checking logic
         // For now, just check basic patterns
-        
+
         // Check for suspicious calling patterns
         if request.calling_number.len() < 3 || request.called_number.len() < 3 {
             return Ok(false);
         }
 
         // Check for international premium rate numbers
-        if request.called_number.starts_with("900") || 
-           request.called_number.starts_with("976") {
-            warn!("Potential premium rate fraud detected for call {}", request.call_id);
+        if request.called_number.starts_with("900") || request.called_number.starts_with("976") {
+            warn!(
+                "Potential premium rate fraud detected for call {}",
+                request.call_id
+            );
             return Ok(false);
         }
 
@@ -330,15 +340,22 @@ impl RoutingProcessor {
             max_attempts: 3,
             timestamp: chrono::Utc::now(),
         };
-        if let Ok(termination_result) = termination_routes.route_termination(termination_request).await {
-            // Convert termination routes to RouteInfo  
+        if let Ok(termination_result) = termination_routes
+            .route_termination(termination_request)
+            .await
+        {
+            // Convert termination routes to RouteInfo
             // This is a simplified conversion - in practice you'd have more detailed mapping
             if let Some(route) = &termination_result.selected_route {
                 routes.push(RouteInfo {
                     route_id: format!("term_selected_{}", request.call_id),
                     trunk_id: route.egress_trunk.id,
                     trunk_name: route.egress_trunk.name.clone(),
-                    gateway_ip: route.egress_trunk.host.parse().unwrap_or(IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+                    gateway_ip: route
+                        .egress_trunk
+                        .host
+                        .parse()
+                        .unwrap_or(IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
                     gateway_port: route.egress_trunk.port,
                     priority: route.priority,
                     cost: {
@@ -347,14 +364,18 @@ impl RoutingProcessor {
                     },
                 });
             }
-            
+
             // Add remaining routes as alternatives
             for (i, route) in termination_result.remaining_routes.iter().enumerate() {
                 routes.push(RouteInfo {
                     route_id: format!("term_{}_{}", request.call_id, i),
                     trunk_id: route.egress_trunk.id,
                     trunk_name: route.egress_trunk.name.clone(),
-                    gateway_ip: route.egress_trunk.host.parse().unwrap_or(IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+                    gateway_ip: route
+                        .egress_trunk
+                        .host
+                        .parse()
+                        .unwrap_or(IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
                     gateway_port: route.egress_trunk.port,
                     priority: route.priority,
                     cost: {
@@ -373,10 +394,18 @@ impl RoutingProcessor {
         Ok(routes)
     }
 
-    async fn optimize_routes(&self, mut routes: Vec<RouteInfo>, _request: &RouteRequest) -> Result<Vec<RouteInfo>> {
+    async fn optimize_routes(
+        &self,
+        mut routes: Vec<RouteInfo>,
+        _request: &RouteRequest,
+    ) -> Result<Vec<RouteInfo>> {
         // Sort by cost (LCR principle)
-        routes.sort_by(|a, b| a.cost.partial_cmp(&b.cost).unwrap_or(std::cmp::Ordering::Equal));
-        
+        routes.sort_by(|a, b| {
+            a.cost
+                .partial_cmp(&b.cost)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
         // TODO: Apply more sophisticated optimization algorithms
         // - Quality scoring
         // - ASR (Answer Seizure Ratio) considerations
@@ -407,7 +436,11 @@ impl RoutingProcessor {
         Ok(())
     }
 
-    async fn publish_routing_event(&self, request: &RouteRequest, response: &RouteResponse) -> Result<()> {
+    async fn publish_routing_event(
+        &self,
+        request: &RouteRequest,
+        response: &RouteResponse,
+    ) -> Result<()> {
         let event = TelecomEvent::CallRouted(crate::events::CallRoutedEvent {
             call_id: request.call_id.clone(),
             session_id: request.session_id.clone(),
@@ -424,17 +457,21 @@ impl RoutingProcessor {
             timestamp: Utc::now(),
         });
 
-        self.event_bus.publish(event).await
+        self.event_bus
+            .publish(event)
+            .await
             .context("Failed to publish routing event")?;
 
         Ok(())
     }
 
     fn generate_cache_key(&self, request: &RouteRequest) -> String {
-        format!("{}:{}:{}", 
-                request.calling_number, 
-                request.called_number, 
-                request.customer_id.unwrap_or(0))
+        format!(
+            "{}:{}:{}",
+            request.calling_number,
+            request.called_number,
+            request.customer_id.unwrap_or(0)
+        )
     }
 }
 
@@ -458,8 +495,12 @@ mod tests {
     async fn test_routing_service_creation() {
         let config = RoutingConfig::default();
         let lcr_engine = Arc::new(LcrEngine::new("test://").await.unwrap());
-        let origination_routes = Arc::new(tokio::sync::Mutex::new(OriginationRoutingEngine::new(Default::default())));
-        let termination_routes = Arc::new(tokio::sync::Mutex::new(TerminationRoutingService::new(lcr_engine.clone())));
+        let origination_routes = Arc::new(tokio::sync::Mutex::new(OriginationRoutingEngine::new(
+            Default::default(),
+        )));
+        let termination_routes = Arc::new(tokio::sync::Mutex::new(TerminationRoutingService::new(
+            lcr_engine.clone(),
+        )));
         let event_bus = Arc::new(EventBus::new());
 
         let _service = RoutingService::new(
@@ -475,8 +516,12 @@ mod tests {
     async fn test_routing_request() {
         let config = RoutingConfig::default();
         let lcr_engine = Arc::new(LcrEngine::new("test://").await.unwrap());
-        let origination_routes = Arc::new(tokio::sync::Mutex::new(OriginationRoutingEngine::new(Default::default())));
-        let termination_routes = Arc::new(tokio::sync::Mutex::new(TerminationRoutingService::new(lcr_engine.clone())));
+        let origination_routes = Arc::new(tokio::sync::Mutex::new(OriginationRoutingEngine::new(
+            Default::default(),
+        )));
+        let termination_routes = Arc::new(tokio::sync::Mutex::new(TerminationRoutingService::new(
+            lcr_engine.clone(),
+        )));
         let event_bus = Arc::new(EventBus::new());
 
         let service = RoutingService::new(

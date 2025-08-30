@@ -9,7 +9,7 @@
  *
  * Sponsored by Carrier One Inc (https://www.carrierone.com)
 
-// Allow common warnings for library code  
+// Allow common warnings for library code
 #![allow(dead_code)]
 #![allow(unused_variables)]
 #![allow(unused_imports)]

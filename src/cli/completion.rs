@@ -46,11 +46,12 @@ impl RedFireCompleter {
     /// Complete command names
     fn complete_command(&self, line: &str, pos: usize) -> rustyline::Result<(usize, Vec<Pair>)> {
         let words: Vec<&str> = line[..pos].split_whitespace().collect();
-        
+
         if words.is_empty() || (words.len() == 1 && !line.ends_with(' ')) {
             // Complete command name
             let prefix = words.last().map_or("", |v| *v);
-            let matches: Vec<Pair> = self.commands
+            let matches: Vec<Pair> = self
+                .commands
                 .keys()
                 .filter(|name| name.starts_with(prefix))
                 .map(|name| Pair {
@@ -91,41 +92,41 @@ impl RedFireCompleter {
             // Status commands
             "status" => self.complete_status_args(current_arg, arg_index),
             "show" => self.complete_show_args(current_arg, arg_index),
-            
+
             // Call control commands
             "calls" => self.complete_calls_args(current_arg, arg_index),
             "hangup" => self.complete_hangup_args(current_arg, arg_index),
-            
-            // Configuration commands  
+
+            // Configuration commands
             "set" => self.complete_set_args(current_arg, arg_index),
             "get" => self.complete_get_args(current_arg, arg_index),
             "reload" => self.complete_reload_args(current_arg, arg_index),
-            
+
             // Gateway and trunk commands
             "gateway" => self.complete_gateway_args(current_arg, arg_index),
             "trunk" => self.complete_trunk_args(current_arg, arg_index),
-            
+
             // Route commands
             "route" => self.complete_route_args(current_arg, arg_index),
             "lcr" => self.complete_lcr_args(current_arg, arg_index),
-            
+
             // Debug commands
             "debug" => self.complete_debug_args(current_arg, arg_index),
             "trace" => self.complete_trace_args(current_arg, arg_index),
-            
+
             // Codec commands
             "codec" => self.complete_codec_args(current_arg, arg_index),
             "transcode" => self.complete_transcode_args(current_arg, arg_index),
-            
+
             // Log commands
             "log" => self.complete_log_args(current_arg, arg_index),
-            
+
             // File operations - skip for now since we need Context
             "load" | "save" | "export" | "import" => {
                 vec![]
             }
-            
-            _ => vec![]
+
+            _ => vec![],
         };
 
         let start = pos - current_arg.len();
@@ -136,8 +137,8 @@ impl RedFireCompleter {
     fn complete_status_args(&self, current_arg: &str, arg_index: usize) -> Vec<Pair> {
         match arg_index {
             0 => vec![
-                "calls", "channels", "gateways", "trunks", "codecs", "memory", 
-                "cpu", "network", "database", "security", "all"
+                "calls", "channels", "gateways", "trunks", "codecs", "memory", "cpu", "network",
+                "database", "security", "all",
             ]
             .into_iter()
             .filter(|&arg| arg.starts_with(current_arg))
@@ -146,7 +147,7 @@ impl RedFireCompleter {
                 replacement: arg.to_string(),
             })
             .collect(),
-            _ => vec![]
+            _ => vec![],
         }
     }
 
@@ -154,8 +155,18 @@ impl RedFireCompleter {
     fn complete_show_args(&self, current_arg: &str, arg_index: usize) -> Vec<Pair> {
         match arg_index {
             0 => vec![
-                "calls", "channels", "gateways", "trunks", "routes", "config",
-                "stats", "alarms", "events", "logs", "performance", "security"
+                "calls",
+                "channels",
+                "gateways",
+                "trunks",
+                "routes",
+                "config",
+                "stats",
+                "alarms",
+                "events",
+                "logs",
+                "performance",
+                "security",
             ]
             .into_iter()
             .filter(|&arg| arg.starts_with(current_arg))
@@ -168,7 +179,7 @@ impl RedFireCompleter {
                 "calls" => vec!["active", "completed", "failed", "summary"],
                 "channels" => vec!["sip", "rtp", "all"],
                 "gateways" => vec!["active", "inactive", "all"],
-                _ => vec![]
+                _ => vec![],
             }
             .into_iter()
             .filter(|&arg| arg.starts_with(current_arg))
@@ -177,7 +188,7 @@ impl RedFireCompleter {
                 replacement: arg.to_string(),
             })
             .collect(),
-            _ => vec![]
+            _ => vec![],
         }
     }
 
@@ -192,7 +203,7 @@ impl RedFireCompleter {
                     replacement: arg.to_string(),
                 })
                 .collect(),
-            _ => vec![]
+            _ => vec![],
         }
     }
 
@@ -209,10 +220,10 @@ impl RedFireCompleter {
                     Pair {
                         display: "<call-id> - Hangup specific call".to_string(),
                         replacement: "".to_string(),
-                    }
+                    },
                 ]
             }
-            _ => vec![]
+            _ => vec![],
         }
     }
 
@@ -220,8 +231,13 @@ impl RedFireCompleter {
     fn complete_set_args(&self, current_arg: &str, arg_index: usize) -> Vec<Pair> {
         match arg_index {
             0 => vec![
-                "log-level", "max-calls", "rtp-timeout", "sip-timeout",
-                "codec-priority", "gateway-status", "debug-level"
+                "log-level",
+                "max-calls",
+                "rtp-timeout",
+                "sip-timeout",
+                "codec-priority",
+                "gateway-status",
+                "debug-level",
             ]
             .into_iter()
             .filter(|&arg| arg.starts_with(current_arg))
@@ -234,7 +250,7 @@ impl RedFireCompleter {
                 // Provide context-sensitive value completion
                 vec![]
             }
-            _ => vec![]
+            _ => vec![],
         }
     }
 
@@ -255,7 +271,7 @@ impl RedFireCompleter {
                     replacement: arg.to_string(),
                 })
                 .collect(),
-            _ => vec![]
+            _ => vec![],
         }
     }
 
@@ -270,7 +286,7 @@ impl RedFireCompleter {
                     replacement: arg.to_string(),
                 })
                 .collect(),
-            _ => vec![]
+            _ => vec![],
         }
     }
 
@@ -285,7 +301,7 @@ impl RedFireCompleter {
                     replacement: arg.to_string(),
                 })
                 .collect(),
-            _ => vec![]
+            _ => vec![],
         }
     }
 
@@ -300,7 +316,7 @@ impl RedFireCompleter {
                     replacement: arg.to_string(),
                 })
                 .collect(),
-            _ => vec![]
+            _ => vec![],
         }
     }
 
@@ -315,7 +331,7 @@ impl RedFireCompleter {
                     replacement: arg.to_string(),
                 })
                 .collect(),
-            _ => vec![]
+            _ => vec![],
         }
     }
 
@@ -330,7 +346,7 @@ impl RedFireCompleter {
                     replacement: arg.to_string(),
                 })
                 .collect(),
-            _ => vec![]
+            _ => vec![],
         }
     }
 
@@ -345,7 +361,7 @@ impl RedFireCompleter {
                     replacement: arg.to_string(),
                 })
                 .collect(),
-            _ => vec![]
+            _ => vec![],
         }
     }
 
@@ -373,7 +389,7 @@ impl RedFireCompleter {
                     vec![]
                 }
             }
-            _ => vec![]
+            _ => vec![],
         }
     }
 
@@ -389,7 +405,7 @@ impl RedFireCompleter {
                     replacement: codec.to_string(),
                 })
                 .collect(),
-            _ => vec![]
+            _ => vec![],
         }
     }
 
@@ -417,7 +433,7 @@ impl RedFireCompleter {
                     vec![]
                 }
             }
-            _ => vec![]
+            _ => vec![],
         }
     }
 
@@ -436,19 +452,19 @@ impl RedFireCompleter {
             ("status", "database") => "Show database status",
             ("status", "security") => "Show security status",
             ("status", "all") => "Show all status information",
-            
+
             // Show descriptions
             ("show", "calls") => "Display call information",
-            ("show", "channels") => "Display channel details", 
+            ("show", "channels") => "Display channel details",
             ("show", "gateways") => "Display gateway configuration",
             ("show", "routes") => "Display routing table",
-            
+
             // Other command descriptions
             ("calls", "list") => "List all calls",
             ("calls", "count") => "Count active calls",
             ("calls", "active") => "Show active calls only",
-            
-            _ => "Command argument"
+
+            _ => "Command argument",
         }
     }
 }

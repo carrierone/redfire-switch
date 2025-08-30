@@ -1,23 +1,17 @@
 //! RFC-compliant SIP and SIP-I implementation
-//! 
+//!
 //! This module provides RFC 3261 (SIP), RFC 3372 (SIP-T), and ITU-T Q.1912.5 (SIP-I)
 //! compliant parsing and validation for telecommunications signaling.
 
 use anyhow::{anyhow, Result};
+use lazy_static::lazy_static;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use regex::Regex;
-use lazy_static::lazy_static;
 
 /// RFC 3261 mandatory headers that MUST be present in all SIP requests
-pub const MANDATORY_SIP_HEADERS: &[&str] = &[
-    "To",
-    "From", 
-    "CSeq",
-    "Call-ID",
-    "Max-Forwards",
-    "Via",
-];
+pub const MANDATORY_SIP_HEADERS: &[&str] =
+    &["To", "From", "CSeq", "Call-ID", "Max-Forwards", "Via"];
 
 /// Valid SIP version per RFC 3261
 pub const VALID_SIP_VERSION: &str = "SIP/2.0";
@@ -33,12 +27,12 @@ lazy_static! {
     static ref SIP_URI_REGEX: Regex = Regex::new(
         r"^(sip|sips|tel):(?:([^@;?<>]+)@)?([^;?<>]+)(?:[;?](.+))?$"
     ).expect("Invalid SIP URI regex");
-    
+
     /// Regex for extracting URI parameters - ReDoS safe version
     static ref URI_PARAM_REGEX: Regex = Regex::new(
         r"([^;=\s]+)=([^;\s]*)"
     ).expect("Invalid URI parameter regex");
-    
+
     /// Regex for validating E.164 phone numbers - RFC compliant
     static ref E164_REGEX: Regex = Regex::new(
         r"^\+[1-9]\d{0,14}$"
@@ -48,10 +42,10 @@ lazy_static! {
 /// SIP URI components per RFC 3261
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SipUri {
-    pub scheme: String,        // sip, sips, or tel
-    pub user: Option<String>,  // User part (phone number usually)
-    pub host: String,           // Domain or IP
-    pub port: Option<u16>,      // Port number if specified
+    pub scheme: String,                      // sip, sips, or tel
+    pub user: Option<String>,                // User part (phone number usually)
+    pub host: String,                        // Domain or IP
+    pub port: Option<u16>,                   // Port number if specified
     pub parameters: HashMap<String, String>, // URI parameters (;key=value)
     pub headers: HashMap<String, String>,    // URI headers (?key=value)
 }
@@ -59,9 +53,9 @@ pub struct SipUri {
 /// ANI-II/OLI information extracted from SIP headers
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OriginatingLineInfo {
-    pub oli_value: u8,                    // OLI/ANI-II digit (0-99)
-    pub source: OliSource,                // Where it was found
-    pub calling_number: Option<String>,   // Associated calling number
+    pub oli_value: u8,                  // OLI/ANI-II digit (0-99)
+    pub source: OliSource,              // Where it was found
+    pub calling_number: Option<String>, // Associated calling number
     pub screening: Option<ScreeningIndicator>,
     pub presentation: Option<PresentationIndicator>,
 }
@@ -69,12 +63,12 @@ pub struct OriginatingLineInfo {
 /// Source of OLI/ANI-II information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum OliSource {
-    FromUriParam,           // From header ;oli= or ;isup-oli=
-    PIsupOli,              // P-ISUP-OLI header
-    RemotePartyId,         // Remote-Party-ID header
-    PAssertedIdentity,     // P-Asserted-Identity header  
-    IsupBody,              // ISUP message body
-    DiversionHeader,       // Diversion header
+    FromUriParam,      // From header ;oli= or ;isup-oli=
+    PIsupOli,          // P-ISUP-OLI header
+    RemotePartyId,     // Remote-Party-ID header
+    PAssertedIdentity, // P-Asserted-Identity header
+    IsupBody,          // ISUP message body
+    DiversionHeader,   // Diversion header
 }
 
 /// Screening indicator from ISUP
@@ -96,12 +90,15 @@ pub enum PresentationIndicator {
 }
 
 /// Helper function to get header value case-insensitively
-fn get_header_case_insensitive<'a>(headers: &'a HashMap<String, String>, header_name: &str) -> Option<&'a String> {
+fn get_header_case_insensitive<'a>(
+    headers: &'a HashMap<String, String>,
+    header_name: &str,
+) -> Option<&'a String> {
     // Try exact match first (fastest)
     if let Some(value) = headers.get(header_name) {
         return Some(value);
     }
-    
+
     // Try case-insensitive search
     let lower_name = header_name.to_lowercase();
     for (key, value) in headers {
@@ -113,7 +110,10 @@ fn get_header_case_insensitive<'a>(headers: &'a HashMap<String, String>, header_
 }
 
 /// Extract OLI information from SIP headers and body
-pub fn extract_oli_info(headers: &HashMap<String, String>, body: Option<&str>) -> Option<OriginatingLineInfo> {
+pub fn extract_oli_info(
+    headers: &HashMap<String, String>,
+    body: Option<&str>,
+) -> Option<OriginatingLineInfo> {
     // Try P-ISUP-OLI header first (highest priority)
     if let Some(oli_header) = get_header_case_insensitive(headers, "P-ISUP-OLI") {
         if let Ok(oli_value) = oli_header.parse::<u8>() {
@@ -126,11 +126,16 @@ pub fn extract_oli_info(headers: &HashMap<String, String>, body: Option<&str>) -
             });
         }
     }
-    
+
     // Try From header with OLI parameter
     if let Some(from_header) = get_header_case_insensitive(headers, "From") {
         if let Ok(uri) = SipUriParser::parse_header_field(from_header) {
-            if let Some(oli_str) = uri.1.parameters.get("oli").or_else(|| uri.1.parameters.get("isup-oli")) {
+            if let Some(oli_str) = uri
+                .1
+                .parameters
+                .get("oli")
+                .or_else(|| uri.1.parameters.get("isup-oli"))
+            {
                 if let Ok(oli_value) = oli_str.parse::<u8>() {
                     return Some(OriginatingLineInfo {
                         oli_value,
@@ -143,7 +148,7 @@ pub fn extract_oli_info(headers: &HashMap<String, String>, body: Option<&str>) -
             }
         }
     }
-    
+
     // Try P-Asserted-Identity header
     if let Some(pai_header) = get_header_case_insensitive(headers, "P-Asserted-Identity") {
         if let Ok(uri) = SipUriParser::parse_header_field(pai_header) {
@@ -160,14 +165,14 @@ pub fn extract_oli_info(headers: &HashMap<String, String>, body: Option<&str>) -
             }
         }
     }
-    
+
     // Try parsing ISUP from message body if present
     if let Some(body_content) = body {
         if let Some(oli_info) = IsupParser::extract_oli_from_body(body_content) {
             return Some(oli_info);
         }
     }
-    
+
     None
 }
 
@@ -198,15 +203,16 @@ impl IsupParser {
         }
         None
     }
-    
+
     /// Parse ISUP IAM message to extract calling party category
     fn parse_isup_calling_party_category(isup_hex: &str) -> Option<u8> {
         // Remove whitespace and validate hex format
         let hex_data = isup_hex.replace(&[' ', '\t', '\r', '\n'][..], "");
-        if hex_data.len() < 16 { // Minimum ISUP IAM size
+        if hex_data.len() < 16 {
+            // Minimum ISUP IAM size
             return None;
         }
-        
+
         // Look for Calling Party Category parameter (typically at offset 12-13 in IAM)
         // This is a simplified parser - production would need full ISUP parsing
         if let Ok(bytes) = hex::decode(&hex_data) {
@@ -215,7 +221,7 @@ impl IsupParser {
                 return Some(bytes[13]);
             }
         }
-        
+
         None
     }
 }
@@ -228,7 +234,7 @@ impl OliParser {
     pub fn parse_oli_string(oli_str: &str) -> Option<u8> {
         oli_str.parse::<u8>().ok().filter(|&val| val <= 99)
     }
-    
+
     /// Parse OLI information from SIP headers
     pub fn parse_from_headers(headers: &HashMap<String, String>) -> Option<OriginatingLineInfo> {
         extract_oli_info(headers, None)
@@ -245,14 +251,14 @@ impl Rfc3261Validator {
         if !request_line.ends_with(VALID_SIP_VERSION) {
             return Err(anyhow!("Invalid SIP version - must be SIP/2.0"));
         }
-        
+
         // Validate mandatory headers (case-insensitive)
         for header in MANDATORY_SIP_HEADERS {
             if get_header_case_insensitive(headers, header).is_none() {
                 return Err(anyhow!("Missing mandatory header: {}", header));
             }
         }
-        
+
         // Validate Request-URI (no unescaped spaces or control chars)
         if let Some(uri_part) = request_line.split_whitespace().nth(1) {
             if uri_part.contains(char::is_control) {
@@ -262,7 +268,7 @@ impl Rfc3261Validator {
                 return Err(anyhow!("Request-URI must not be enclosed in <>"));
             }
         }
-        
+
         // Validate From and To headers have valid SIP URIs
         if let Some(from_header) = get_header_case_insensitive(headers, "From") {
             Self::validate_uri_header(from_header, "From")?;
@@ -270,29 +276,31 @@ impl Rfc3261Validator {
         if let Some(to_header) = get_header_case_insensitive(headers, "To") {
             Self::validate_uri_header(to_header, "To")?;
         }
-        
+
         // Validate Call-ID format (should not contain spaces)
         if let Some(call_id) = get_header_case_insensitive(headers, "Call-ID") {
             if call_id.contains(' ') {
                 return Err(anyhow!("Call-ID must not contain spaces"));
             }
         }
-        
+
         // Validate Max-Forwards is numeric
         if let Some(max_fwd) = get_header_case_insensitive(headers, "Max-Forwards") {
-            max_fwd.trim().parse::<u32>()
+            max_fwd
+                .trim()
+                .parse::<u32>()
                 .map_err(|_| anyhow!("Max-Forwards must be numeric"))?;
         }
-        
+
         Ok(())
     }
-    
+
     /// Validate a SIP URI header field
     fn validate_uri_header(header: &str, header_name: &str) -> Result<()> {
         // Extract URI from header (may have display name and parameters)
         let uri_part = if let Some(start) = header.find('<') {
             if let Some(end) = header.find('>') {
-                &header[start+1..end]
+                &header[start + 1..end]
             } else {
                 return Err(anyhow!("{} header has unmatched < >", header_name));
             }
@@ -300,12 +308,18 @@ impl Rfc3261Validator {
             // No angle brackets, parse until semicolon or end
             header.split(';').next().unwrap_or(header)
         };
-        
+
         // Basic URI validation
-        if !uri_part.starts_with("sip:") && !uri_part.starts_with("sips:") && !uri_part.starts_with("tel:") {
-            return Err(anyhow!("{} header must contain a valid SIP or TEL URI", header_name));
+        if !uri_part.starts_with("sip:")
+            && !uri_part.starts_with("sips:")
+            && !uri_part.starts_with("tel:")
+        {
+            return Err(anyhow!(
+                "{} header must contain a valid SIP or TEL URI",
+                header_name
+            ));
         }
-        
+
         Ok(())
     }
 }
@@ -318,25 +332,32 @@ impl SipUriParser {
     pub fn parse(uri_str: &str) -> Result<SipUri> {
         // Input length validation
         if uri_str.len() > MAX_URI_LENGTH {
-            return Err(anyhow!("URI exceeds maximum length of {} characters", MAX_URI_LENGTH));
+            return Err(anyhow!(
+                "URI exceeds maximum length of {} characters",
+                MAX_URI_LENGTH
+            ));
         }
-        
-        let captures = SIP_URI_REGEX.captures(uri_str)
+
+        let captures = SIP_URI_REGEX
+            .captures(uri_str)
             .ok_or_else(|| anyhow!("Invalid SIP URI format: {}", uri_str))?;
-        
-        let scheme = captures.get(1)
+
+        let scheme = captures
+            .get(1)
             .ok_or_else(|| anyhow!("Missing URI scheme"))?
-            .as_str().to_lowercase();
+            .as_str()
+            .to_lowercase();
         let user = captures.get(2).map(|m| m.as_str().to_string());
-        let host_part = captures.get(3)
+        let host_part = captures
+            .get(3)
             .ok_or_else(|| anyhow!("Missing URI host part"))?
             .as_str();
-        
+
         // Parse host and port with proper IPv6 support
         let (host, port) = if host_part.starts_with('[') && host_part.contains("]:") {
             // IPv6 address with port: [::1]:5060
             if let Some(bracket_end) = host_part.find("]:") {
-                let ipv6_part = &host_part[1..bracket_end];  // Remove brackets
+                let ipv6_part = &host_part[1..bracket_end]; // Remove brackets
                 let port_str = &host_part[bracket_end + 2..];
                 match port_str.parse::<u16>() {
                     Ok(port_num) => (ipv6_part.to_string(), Some(port_num)),
@@ -349,7 +370,7 @@ impl SipUriParser {
             // Regular hostname or IPv4 with port
             let host_part_left = &host_part[..colon_pos];
             let port_str = &host_part[colon_pos + 1..];
-            
+
             // Don't treat IPv6 addresses without brackets as having ports
             if host_part_left.contains(':') && !host_part.starts_with('[') {
                 // This looks like an IPv6 address without brackets
@@ -363,44 +384,48 @@ impl SipUriParser {
         } else {
             (host_part.to_string(), None)
         };
-        
+
         // Parse parameters and headers
         let mut parameters = HashMap::new();
         let mut headers = HashMap::new();
-        
+
         if let Some(remainder) = captures.get(5).map(|m| m.as_str()) {
             // Split by ? to separate parameters from headers
             let parts: Vec<&str> = remainder.splitn(2, '?').collect();
-            
+
             // Parse parameters (;key=value)
             if !parts[0].is_empty() {
                 for param in parts[0].split(';') {
-                    if param.is_empty() { continue; }
+                    if param.is_empty() {
+                        continue;
+                    }
                     let kv: Vec<&str> = param.splitn(2, '=').collect();
                     if !kv.is_empty() && !kv[0].is_empty() {
                         parameters.insert(
                             kv[0].to_string(),
-                            kv.get(1).map(|s| s.to_string()).unwrap_or_default()
+                            kv.get(1).map(|s| s.to_string()).unwrap_or_default(),
                         );
                     }
                 }
             }
-            
+
             // Parse headers (?key=value&key2=value2)
             if parts.len() > 1 && !parts[1].is_empty() {
                 for header in parts[1].split('&') {
-                    if header.is_empty() { continue; }
+                    if header.is_empty() {
+                        continue;
+                    }
                     let kv: Vec<&str> = header.splitn(2, '=').collect();
                     if !kv.is_empty() && !kv[0].is_empty() {
                         headers.insert(
                             kv[0].to_string(),
-                            kv.get(1).map(|s| s.to_string()).unwrap_or_default()
+                            kv.get(1).map(|s| s.to_string()).unwrap_or_default(),
                         );
                     }
                 }
             }
         }
-        
+
         Ok(SipUri {
             scheme,
             user,
@@ -410,12 +435,14 @@ impl SipUriParser {
             headers,
         })
     }
-    
+
     /// Parse a full SIP header field (including display name and header parameters)
-    pub fn parse_header_field(header: &str) -> Result<(Option<String>, SipUri, HashMap<String, String>)> {
+    pub fn parse_header_field(
+        header: &str,
+    ) -> Result<(Option<String>, SipUri, HashMap<String, String>)> {
         let mut display_name = None;
         let mut header_params = HashMap::new();
-        
+
         // Find the URI part
         let (uri_str, params_str) = if let Some(start) = header.find('<') {
             if let Some(end) = header.find('>') {
@@ -423,10 +450,10 @@ impl SipUriParser {
                 if start > 0 {
                     display_name = Some(header[..start].trim().trim_matches('"').to_string());
                 }
-                
-                let uri = &header[start+1..end];
+
+                let uri = &header[start + 1..end];
                 let params = if end + 1 < header.len() {
-                    &header[end+1..]
+                    &header[end + 1..]
                 } else {
                     ""
                 };
@@ -442,26 +469,22 @@ impl SipUriParser {
                 (header, "")
             }
         };
-        
+
         // Parse the URI
         let uri = Self::parse(uri_str)?;
-        
+
         // Parse header parameters (not URI parameters)
         for param in params_str.split(';') {
-            if param.is_empty() { continue; }
+            if param.is_empty() {
+                continue;
+            }
             let kv: Vec<&str> = param.trim().splitn(2, '=').collect();
-            header_params.insert(
-                kv[0].to_string(),
-                kv.get(1).unwrap_or(&"").to_string()
-            );
+            header_params.insert(kv[0].to_string(), kv.get(1).unwrap_or(&"").to_string());
         }
-        
+
         Ok((display_name, uri, header_params))
     }
 }
-
-
-
 
 #[cfg(test)]
 mod tests {
@@ -479,9 +502,11 @@ mod tests {
     #[test]
     fn test_from_header_with_oli() {
         let mut headers = HashMap::new();
-        headers.insert("From".to_string(), 
-            "<sip:+15551234567@carrier.com;oli=23>;tag=abc123".to_string());
-        
+        headers.insert(
+            "From".to_string(),
+            "<sip:+15551234567@carrier.com;oli=23>;tag=abc123".to_string(),
+        );
+
         let oli = OliParser::parse_from_headers(&headers).unwrap();
         assert_eq!(oli.oli_value, 23);
         assert!(matches!(oli.source, OliSource::FromUriParam));
@@ -491,7 +516,7 @@ mod tests {
     fn test_p_isup_oli_header() {
         let mut headers = HashMap::new();
         headers.insert("P-ISUP-OLI".to_string(), "70".to_string());
-        
+
         let oli = OliParser::parse_from_headers(&headers).unwrap();
         assert_eq!(oli.oli_value, 70);
         assert!(matches!(oli.source, OliSource::PIsupOli));
@@ -501,13 +526,19 @@ mod tests {
     fn test_rfc3261_validation() {
         let mut headers = HashMap::new();
         headers.insert("To".to_string(), "<sip:bob@example.com>".to_string());
-        headers.insert("From".to_string(), "<sip:alice@example.com>;tag=123".to_string());
+        headers.insert(
+            "From".to_string(),
+            "<sip:alice@example.com>;tag=123".to_string(),
+        );
         headers.insert("Call-ID".to_string(), "abc123@example.com".to_string());
         headers.insert("CSeq".to_string(), "1 INVITE".to_string());
         headers.insert("Via".to_string(), "SIP/2.0/UDP example.com".to_string());
         headers.insert("Max-Forwards".to_string(), "70".to_string());
-        
-        assert!(Rfc3261Validator::validate_message(&headers, "INVITE sip:bob@example.com SIP/2.0").is_ok());
+
+        assert!(
+            Rfc3261Validator::validate_message(&headers, "INVITE sip:bob@example.com SIP/2.0")
+                .is_ok()
+        );
     }
 
     #[test]
@@ -529,10 +560,10 @@ Content-Disposition: signal;handling=required
 
 0A02830A
 --unique-boundary-1--"#;
-        
+
         let mut headers = HashMap::new();
         headers.insert("Content-Type".to_string(), content_type.to_string());
-        
+
         let oli = extract_oli_info(&headers, Some(body));
         assert!(oli.is_some());
     }

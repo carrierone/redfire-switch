@@ -1,5 +1,5 @@
 //! Secure configuration management
-//! 
+//!
 //! This module provides secure configuration loading with environment
 //! variable support and validation.
 
@@ -32,7 +32,7 @@ impl SecureConfigLoader {
             ],
         }
     }
-    
+
     /// Load configuration from file and environment
     pub fn load_config<T>(&self, config_path: Option<&Path>) -> Result<T>
     where
@@ -43,24 +43,24 @@ impl SecureConfigLoader {
         } else {
             T::default()
         };
-        
+
         // Override with environment variables
         self.override_from_env(&mut config)?;
-        
+
         // Validate required variables
         self.validate_required_vars()?;
-        
+
         info!("Configuration loaded successfully");
         Ok(config)
     }
-    
+
     /// Load configuration from JSON/TOML file
     fn load_from_file<T>(&self, path: &Path) -> Result<T>
     where
         T: for<'de> Deserialize<'de>,
     {
         let content = fs::read_to_string(path)?;
-        
+
         let config = if path.extension().and_then(|s| s.to_str()) == Some("toml") {
             // toml crate not available, fall back to JSON
             warn!("TOML format requested but toml crate not available, using JSON parser");
@@ -68,11 +68,11 @@ impl SecureConfigLoader {
         } else {
             serde_json::from_str(&content)?
         };
-        
+
         debug!("Loaded configuration from file: {:?}", path);
         Ok(config)
     }
-    
+
     /// Override configuration with environment variables
     fn override_from_env<T>(&self, _config: &mut T) -> Result<()>
     where
@@ -81,22 +81,22 @@ impl SecureConfigLoader {
         // This is a simplified implementation
         // In practice, you'd use a library like `config` or `figment`
         // to properly merge environment variables with configuration structs
-        
+
         debug!("Environment variable override completed");
         Ok(())
     }
-    
+
     /// Validate that required environment variables are set
     fn validate_required_vars(&self) -> Result<()> {
         let mut missing_vars = Vec::new();
-        
+
         for var in &self.required_vars {
             let full_var_name = if var.starts_with(&self.env_prefix) {
                 var.clone()
             } else {
                 format!("{}_{}", self.env_prefix, var)
             };
-            
+
             if env::var(&full_var_name).is_err() && env::var(var).is_err() {
                 // Allow some variables to have defaults in development
                 match var.as_str() {
@@ -114,16 +114,16 @@ impl SecureConfigLoader {
                     }
                     _ => {}
                 }
-                
+
                 missing_vars.push(var.clone());
             }
         }
-        
+
         if !missing_vars.is_empty() {
             error!("Missing required environment variables: {:?}", missing_vars);
             return Err(anyhow::anyhow!("Missing required configuration variables"));
         }
-        
+
         Ok(())
     }
 }
@@ -150,8 +150,9 @@ pub struct DatabaseConfig {
 impl Default for DatabaseConfig {
     fn default() -> Self {
         Self {
-            url: env::var("DATABASE_URL")
-                .unwrap_or_else(|_| "postgres://redfire_user:secure_password@localhost/redfire_switch".to_string()),
+            url: env::var("DATABASE_URL").unwrap_or_else(|_| {
+                "postgres://redfire_user:secure_password@localhost/redfire_switch".to_string()
+            }),
             max_connections: 100,
             connection_timeout: 30,
             enable_ssl: true,
@@ -169,30 +170,33 @@ impl DatabaseConfig {
         if !self.url.starts_with("postgres://") && !self.url.starts_with("postgresql://") {
             return Err(anyhow::anyhow!("Invalid database URL format"));
         }
-        
+
         // Warn if using default/weak credentials
         if self.url.contains("password") || self.url.contains("123456") {
             warn!("Database URL appears to contain default or weak credentials");
         }
-        
+
         // Validate SSL configuration
         if self.enable_ssl {
             if let Some(ref cert_path) = self.ssl_cert_path {
                 if !Path::new(cert_path).exists() {
-                    return Err(anyhow::anyhow!("SSL certificate file not found: {}", cert_path));
+                    return Err(anyhow::anyhow!(
+                        "SSL certificate file not found: {}",
+                        cert_path
+                    ));
                 }
             }
-            
+
             if let Some(ref key_path) = self.ssl_key_path {
                 if !Path::new(key_path).exists() {
                     return Err(anyhow::anyhow!("SSL key file not found: {}", key_path));
                 }
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Get sanitized URL for logging (removes password)
     pub fn get_sanitized_url(&self) -> String {
         if let Some(at_pos) = self.url.rfind('@') {
@@ -229,8 +233,10 @@ impl Default for TlsConfig {
     fn default() -> Self {
         Self {
             enabled: env::var("ENABLE_TLS").map(|v| v == "true").unwrap_or(false),
-            cert_path: env::var("TLS_CERT_PATH").unwrap_or_else(|_| "/etc/ssl/certs/redfire.pem".to_string()),
-            key_path: env::var("TLS_KEY_PATH").unwrap_or_else(|_| "/etc/ssl/private/redfire.key".to_string()),
+            cert_path: env::var("TLS_CERT_PATH")
+                .unwrap_or_else(|_| "/etc/ssl/certs/redfire.pem".to_string()),
+            key_path: env::var("TLS_KEY_PATH")
+                .unwrap_or_else(|_| "/etc/ssl/private/redfire.key".to_string()),
             ca_path: env::var("TLS_CA_PATH").ok(),
             require_client_cert: false,
             min_version: "TLSv1.2".to_string(),
@@ -249,29 +255,35 @@ impl TlsConfig {
         if !self.enabled {
             return Ok(());
         }
-        
+
         // Check certificate file
         if !Path::new(&self.cert_path).exists() {
-            return Err(anyhow::anyhow!("TLS certificate file not found: {}", self.cert_path));
+            return Err(anyhow::anyhow!(
+                "TLS certificate file not found: {}",
+                self.cert_path
+            ));
         }
-        
+
         // Check key file
         if !Path::new(&self.key_path).exists() {
             return Err(anyhow::anyhow!("TLS key file not found: {}", self.key_path));
         }
-        
+
         // Check CA file if specified
         if let Some(ref ca_path) = self.ca_path {
             if !Path::new(ca_path).exists() {
                 return Err(anyhow::anyhow!("TLS CA file not found: {}", ca_path));
             }
         }
-        
+
         // Validate minimum TLS version
         if !["TLSv1.2", "TLSv1.3"].contains(&self.min_version.as_str()) {
-            return Err(anyhow::anyhow!("Invalid minimum TLS version: {}", self.min_version));
+            return Err(anyhow::anyhow!(
+                "Invalid minimum TLS version: {}",
+                self.min_version
+            ));
         }
-        
+
         Ok(())
     }
 }
@@ -294,15 +306,14 @@ pub struct JwtConfig {
 impl Default for JwtConfig {
     fn default() -> Self {
         Self {
-            secret: env::var("JWT_SECRET")
-                .unwrap_or_else(|_| {
-                    if cfg!(debug_assertions) {
-                        warn!("Using development JWT secret - NOT SECURE FOR PRODUCTION");
-                        "development_secret_change_in_production".to_string()
-                    } else {
-                        panic!("JWT_SECRET environment variable is required for production")
-                    }
-                }),
+            secret: env::var("JWT_SECRET").unwrap_or_else(|_| {
+                if cfg!(debug_assertions) {
+                    warn!("Using development JWT secret - NOT SECURE FOR PRODUCTION");
+                    "development_secret_change_in_production".to_string()
+                } else {
+                    panic!("JWT_SECRET environment variable is required for production")
+                }
+            }),
             expiration_seconds: 3600, // 1 hour
             issuer: "redfire-switch".to_string(),
             audience: "redfire-api".to_string(),
@@ -316,9 +327,11 @@ impl JwtConfig {
     pub fn validate(&self) -> Result<()> {
         // Check secret strength
         if self.secret.len() < 32 {
-            return Err(anyhow::anyhow!("JWT secret must be at least 32 characters long"));
+            return Err(anyhow::anyhow!(
+                "JWT secret must be at least 32 characters long"
+            ));
         }
-        
+
         // Check for common weak secrets
         let weak_secrets = [
             "secret",
@@ -327,18 +340,23 @@ impl JwtConfig {
             "development_secret",
             "change_me",
         ];
-        
+
         for weak in &weak_secrets {
             if self.secret.to_lowercase().contains(weak) {
                 return Err(anyhow::anyhow!("JWT secret appears to be weak or default"));
             }
         }
-        
+
         // Validate algorithm
-        if !["HS256", "HS384", "HS512", "RS256", "RS384", "RS512"].contains(&self.algorithm.as_str()) {
-            return Err(anyhow::anyhow!("Unsupported JWT algorithm: {}", self.algorithm));
+        if !["HS256", "HS384", "HS512", "RS256", "RS384", "RS512"]
+            .contains(&self.algorithm.as_str())
+        {
+            return Err(anyhow::anyhow!(
+                "Unsupported JWT algorithm: {}",
+                self.algorithm
+            ));
         }
-        
+
         Ok(())
     }
 }
@@ -376,24 +394,24 @@ impl AppConfig {
         self.database.validate()?;
         self.tls.validate()?;
         self.jwt.validate()?;
-        
+
         info!("Application configuration validation passed");
         Ok(())
     }
-    
+
     /// Load configuration from environment and files
     pub fn load() -> Result<Self> {
         let loader = SecureConfigLoader::new("REDFIRE".to_string());
-        
+
         // Try to load from config file if specified
         let config_path = env::var("CONFIG_FILE").ok();
         let config_path = config_path.as_ref().map(|p| Path::new(p));
-        
+
         let config: AppConfig = loader.load_config(config_path)?;
-        
+
         // Validate configuration
         config.validate()?;
-        
+
         info!("Application configuration loaded and validated");
         Ok(config)
     }
@@ -409,31 +427,32 @@ mod tests {
         let mut config = DatabaseConfig::default();
         config.url = "postgres://user:pass@localhost/db".to_string();
         assert!(config.validate().is_ok());
-        
+
         config.url = "invalid_url".to_string();
         assert!(config.validate().is_err());
     }
-    
+
     #[test]
     fn test_jwt_config_validation() {
         let mut config = JwtConfig::default();
-        config.secret = "a_very_long_and_secure_secret_key_that_is_definitely_long_enough".to_string();
+        config.secret =
+            "a_very_long_and_secure_secret_key_that_is_definitely_long_enough".to_string();
         assert!(config.validate().is_ok());
-        
+
         config.secret = "weak".to_string();
         assert!(config.validate().is_err());
-        
+
         config.secret = "password123456789012345678901234".to_string();
         assert!(config.validate().is_err()); // Contains "password"
     }
-    
+
     #[test]
     fn test_sanitized_url() {
         let config = DatabaseConfig {
             url: "postgres://username:password@localhost:5432/database".to_string(),
             ..Default::default()
         };
-        
+
         let sanitized = config.get_sanitized_url();
         assert!(!sanitized.contains("password"));
         assert!(sanitized.contains("CREDENTIALS_HIDDEN"));

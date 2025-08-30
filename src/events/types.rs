@@ -1,5 +1,5 @@
 //! Additional event types for the telecommunications system
-//! 
+//!
 //! This module contains supplementary event types and utilities
 //! that extend the core event system functionality.
 

@@ -1,27 +1,27 @@
 //! Security utilities and configurations
-//! 
+//!
 //! This module provides comprehensive security features including secure configuration
 //! management, input validation, security audit logging, threat detection, and IP blacklisting.
 //! All features support global and per-trunk configuration overrides.
 
-pub mod config;
-pub mod validation;
 pub mod audit;
+pub mod blacklist;
+pub mod config;
 pub mod rate_limiting;
 pub mod threat_detection;
-pub mod blacklist;
+pub mod validation;
 
-pub use config::*;
-pub use validation::*;
 pub use audit::*;
+pub use blacklist::*;
+pub use config::*;
 pub use rate_limiting::*;
 pub use threat_detection::*;
-pub use blacklist::*;
+pub use validation::*;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::{error::Error as StdError, fmt};
-use tracing::{warn, info};
+use tracing::{info, warn};
 
 /// Security-related error types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,7 +49,9 @@ impl fmt::Display for SecurityError {
             SecurityError::BlacklistViolation(msg) => write!(f, "Blacklist violation: {}", msg),
             SecurityError::ConfigurationError(msg) => write!(f, "Configuration error: {}", msg),
             SecurityError::AuthenticationFailed(msg) => write!(f, "Authentication failed: {}", msg),
-            SecurityError::AuthenticationRequired(msg) => write!(f, "Authentication required: {}", msg),
+            SecurityError::AuthenticationRequired(msg) => {
+                write!(f, "Authentication required: {}", msg)
+            }
             SecurityError::AccessDenied(msg) => write!(f, "Access denied: {}", msg),
             SecurityError::InvalidInput(msg) => write!(f, "Invalid input: {}", msg),
             SecurityError::RequestTooLarge(msg) => write!(f, "Request too large: {}", msg),
@@ -153,7 +155,7 @@ impl SecurityContext {
             metadata: std::collections::HashMap::new(),
         }
     }
-    
+
     /// Create security context with trunk information
     pub fn with_trunk(source_ip: std::net::IpAddr, trunk_id: String) -> Self {
         Self {
@@ -181,13 +183,13 @@ impl SecurityContext {
         self.user_agent = Some(user_agent);
         self
     }
-    
+
     /// Add metadata
     pub fn with_metadata(mut self, key: String, value: String) -> Self {
         self.metadata.insert(key, value);
         self
     }
-    
+
     /// Get effective trunk ID (for trunk-specific security rules)
     pub fn get_trunk_id(&self) -> Option<&str> {
         self.trunk_id.as_deref()
@@ -212,26 +214,29 @@ impl SecurityContext {
 /// Initialize security subsystem
 pub fn initialize_security(config: &SecurityConfig) -> Result<()> {
     info!("Initializing security subsystem");
-    
+
     if config.enable_audit_logging {
         audit::initialize_audit_logging()?;
         info!("Security audit logging enabled");
     }
-    
+
     if config.enable_rate_limiting {
-        info!("Rate limiting enabled: {} requests/minute", config.max_requests_per_minute);
+        info!(
+            "Rate limiting enabled: {} requests/minute",
+            config.max_requests_per_minute
+        );
     }
-    
+
     if config.enable_input_validation {
         info!("Input validation enabled");
     }
-    
+
     if config.require_tls {
         info!("TLS enforcement enabled");
     } else {
         warn!("TLS enforcement disabled - not recommended for production");
     }
-    
+
     info!("Security subsystem initialized successfully");
     Ok(())
 }

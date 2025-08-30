@@ -17,7 +17,8 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::etsi_li::{
-    EtsiLiController, Hi2EventType, Hi2Record, Hi3ContentRecord, LiControllerConfig, TargetIdentifierType,
+    EtsiLiController, Hi2EventType, Hi2Record, Hi3ContentRecord, LiControllerConfig,
+    TargetIdentifierType,
 };
 use crate::j_std_025::{
     CallResult, CdrEngineConfig, CdrType, JStd025Cdr, JStd025CdrEngine, QoSMetrics,

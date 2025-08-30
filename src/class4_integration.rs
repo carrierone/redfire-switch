@@ -351,7 +351,9 @@ pub mod examples {
             .call_timeout_seconds(3600) // 1 hour
             .enable_cdr_generation(true)
             .enable_codec_translation(true)
-            .database_url(std::env::var("DATABASE_URL").unwrap_or_else(|_| "postgres://redfire_user:secure_password@localhost/redfire_switch".to_string()))
+            .database_url(std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+                "postgres://redfire_user:secure_password@localhost/redfire_switch".to_string()
+            }))
             .build()
             .await?;
 
@@ -365,7 +367,10 @@ pub mod examples {
     pub async fn advanced_class4_switch_example() -> Result<()> {
         // Pre-initialize LCR engine with custom configuration
         let lcr_engine = Arc::new(
-            LcrEngine::new(&std::env::var("DATABASE_URL").unwrap_or_else(|_| "postgres://redfire_user:secure_password@localhost/redfire_switch".to_string())).await?,
+            LcrEngine::new(&std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+                "postgres://redfire_user:secure_password@localhost/redfire_switch".to_string()
+            }))
+            .await?,
         );
 
         let service = Class4SwitchService::builder()
@@ -378,7 +383,9 @@ pub mod examples {
             .enable_codec_translation(true)
             .rtp_proxy("192.168.1.100".to_string(), 7000)
             .lcr_engine(lcr_engine)
-            .database_url(std::env::var("DATABASE_URL").unwrap_or_else(|_| "postgres://redfire_user:secure_password@localhost/redfire_switch".to_string()))
+            .database_url(std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+                "postgres://redfire_user:secure_password@localhost/redfire_switch".to_string()
+            }))
             .build()
             .await?;
 
@@ -406,9 +413,10 @@ pub mod examples {
             .enable_cdr_generation(true)
             .enable_codec_translation(true)
             .rtp_proxy("rtp-proxy.example.com".to_string(), 7000)
-            .database_url(
-                &std::env::var("DATABASE_URL").unwrap_or_else(|_| "postgres://redfire_user:secure_password@db.example.com:5432/redfire_production".to_string()),
-            )
+            .database_url(&std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+                "postgres://redfire_user:secure_password@db.example.com:5432/redfire_production"
+                    .to_string()
+            }))
             .build()
             .await?;
 

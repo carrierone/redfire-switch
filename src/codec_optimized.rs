@@ -5,7 +5,6 @@
  * and linear PCM to reduce CPU overhead in hot paths.
  */
 
-
 /// Fast µ-Law to linear PCM conversion using lookup table
 #[cfg(target_arch = "x86_64")]
 pub struct OptimizedCodecProcessor {

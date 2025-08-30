@@ -9,7 +9,7 @@ use colored::*;
 use redfire_switch::cli::InteractiveCli;
 use std::process;
 use tokio;
-use tracing::{info, error};
+use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Parser)]
@@ -63,8 +63,7 @@ async fn main() -> Result<()> {
     }
 
     // Create and configure CLI
-    let mut cli = InteractiveCli::new()
-        .context("Failed to create CLI instance")?;
+    let mut cli = InteractiveCli::new().context("Failed to create CLI instance")?;
 
     // Handle non-interactive execution
     if let Some(ref command) = args.execute {
@@ -73,7 +72,7 @@ async fn main() -> Result<()> {
 
     // Start interactive session
     info!("Starting RedFire Switch CLI");
-    
+
     match cli.run().await {
         Ok(()) => {
             info!("CLI session ended normally");
@@ -102,19 +101,17 @@ fn setup_logging(args: &Args) -> Result<()> {
 
     if let Some(log_file) = &args.log_file {
         // Log to file
-        let file = std::fs::File::create(log_file)
-            .context("Failed to create log file")?;
-        
+        let file = std::fs::File::create(log_file).context("Failed to create log file")?;
+
         let file_layer = tracing_subscriber::fmt::layer()
             .with_writer(file)
             .with_ansi(false);
-            
+
         subscriber.with(file_layer).init();
     } else {
         // Log to stdout/stderr
-        let fmt_layer = tracing_subscriber::fmt::layer()
-            .with_ansi(!args.no_color);
-            
+        let fmt_layer = tracing_subscriber::fmt::layer().with_ansi(!args.no_color);
+
         subscriber.with(fmt_layer).init();
     }
 
@@ -132,13 +129,17 @@ fn print_startup_banner() {
 |_| \_\___|\__,_| |_|   |_|_|  \___| |____/ \_/\_/ |_|\__\___|_| |_|
                                                                    
 "#;
-        
+
         println!("{}", banner.bright_red().bold());
         println!("{}", "Interactive Command Line Interface".bright_cyan());
         println!("{}", "Version 0.1.0".bright_white());
         println!();
         println!("{}", "Starting interactive session...".bright_green());
-        println!("Type '{}' for help, '{}' to exit", "help".yellow(), "quit".yellow());
+        println!(
+            "Type '{}' for help, '{}' to exit",
+            "help".yellow(),
+            "quit".yellow()
+        );
         println!();
     }
 }
@@ -150,7 +151,7 @@ async fn execute_single_command(
     _args: &Args,
 ) -> Result<()> {
     info!("Executing command: {}", command);
-    
+
     // Parse the command and execute it
     let parts: Vec<&str> = command.split_whitespace().collect();
     if parts.is_empty() {
@@ -185,7 +186,7 @@ async fn execute_single_command(
             std::process::exit(1);
         }
     }
-    
+
     Ok(())
 }
 
@@ -194,9 +195,9 @@ async fn execute_single_command(
 async fn handle_shutdown() {
     info!("Received shutdown signal");
     println!("\n{}", "Shutting down...".yellow());
-    
+
     // Clean up resources here
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-    
+
     println!("{}", "Goodbye!".green());
 }

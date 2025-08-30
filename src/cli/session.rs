@@ -71,25 +71,26 @@ impl CliSession {
     /// Connect to RedFire Switch instance
     pub async fn connect(&mut self, address: String) -> Result<()> {
         info!("Attempting to connect to {}", address);
-        
+
         // Parse address
         let parts: Vec<&str> = address.split(':').collect();
         if parts.len() != 2 {
             return Err(anyhow::anyhow!("Invalid address format. Use host:port"));
         }
-        
+
         let host = parts[0].to_string();
-        let port: u16 = parts[1].parse()
-            .context("Invalid port number")?;
-        
+        let port: u16 = parts[1].parse().context("Invalid port number")?;
+
         self.target_host = host.clone();
         self.target_port = port;
-        
+
         // Attempt connection with timeout
         match timeout(
             self.config.connect_timeout,
-            TcpStream::connect(format!("{}:{}", host, port))
-        ).await {
+            TcpStream::connect(format!("{}:{}", host, port)),
+        )
+        .await
+        {
             Ok(Ok(stream)) => {
                 self.connection = Some(stream);
                 self.connected = true;
@@ -113,7 +114,10 @@ impl CliSession {
     /// Disconnect from RedFire Switch instance
     pub async fn disconnect(&mut self) {
         if self.connected {
-            info!("Disconnecting from {}:{}", self.target_host, self.target_port);
+            info!(
+                "Disconnecting from {}:{}",
+                self.target_host, self.target_port
+            );
             self.connection = None;
             self.connected = false;
         }
@@ -136,12 +140,16 @@ impl CliSession {
 
     /// Get session uptime
     pub fn get_uptime(&self) -> Duration {
-        self.session_start.elapsed().unwrap_or(Duration::from_secs(0))
+        self.session_start
+            .elapsed()
+            .unwrap_or(Duration::from_secs(0))
     }
 
     /// Get time since last activity
     pub fn get_idle_time(&self) -> Duration {
-        self.last_activity.elapsed().unwrap_or(Duration::from_secs(0))
+        self.last_activity
+            .elapsed()
+            .unwrap_or(Duration::from_secs(0))
     }
 
     /// Get session configuration
@@ -197,7 +205,7 @@ impl SessionStats {
         let hours = secs / 3600;
         let minutes = (secs % 3600) / 60;
         let seconds = secs % 60;
-        
+
         if hours > 0 {
             format!("{}h {}m {}s", hours, minutes, seconds)
         } else if minutes > 0 {

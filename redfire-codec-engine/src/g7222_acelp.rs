@@ -137,7 +137,7 @@ impl G7222Encoder {
 
         // Apply high-pass filter (50Hz cutoff at 16kHz)
         self.apply_high_pass_filter(&mut speech);
-        
+
         // Update weighted speech buffer for analysis
         self.update_weighted_speech_buffer(&speech);
 
@@ -160,7 +160,7 @@ impl G7222Encoder {
 
         // Quantize ISP using past quantized energies for adaptive quantization
         let (isp_q, isp_indices) = self.quantize_isp_adaptive(&isp);
-        
+
         // Update synthesis filter memory
         self.update_synthesis_memory(&lp_coeffs);
 
@@ -620,14 +620,14 @@ impl G7222Encoder {
     /// Update weighted speech buffer for adaptive analysis
     fn update_weighted_speech_buffer(&mut self, speech: &[f32]) {
         let buffer_size = self.old_wsp.len();
-        
+
         // Shift old weighted speech
         if buffer_size >= L_FRAME_WB {
             for i in L_FRAME_WB..buffer_size {
                 self.old_wsp[i - L_FRAME_WB] = self.old_wsp[i];
             }
         }
-        
+
         // Add new weighted speech with perceptual weighting
         for (i, &sample) in speech.iter().enumerate() {
             if i < L_FRAME_WB && buffer_size > L_FRAME_WB + i {
@@ -645,7 +645,7 @@ impl G7222Encoder {
 
         // Calculate current energy for adaptive quantization
         let current_energy: f32 = isp.iter().map(|&x| x * x).sum::<f32>().sqrt();
-        
+
         for (i, &val) in isp.iter().enumerate() {
             // Use past quantized energies for adaptive step size
             let energy_factor = if i < self.past_qua_en.len() {
@@ -653,7 +653,7 @@ impl G7222Encoder {
             } else {
                 1.0
             };
-            
+
             let quantization_step = 0.001 * energy_factor;
             let index = (val / quantization_step).round() as usize;
             quantized[i] = index as f32 * quantization_step;
@@ -676,7 +676,7 @@ impl G7222Encoder {
     /// Update synthesis filter memory
     fn update_synthesis_memory(&mut self, lp_coeffs: &[f32]) {
         let mem_len = self.mem_syn.len().min(lp_coeffs.len() - 1);
-        
+
         // Update synthesis filter memory for next frame
         for i in 0..mem_len {
             if i < lp_coeffs.len() - 1 {
@@ -684,7 +684,7 @@ impl G7222Encoder {
                 self.mem_syn[i] = lp_coeffs[i + 1] * 0.9; // Decay factor
             }
         }
-        
+
         // Update weighting filter memory
         let w_mem_len = self.mem_w.len().min(lp_coeffs.len());
         for i in 0..w_mem_len {
@@ -692,7 +692,7 @@ impl G7222Encoder {
                 self.mem_w[i] = lp_coeffs[i] * 0.85; // Different decay for weighting
             }
         }
-        
+
         // Update de-emphasis memory
         self.mem_deemph *= 0.68; // Standard de-emphasis coefficient
     }

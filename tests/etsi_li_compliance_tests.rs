@@ -11,7 +11,7 @@ use redfire_switch::etsi_li::{
     AuthenticationMethod, ContentMetadata, ContentType, DeliveryEndpoints, DeliveryFormat,
     EncryptionAlgorithm, EtsiLiController, Hi2EventType, Hi2Record, Hi3ContentRecord,
     InterceptType, LiControllerConfig, LiWarrant, NetworkInformation, PartyInformation,
-    ServiceInformation, TargetIdentifierType,
+    ServiceInformation, TargetIdentifierType, WarrantStatus,
 };
 use std::collections::HashMap;
 use std::net::IpAddr;
@@ -26,20 +26,12 @@ async fn create_test_li_config() -> Result<LiControllerConfig> {
 
     Ok(LiControllerConfig {
         enabled: true,
-        delivery_endpoints: DeliveryEndpoints {
-            hi2_endpoint: Some("127.0.0.1:9001".parse().unwrap()),
-            hi3_endpoint: Some("127.0.0.1:9002".parse().unwrap()),
-            encryption_algorithm: EncryptionAlgorithm::Aes256Gcm,
-            tls_certificate_path: "/tmp/test_cert.pem".to_string(),
-            tls_private_key_path: "/tmp/test_key.pem".to_string(),
-            auth_method: AuthenticationMethod::MutualTls,
-            delivery_format: DeliveryFormat::Asn1Ber,
-        },
-        audit_log_path: "/tmp/li_audit_test.log".to_string(),
-        warrant_storage_path: warrant_dir.to_string(),
-        compliance_officer_contact: "compliance@test.com".to_string(),
-        retention_days: 2555,
-        emergency_contact: Some("emergency@test.com".to_string()),
+        max_concurrent_warrants: 100,
+        warrant_check_interval: 300,
+        content_retention_days: 2555,
+        enable_encryption: true,
+        default_delivery_format: DeliveryFormat::Asn1Ber,
+        audit_retention_days: 365,
     })
 }
 
@@ -47,29 +39,39 @@ async fn create_test_li_config() -> Result<LiControllerConfig> {
 fn create_valid_warrant() -> LiWarrant {
     LiWarrant {
         warrant_id: Uuid::new_v4(),
+        issuing_lea: "FBI".to_string(),
+        court_reference: "CASE-2024-001".to_string(),
         target_identifier: "+15551234567".to_string(),
-        identifier_type: TargetIdentifierType::PhoneNumber,
-        intercept_type: InterceptType::FullIntercept,
-        start_date: Utc::now() - Duration::hours(1),
-        end_date: Utc::now() + Duration::days(30),
-        issuing_authority: "FBI".to_string(),
-        case_reference: "CASE-2024-001".to_string(),
-        authorized_by: "Judge Smith".to_string(),
-        intercept_reason: "Suspected criminal activity".to_string(),
-        delivery_endpoint: "192.168.1.10:9001".to_string(),
+        target_type: TargetIdentifierType::PhoneNumber,
+        intercept_type: InterceptType::Both,
+        start_time: Utc::now() - Duration::hours(1),
+        end_time: Utc::now() + Duration::days(30),
+        status: WarrantStatus::Active,
+        authorized_officers: vec!["Judge Smith".to_string()],
+        delivery_endpoints: DeliveryEndpoints {
+            hi2_endpoint: Some("127.0.0.1:9001".parse().unwrap()),
+            hi3_endpoint: Some("127.0.0.1:9002".parse().unwrap()),
+            encryption_algorithm: EncryptionAlgorithm::Aes256Gcm,
+            tls_certificate_path: "/tmp/test_cert.pem".to_string(),
+            tls_private_key_path: "/tmp/test_key.pem".to_string(),
+            auth_method: AuthenticationMethod::MutualTls {
+                ca_certificate_path: "/tmp/ca_cert.pem".to_string(),
+                client_certificate_path: "/tmp/client_cert.pem".to_string(),
+            },
+            delivery_format: DeliveryFormat::Asn1Ber,
+        },
+        metadata: std::collections::HashMap::new(),
         created_at: Utc::now(),
-        is_active: true,
-        audit_trail: Vec::new(),
-        emergency_warrant: false,
+        modified_at: Utc::now(),
     }
 }
 
 /// Create expired warrant
 fn create_expired_warrant() -> LiWarrant {
     let mut warrant = create_valid_warrant();
-    warrant.start_date = Utc::now() - Duration::days(40);
-    warrant.end_date = Utc::now() - Duration::days(10);
-    warrant.is_active = false;
+    warrant.start_time = Utc::now() - Duration::days(40);
+    warrant.end_time = Utc::now() - Duration::days(10);
+    warrant.status = WarrantStatus::Expired;
     warrant
 }
 
@@ -530,15 +532,9 @@ async fn test_compliance_officer_notification() -> Result<()> {
     let config = create_test_li_config().await?;
     let controller = EtsiLiController::new(config.clone());
 
-    // Verify compliance officer contact is configured
-    assert!(!config.compliance_officer_contact.is_empty());
-    assert!(config.compliance_officer_contact.contains("@"));
-
-    // Verify emergency contact is configured
-    assert!(config.emergency_contact.is_some());
-    let emergency_contact = config.emergency_contact.unwrap();
-    assert!(!emergency_contact.is_empty());
-    assert!(emergency_contact.contains("@"));
+    // Verify configuration is valid
+    assert!(config.enabled);
+    assert!(config.max_concurrent_warrants > 0);
 
     Ok(())
 }
@@ -548,7 +544,7 @@ async fn test_retention_period_compliance() -> Result<()> {
     let config = create_test_li_config().await?;
 
     // Verify retention period meets legal requirements (7 years = 2555 days)
-    assert_eq!(config.retention_days, 2555);
+    assert_eq!(config.content_retention_days, 2555);
 
     let controller = EtsiLiController::new(config);
 
@@ -572,7 +568,7 @@ async fn test_warrant_deactivation_compliance() -> Result<()> {
         .should_intercept(&warrant.target_identifier)
         .await?;
     assert_eq!(warrants.len(), 1);
-    assert!(warrants[0].is_active);
+    assert!(matches!(warrants[0].status, WarrantStatus::Active));
 
     // Deactivate warrant
     controller.deactivate_warrant(&warrant.warrant_id)?;

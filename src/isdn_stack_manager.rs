@@ -27,9 +27,7 @@ use crate::pri_timers::{
     PriTimerType,
 };
 use crate::q921_lapd::{LapdEvent, Q921LapdManager};
-use crate::q931_messages::{
-    CauseValue, IsdnSideType, IsdnVariant, Q931Message, Q931MessageType,
-};
+use crate::q931_messages::{CauseValue, IsdnSideType, IsdnVariant, Q931Message, Q931MessageType};
 // use crate::isdn_cli::{IsdnStackStatus, CircuitStatus, HealthStatus, LapdStatusInfo, Q931StatusInfo, TimerStatusInfo, CesopsnStatusInfo};
 
 // Define the missing types locally until isdn_cli is available

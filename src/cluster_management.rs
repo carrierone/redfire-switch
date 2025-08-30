@@ -709,12 +709,12 @@ impl ClusterManager {
     /// Gracefully shutdown the cluster manager and all background tasks
     pub async fn shutdown(&self) -> Result<()> {
         info!("🏢 Initiating graceful shutdown of ClusterManager");
-        
+
         // Send shutdown signal to all background tasks
         if let Err(e) = self.shutdown_sender.send(()) {
             warn!("Failed to send cluster shutdown signal: {}", e);
         }
-        
+
         info!("🏢 ClusterManager shutdown completed");
         Ok(())
     }

@@ -1,5 +1,5 @@
 //! RedFire Switch Interactive CLI
-//! 
+//!
 //! Provides an interactive command-line interface similar to FreeSWITCH fs_cli
 //! with tab completion, help system, and real-time switch operation capabilities.
 
@@ -36,14 +36,14 @@ impl InteractiveCli {
     pub fn new() -> Result<Self> {
         let mut editor = Editor::<RedFireCompleter, rustyline::history::DefaultHistory>::new()
             .context("Failed to create readline editor")?;
-            
+
         let session = Arc::new(RwLock::new(CliSession::new()));
         let mut completer = RedFireCompleter::new();
-        
+
         // Set up tab completion
         completer.set_commands(commands::get_all_commands());
         editor.set_helper(Some(completer));
-        
+
         let command_executor = CommandExecutor::new(session.clone());
         let help_system = HelpSystem::new();
         let running = Arc::new(RwLock::new(true));
@@ -61,7 +61,7 @@ impl InteractiveCli {
     pub async fn run(&mut self) -> Result<()> {
         self.print_banner();
         self.print_welcome();
-        
+
         loop {
             // Check if we should continue running
             if !*self.running.read().await {
@@ -69,17 +69,17 @@ impl InteractiveCli {
             }
 
             let prompt = self.get_prompt().await;
-            
+
             match self.editor.readline(&prompt) {
                 Ok(line) => {
                     let line = line.trim();
                     if line.is_empty() {
                         continue;
                     }
-                    
+
                     // Add to history
                     let _ = self.editor.add_history_entry(line);
-                    
+
                     // Process command
                     if let Err(e) = self.process_command(line).await {
                         eprintln!("{}: {}", "Error".red().bold(), e);
@@ -99,7 +99,7 @@ impl InteractiveCli {
                 }
             }
         }
-        
+
         println!("{}", "Goodbye!".green());
         Ok(())
     }
@@ -114,7 +114,7 @@ impl InteractiveCli {
 |_| \_\___|\__,_| |_|   |_|_|  \___| |____/ \_/\_/ |_|\__\___|_| |_|
                                                                    
         "#;
-        
+
         println!("{}", banner.bright_red().bold());
         println!("{}", "High-Performance Class 4 SIP Switch".bright_white());
         println!("{}", "Interactive Command Line Interface".bright_cyan());
@@ -125,7 +125,11 @@ impl InteractiveCli {
     fn print_welcome(&self) {
         println!("{}", "Welcome to RedFire Switch CLI".green().bold());
         println!();
-        println!("Type '{}' for help, '{}' to exit", "help".yellow(), "quit".yellow());
+        println!(
+            "Type '{}' for help, '{}' to exit",
+            "help".yellow(),
+            "quit".yellow()
+        );
         println!("Use {} for command completion", "TAB".bright_blue().bold());
         println!();
     }
@@ -138,10 +142,12 @@ impl InteractiveCli {
         } else {
             "red"
         };
-        
-        format!("{}@{} > ", 
-               "redfire".color(status_color).bold(),
-               session.get_target_host().color(status_color))
+
+        format!(
+            "{}@{} > ",
+            "redfire".color(status_color).bold(),
+            session.get_target_host().color(status_color)
+        )
     }
 
     /// Process a command line input
@@ -207,7 +213,10 @@ impl InteractiveCli {
                 self.print_table(headers, rows);
             }
             CommandResult::Json(value) => {
-                println!("{}", serde_json::to_string_pretty(&value).unwrap_or_default());
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&value).unwrap_or_default()
+                );
             }
             CommandResult::Error(message) => {
                 eprintln!("{}: {}", "Error".red().bold(), message);

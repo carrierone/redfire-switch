@@ -1,5 +1,5 @@
 //! Security audit logging
-//! 
+//!
 //! This module provides comprehensive security audit logging for
 //! compliance and forensic analysis.
 
@@ -143,13 +143,13 @@ impl SecurityAuditLogger {
             enabled: true,
         }
     }
-    
+
     /// Log an audit event
     pub async fn log_event(&self, event: AuditEvent, context: &SecurityContext) -> Result<()> {
         if !self.enabled {
             return Ok(());
         }
-        
+
         let entry = AuditLogEntry {
             id: uuid::Uuid::new_v4(),
             timestamp: chrono::Utc::now(),
@@ -157,19 +157,19 @@ impl SecurityAuditLogger {
             context: context.into(),
             metadata: std::collections::HashMap::new(),
         };
-        
+
         // Log to structured tracing
         self.log_to_tracing(&entry);
-        
+
         // Write to audit log file
         self.write_to_file(&entry).await?;
-        
+
         // Store in memory buffer
         self.store_in_memory(entry).await;
-        
+
         Ok(())
     }
-    
+
     /// Log authentication attempt
     pub async fn log_auth_attempt(
         &self,
@@ -186,10 +186,10 @@ impl SecurityAuditLogger {
             method,
             failure_reason,
         };
-        
+
         self.log_event(event, context).await
     }
-    
+
     /// Log security violation
     pub async fn log_security_violation(
         &self,
@@ -206,10 +206,10 @@ impl SecurityAuditLogger {
             severity,
             data,
         };
-        
+
         self.log_event(event, context).await
     }
-    
+
     /// Log SIP message processing
     pub async fn log_sip_message(
         &self,
@@ -228,20 +228,16 @@ impl SecurityAuditLogger {
             to_uri,
             processing_result: result,
         };
-        
+
         self.log_event(event, context).await
     }
-    
+
     /// Get recent audit entries
     pub async fn get_recent_entries(&self, limit: usize) -> Vec<AuditLogEntry> {
         let entries = self.recent_entries.read().await;
-        entries.iter()
-            .rev()
-            .take(limit)
-            .cloned()
-            .collect()
+        entries.iter().rev().take(limit).cloned().collect()
     }
-    
+
     /// Search audit entries by criteria
     pub async fn search_entries(
         &self,
@@ -252,27 +248,28 @@ impl SecurityAuditLogger {
         limit: usize,
     ) -> Vec<AuditLogEntry> {
         let entries = self.recent_entries.read().await;
-        
-        entries.iter()
+
+        entries
+            .iter()
             .filter(|entry| {
                 if let Some(ip) = source_ip {
                     if entry.context.source_ip != ip {
                         return false;
                     }
                 }
-                
+
                 if let Some(ref uid) = user_id {
                     if entry.context.user_id.as_ref() != Some(uid) {
                         return false;
                     }
                 }
-                
+
                 if let Some(since_time) = since {
                     if entry.timestamp < since_time {
                         return false;
                     }
                 }
-                
+
                 // TODO: Add event_type filtering based on discriminant
                 true
             })
@@ -280,11 +277,16 @@ impl SecurityAuditLogger {
             .cloned()
             .collect()
     }
-    
+
     /// Log to structured tracing
     fn log_to_tracing(&self, entry: &AuditLogEntry) {
         match &entry.event {
-            AuditEvent::AuthenticationAttempt { success, user_id, source_ip, .. } => {
+            AuditEvent::AuthenticationAttempt {
+                success,
+                user_id,
+                source_ip,
+                ..
+            } => {
                 if *success {
                     info!(
                         event_id = %entry.id,
@@ -301,28 +303,31 @@ impl SecurityAuditLogger {
                     );
                 }
             }
-            AuditEvent::SecurityViolation { source_ip, violation_type, severity, .. } => {
-                match severity {
-                    SecurityViolationSeverity::Critical | SecurityViolationSeverity::High => {
-                        error!(
-                            event_id = %entry.id,
-                            source_ip = %source_ip,
-                            violation_type = %violation_type,
-                            severity = ?severity,
-                            "Security violation detected"
-                        );
-                    }
-                    _ => {
-                        warn!(
-                            event_id = %entry.id,
-                            source_ip = %source_ip,
-                            violation_type = %violation_type,
-                            severity = ?severity,
-                            "Security violation detected"
-                        );
-                    }
+            AuditEvent::SecurityViolation {
+                source_ip,
+                violation_type,
+                severity,
+                ..
+            } => match severity {
+                SecurityViolationSeverity::Critical | SecurityViolationSeverity::High => {
+                    error!(
+                        event_id = %entry.id,
+                        source_ip = %source_ip,
+                        violation_type = %violation_type,
+                        severity = ?severity,
+                        "Security violation detected"
+                    );
                 }
-            }
+                _ => {
+                    warn!(
+                        event_id = %entry.id,
+                        source_ip = %source_ip,
+                        violation_type = %violation_type,
+                        severity = ?severity,
+                        "Security violation detected"
+                    );
+                }
+            },
             _ => {
                 debug!(
                     event_id = %entry.id,
@@ -332,34 +337,34 @@ impl SecurityAuditLogger {
             }
         }
     }
-    
+
     /// Write entry to audit log file
     async fn write_to_file(&self, entry: &AuditLogEntry) -> Result<()> {
         let log_line = serde_json::to_string(entry)? + "\n";
-        
+
         let mut file = OpenOptions::new()
             .create(true)
             .append(true)
             .open(&self.log_file_path)
             .await?;
-        
+
         file.write_all(log_line.as_bytes()).await?;
         file.flush().await?;
-        
+
         Ok(())
     }
-    
+
     /// Store entry in memory buffer
     async fn store_in_memory(&self, entry: AuditLogEntry) {
         let mut entries = self.recent_entries.write().await;
         entries.push(entry);
-        
+
         // Trim to max size
         if entries.len() > self.max_memory_entries {
             entries.remove(0);
         }
     }
-    
+
     /// Enable/disable audit logging
     pub fn set_enabled(&mut self, enabled: bool) {
         self.enabled = enabled;
@@ -380,16 +385,16 @@ pub fn initialize_audit_logging() -> Result<()> {
     AUDIT_LOGGER_INIT.call_once(|| {
         let log_path = std::env::var("SECURITY_AUDIT_LOG_PATH")
             .unwrap_or_else(|_| "/var/log/redfire-switch/security-audit.log".to_string());
-        
+
         let logger = Arc::new(SecurityAuditLogger::new(log_path.into()));
-        
+
         unsafe {
             AUDIT_LOGGER = Some(logger);
         }
-        
+
         info!("Security audit logging initialized");
     });
-    
+
     Ok(())
 }
 
@@ -397,7 +402,9 @@ pub fn initialize_audit_logging() -> Result<()> {
 #[allow(clippy::missing_safety_doc)]
 pub fn get_audit_logger() -> Option<Arc<SecurityAuditLogger>> {
     #[allow(static_mut_refs)]
-    unsafe { AUDIT_LOGGER.clone() }
+    unsafe {
+        AUDIT_LOGGER.clone()
+    }
 }
 
 /// Convenience function to log audit event
@@ -427,10 +434,10 @@ mod tests {
     async fn test_audit_logging() {
         let temp_dir = tempdir().unwrap();
         let log_file = temp_dir.path().join("test-audit.log");
-        
+
         let logger = SecurityAuditLogger::new(log_file.clone());
         let context = SecurityContext::new("192.168.1.1".parse().unwrap());
-        
+
         let event = AuditEvent::AuthenticationAttempt {
             user_id: Some("test_user".to_string()),
             source_ip: context.source_ip,
@@ -438,13 +445,13 @@ mod tests {
             method: "password".to_string(),
             failure_reason: None,
         };
-        
+
         logger.log_event(event, &context).await.unwrap();
-        
+
         // Check that entry was stored in memory
         let recent = logger.get_recent_entries(10).await;
         assert_eq!(recent.len(), 1);
-        
+
         // Check that file was written
         assert!(log_file.exists());
     }

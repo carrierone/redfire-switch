@@ -1,5 +1,5 @@
 //! Plugin registry for managing loaded plugins
-//! 
+//!
 //! This module provides the plugin registry that tracks all loaded plugins
 //! and provides efficient access based on capabilities and priorities.
 
@@ -32,14 +32,18 @@ impl PluginRegistry {
     }
 
     /// Register a plugin in the registry
-    pub async fn register_plugin(&mut self, name: String, plugin: Box<dyn B2BUAPlugin>) -> Result<()> {
+    pub async fn register_plugin(
+        &mut self,
+        name: String,
+        plugin: Box<dyn B2BUAPlugin>,
+    ) -> Result<()> {
         // Check if plugin already exists
         if self.plugins.contains_key(&name) {
             return Err(anyhow::anyhow!("Plugin '{}' is already registered", name));
         }
 
         let metadata = plugin.metadata().clone();
-        
+
         // Validate plugin dependencies
         self.validate_dependencies(&metadata).await?;
 
@@ -81,7 +85,9 @@ impl PluginRegistry {
     /// Unregister a plugin from the registry
     pub async fn unregister_plugin(&mut self, name: &str) -> Result<()> {
         // Remove from plugins map
-        let plugin = self.plugins.remove(name)
+        let plugin = self
+            .plugins
+            .remove(name)
             .ok_or_else(|| anyhow::anyhow!("Plugin '{}' not found", name))?;
 
         // Shutdown the plugin
@@ -91,7 +97,9 @@ impl PluginRegistry {
         }
 
         // Remove plugin info
-        let plugin_info = self.plugin_info.remove(name)
+        let plugin_info = self
+            .plugin_info
+            .remove(name)
             .ok_or_else(|| anyhow::anyhow!("Plugin info for '{}' not found", name))?;
 
         // Remove from capability index
@@ -140,22 +148,36 @@ impl PluginRegistry {
     }
 
     /// Get plugins that support all specified capabilities
-    pub async fn get_plugins_with_all_capabilities(&self, capabilities: &[PluginCapability]) -> Vec<String> {
+    pub async fn get_plugins_with_all_capabilities(
+        &self,
+        capabilities: &[PluginCapability],
+    ) -> Vec<String> {
         let mut result = Vec::new();
-        
+
         for (name, info) in &self.plugin_info {
-            if capabilities.iter().all(|cap| info.metadata.capabilities.contains(cap)) {
+            if capabilities
+                .iter()
+                .all(|cap| info.metadata.capabilities.contains(cap))
+            {
                 result.push(name.clone());
             }
         }
-        
+
         // Sort by priority
         result.sort_by(|a, b| {
-            let priority_a = self.plugin_info.get(a).map(|info| info.config.priority).unwrap_or(999);
-            let priority_b = self.plugin_info.get(b).map(|info| info.config.priority).unwrap_or(999);
+            let priority_a = self
+                .plugin_info
+                .get(a)
+                .map(|info| info.config.priority)
+                .unwrap_or(999);
+            let priority_b = self
+                .plugin_info
+                .get(b)
+                .map(|info| info.config.priority)
+                .unwrap_or(999);
             priority_a.cmp(&priority_b)
         });
-        
+
         result
     }
 
@@ -171,7 +193,9 @@ impl PluginRegistry {
 
     /// Update plugin priority
     pub async fn update_plugin_priority(&mut self, name: &str, priority: i32) -> Result<()> {
-        let plugin_info = self.plugin_info.get_mut(name)
+        let plugin_info = self
+            .plugin_info
+            .get_mut(name)
             .ok_or_else(|| anyhow::anyhow!("Plugin '{}' not found", name))?;
 
         plugin_info.config.priority = priority;
@@ -183,7 +207,9 @@ impl PluginRegistry {
 
     /// Enable or disable a plugin
     pub async fn set_plugin_enabled(&mut self, name: &str, enabled: bool) -> Result<()> {
-        let plugin_info = self.plugin_info.get_mut(name)
+        let plugin_info = self
+            .plugin_info
+            .get_mut(name)
             .ok_or_else(|| anyhow::anyhow!("Plugin '{}' not found", name))?;
 
         plugin_info.config.enabled = enabled;
@@ -234,7 +260,8 @@ impl PluginRegistry {
 
     /// Update execution order based on plugin priorities
     fn update_execution_order(&mut self) {
-        let mut plugins_with_priority: Vec<(String, i32)> = self.plugin_info
+        let mut plugins_with_priority: Vec<(String, i32)> = self
+            .plugin_info
             .iter()
             .filter(|(_, info)| info.config.enabled)
             .map(|(name, info)| (name.clone(), info.config.priority))
@@ -255,7 +282,7 @@ impl PluginRegistry {
     /// Find plugins with conflicting capabilities
     pub async fn find_capability_conflicts(&self) -> HashMap<PluginCapability, Vec<String>> {
         let mut conflicts = HashMap::new();
-        
+
         for (capability, plugin_names) in &self.capability_index {
             if plugin_names.len() > 1 {
                 // Multiple plugins support the same capability - potential conflict
@@ -275,7 +302,7 @@ impl PluginRegistry {
                 }
             }
         }
-        
+
         conflicts
     }
 
@@ -287,7 +314,12 @@ impl PluginRegistry {
 
         for plugin_name in self.plugins.keys() {
             self.dependency_dfs(plugin_name, &mut result, &mut visited, &mut visiting)
-                .with_context(|| format!("Failed to resolve dependencies for plugin '{}'", plugin_name))?;
+                .with_context(|| {
+                    format!(
+                        "Failed to resolve dependencies for plugin '{}'",
+                        plugin_name
+                    )
+                })?;
         }
 
         Ok(result)
@@ -306,7 +338,10 @@ impl PluginRegistry {
         }
 
         if visiting.contains(plugin_name) {
-            return Err(anyhow::anyhow!("Circular dependency detected involving plugin '{}'", plugin_name));
+            return Err(anyhow::anyhow!(
+                "Circular dependency detected involving plugin '{}'",
+                plugin_name
+            ));
         }
 
         visiting.insert(plugin_name.to_string());
@@ -328,7 +363,7 @@ impl PluginRegistry {
     /// Shutdown all plugins in reverse dependency order
     pub async fn shutdown_all(&mut self) -> Result<()> {
         let shutdown_order = self.get_dependency_sorted_plugins().await?;
-        
+
         // Shutdown in reverse order
         for plugin_name in shutdown_order.iter().rev() {
             if let Some(mut plugin) = self.plugins.remove(plugin_name) {
@@ -390,11 +425,19 @@ mod tests {
             &self.metadata
         }
 
-        async fn initialize(&mut self, _config: &super::super::PluginConfig, _context: &super::super::PluginContext) -> Result<()> {
+        async fn initialize(
+            &mut self,
+            _config: &super::super::PluginConfig,
+            _context: &super::super::PluginContext,
+        ) -> Result<()> {
             Ok(())
         }
 
-        async fn handle_message(&self, message: &SipMessage, _context: &super::super::PluginContext) -> Result<PluginResponse> {
+        async fn handle_message(
+            &self,
+            message: &SipMessage,
+            _context: &super::super::PluginContext,
+        ) -> Result<PluginResponse> {
             Ok(PluginResponse::Forward(message.clone()))
         }
     }
@@ -407,10 +450,15 @@ mod tests {
     #[tokio::test]
     async fn test_plugin_registration() {
         let mut registry = PluginRegistry::new();
-        
-        let plugin = Box::new(MockPlugin::new("test-plugin", vec![PluginCapability::SipInvite]));
-        let result = registry.register_plugin("test-plugin".to_string(), plugin).await;
-        
+
+        let plugin = Box::new(MockPlugin::new(
+            "test-plugin",
+            vec![PluginCapability::SipInvite],
+        ));
+        let result = registry
+            .register_plugin("test-plugin".to_string(), plugin)
+            .await;
+
         assert!(result.is_ok());
         assert_eq!(registry.get_plugin_count().await, 1);
         assert!(registry.get_plugin("test-plugin").await.is_some());
@@ -419,38 +467,64 @@ mod tests {
     #[tokio::test]
     async fn test_capability_indexing() {
         let mut registry = PluginRegistry::new();
-        
-        let plugin = Box::new(MockPlugin::new("test-plugin", vec![PluginCapability::SipInvite, PluginCapability::SipResponse]));
-        registry.register_plugin("test-plugin".to_string(), plugin).await
+
+        let plugin = Box::new(MockPlugin::new(
+            "test-plugin",
+            vec![PluginCapability::SipInvite, PluginCapability::SipResponse],
+        ));
+        registry
+            .register_plugin("test-plugin".to_string(), plugin)
+            .await
             .expect("Plugin registration should succeed");
-        
-        let sip_invite_plugins = registry.get_plugins_by_capability(&PluginCapability::SipInvite).await;
+
+        let sip_invite_plugins = registry
+            .get_plugins_by_capability(&PluginCapability::SipInvite)
+            .await;
         assert_eq!(sip_invite_plugins.len(), 1);
         assert_eq!(sip_invite_plugins[0], "test-plugin");
-        
-        let sip_response_plugins = registry.get_plugins_by_capability(&PluginCapability::SipResponse).await;
+
+        let sip_response_plugins = registry
+            .get_plugins_by_capability(&PluginCapability::SipResponse)
+            .await;
         assert_eq!(sip_response_plugins.len(), 1);
         assert_eq!(sip_response_plugins[0], "test-plugin");
-        
-        assert!(registry.is_capability_supported(&PluginCapability::SipInvite).await);
-        assert!(!registry.is_capability_supported(&PluginCapability::SdpModification).await);
+
+        assert!(
+            registry
+                .is_capability_supported(&PluginCapability::SipInvite)
+                .await
+        );
+        assert!(
+            !registry
+                .is_capability_supported(&PluginCapability::SdpModification)
+                .await
+        );
     }
 
     #[tokio::test]
     async fn test_plugin_unregistration() {
         let mut registry = PluginRegistry::new();
-        
-        let plugin = Box::new(MockPlugin::new("test-plugin", vec![PluginCapability::SipInvite]));
-        registry.register_plugin("test-plugin".to_string(), plugin).await
+
+        let plugin = Box::new(MockPlugin::new(
+            "test-plugin",
+            vec![PluginCapability::SipInvite],
+        ));
+        registry
+            .register_plugin("test-plugin".to_string(), plugin)
+            .await
             .expect("Plugin registration should succeed");
-        
+
         assert_eq!(registry.get_plugin_count().await, 1);
-        
+
         let result = registry.unregister_plugin("test-plugin").await;
         assert!(result.is_ok());
-        
+
         assert_eq!(registry.get_plugin_count().await, 0);
         assert!(registry.get_plugin("test-plugin").await.is_none());
-        assert!(!registry.is_capability_supported(&PluginCapability::SipInvite).await);
+        assert!(
+            !registry
+                .is_capability_supported(&PluginCapability::SipInvite)
+                .await
+        );
     }
 }

@@ -56,12 +56,15 @@ jobs:
         cargo build --verbose --bin lcr_test
         cargo build --verbose --bin lcr_data_loader
         cargo build --verbose --bin simple-b2bua-test
+        cargo build --verbose --bin redfire-cli
     
     - name: Run available tests
       run: |
         cargo test --verbose --lib
         cargo test --verbose -p redfire-codec-engine
         cargo test --verbose -p redfire-sip-stack
+        # Skip integration tests that have compilation issues
+        # cargo test --verbose comprehensive_integration_tests --no-run || echo "Integration tests compilation issues"
     
     - name: Test libraries independently
       run: |

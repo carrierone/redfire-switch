@@ -414,8 +414,11 @@ impl TerminationRoutingService {
                     let trunk_id = selected_route.egress_trunk.id;
                     let count = active_calls_map.entry(trunk_id).or_insert(0);
                     *count += 1;
-                    debug!("Incremented active calls for trunk {}: {}", trunk_id, *count);
-                },
+                    debug!(
+                        "Incremented active calls for trunk {}: {}",
+                        trunk_id, *count
+                    );
+                }
                 Err(e) => {
                     warn!("Failed to acquire active calls lock: {}", e);
                     // Continue without updating count rather than panicking
@@ -453,22 +456,25 @@ impl TerminationRoutingService {
         // Update active call count on call completion/failure
         // Decrement count for final responses (>=200) except for 2xx success codes that start a call
         let should_decrement = match response_code {
-            100..=199 => false,  // Provisional responses - don't decrement
-            200..=299 => false,  // Success responses - call is established, don't decrement yet
-            300..=699 => true,   // Failure responses - decrement count
-            _ => false,          // Invalid codes - don't decrement
+            100..=199 => false, // Provisional responses - don't decrement
+            200..=299 => false, // Success responses - call is established, don't decrement yet
+            300..=699 => true,  // Failure responses - decrement count
+            _ => false,         // Invalid codes - don't decrement
         };
-        
+
         if should_decrement {
             match self.active_calls.lock() {
                 Ok(mut active_calls_map) => {
                     if let Some(count) = active_calls_map.get_mut(&trunk_id) {
                         if *count > 0 {
                             *count -= 1;
-                            debug!("Decremented active calls for trunk {}: {}", trunk_id, *count);
+                            debug!(
+                                "Decremented active calls for trunk {}: {}",
+                                trunk_id, *count
+                            );
                         }
                     }
-                },
+                }
                 Err(e) => {
                     warn!("Failed to acquire active calls lock for decrement: {}", e);
                 }
@@ -656,7 +662,6 @@ impl TryFrom<u16> for SipResponseCode {
 /// Utility functions
 pub mod utils {
     use super::*;
-    
 
     /// Create test termination trunk
     pub fn create_test_trunk(id: i32, name: &str, destination_ip: &str) -> TerminationTrunk {

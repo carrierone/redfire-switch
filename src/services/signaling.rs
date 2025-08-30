@@ -1,10 +1,12 @@
 //! Signaling Service - Handles SIP B2BUA implementations
-//! 
+//!
 //! This service manages SIP signaling, B2BUA operations, and call state
 //! with pluggable B2BUA implementations and event-driven architecture.
 
 use crate::events::{EventBus, RouteInfo, TelecomEvent};
-use crate::security::{SecurityContext, SecurityError, audit_log, AuditEvent, validate_phone_number};
+use crate::security::{
+    audit_log, validate_phone_number, AuditEvent, SecurityContext, SecurityError,
+};
 use anyhow::{Context, Result};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -42,7 +44,9 @@ pub struct SignalingConfig {
 impl Default for SignalingConfig {
     fn default() -> Self {
         Self {
-            local_address: "0.0.0.0".parse().expect("Default IP address should be valid"),
+            local_address: "0.0.0.0"
+                .parse()
+                .expect("Default IP address should be valid"),
             local_port: 5060,
             max_concurrent_calls: 10000,
             call_timeout_seconds: 300,
@@ -126,7 +130,11 @@ pub trait B2BUAPlugin: Send + Sync {
     fn name(&self) -> &str;
 
     /// Handle incoming SIP message
-    fn handle_message(&self, message: &SipMessage, call_session: Option<&CallSession>) -> Result<PluginResponse>;
+    fn handle_message(
+        &self,
+        message: &SipMessage,
+        call_session: Option<&CallSession>,
+    ) -> Result<PluginResponse>;
 
     /// Plugin initialization
     fn initialize(&mut self, config: &SignalingConfig) -> Result<()> {
@@ -169,7 +177,11 @@ impl B2BUAPlugin for DefaultB2BUAPlugin {
         &self.name
     }
 
-    fn handle_message(&self, message: &SipMessage, _call_session: Option<&CallSession>) -> Result<PluginResponse> {
+    fn handle_message(
+        &self,
+        message: &SipMessage,
+        _call_session: Option<&CallSession>,
+    ) -> Result<PluginResponse> {
         // Default behavior: forward all messages
         Ok(PluginResponse::Forward(message.clone()))
     }
@@ -262,10 +274,10 @@ impl SignalingService {
     /// Register a B2BUA plugin
     pub async fn register_plugin(&self, plugin: Box<dyn B2BUAPlugin>) -> Result<()> {
         let plugin_name = plugin.name().to_string();
-        
+
         let mut plugins = self.plugins.write().await;
         plugins.push(plugin);
-        
+
         info!("Registered B2BUA plugin: {}", plugin_name);
         Ok(())
     }
@@ -275,7 +287,10 @@ impl SignalingService {
         let (response_tx, response_rx) = tokio::sync::oneshot::channel();
 
         self.request_sender
-            .send(SignalingServiceMessage::SetupCall { request, response_tx })
+            .send(SignalingServiceMessage::SetupCall {
+                request,
+                response_tx,
+            })
             .map_err(|_| anyhow::anyhow!("Failed to send setup call request"))?;
 
         response_rx
@@ -287,13 +302,17 @@ impl SignalingService {
     pub async fn handle_sip_message(&self, message: SipMessage) -> Result<()> {
         // Create security context
         let security_context = SecurityContext::new(message.source_addr.ip());
-        
+
         // Validate SIP message format and content
-        self.validate_sip_message(&message, &security_context).await?;
+        self.validate_sip_message(&message, &security_context)
+            .await?;
         let (response_tx, response_rx) = tokio::sync::oneshot::channel();
 
         self.request_sender
-            .send(SignalingServiceMessage::HandleSipMessage { message, response_tx })
+            .send(SignalingServiceMessage::HandleSipMessage {
+                message,
+                response_tx,
+            })
             .map_err(|_| anyhow::anyhow!("Failed to send SIP message"))?;
 
         response_rx
@@ -306,7 +325,11 @@ impl SignalingService {
         let (response_tx, response_rx) = tokio::sync::oneshot::channel();
 
         self.request_sender
-            .send(SignalingServiceMessage::TerminateCall { call_id, reason, response_tx })
+            .send(SignalingServiceMessage::TerminateCall {
+                call_id,
+                reason,
+                response_tx,
+            })
             .map_err(|_| anyhow::anyhow!("Failed to send terminate call request"))?;
 
         response_rx
@@ -319,7 +342,10 @@ impl SignalingService {
         let (response_tx, response_rx) = tokio::sync::oneshot::channel();
 
         self.request_sender
-            .send(SignalingServiceMessage::GetCallState { call_id, response_tx })
+            .send(SignalingServiceMessage::GetCallState {
+                call_id,
+                response_tx,
+            })
             .map_err(|_| anyhow::anyhow!("Failed to send get call state request"))?;
 
         response_rx
@@ -340,34 +366,46 @@ impl SignalingService {
     }
 
     /// Validate SIP message for security
-    async fn validate_sip_message(&self, message: &SipMessage, context: &SecurityContext) -> Result<()> {
+    async fn validate_sip_message(
+        &self,
+        message: &SipMessage,
+        context: &SecurityContext,
+    ) -> Result<()> {
         // Validate message size (prevent memory exhaustion)
-        let message_size = message.method.len() + message.request_uri.len() + 
-            message.headers.values().map(|v| v.len()).sum::<usize>();
-        
-        if message_size > 65536 { // 64KB limit
+        let message_size = message.method.len()
+            + message.request_uri.len()
+            + message.headers.values().map(|v| v.len()).sum::<usize>();
+
+        if message_size > 65536 {
+            // 64KB limit
             return Err(SecurityError::RequestTooLarge(format!("{} bytes", message_size)).into());
         }
-        
+
         // Validate SIP method
-        let valid_methods = ["INVITE", "ACK", "BYE", "CANCEL", "REGISTER", "OPTIONS", "INFO"];
+        let valid_methods = [
+            "INVITE", "ACK", "BYE", "CANCEL", "REGISTER", "OPTIONS", "INFO",
+        ];
         if !valid_methods.contains(&message.method.as_str()) {
-            return Err(SecurityError::InvalidInput(format!("Invalid SIP method: {}", message.method)).into());
+            return Err(SecurityError::InvalidInput(format!(
+                "Invalid SIP method: {}",
+                message.method
+            ))
+            .into());
         }
-        
+
         // Validate phone numbers in From/To headers if present
         if let Some(from_header) = message.headers.get("From") {
             if let Some(number) = self.extract_phone_number(from_header) {
                 validate_phone_number(&number)?;
             }
         }
-        
+
         if let Some(to_header) = message.headers.get("To") {
             if let Some(number) = self.extract_phone_number(to_header) {
                 validate_phone_number(&number)?;
             }
         }
-        
+
         // Log security audit event
         if let Some(call_id) = message.headers.get("Call-ID") {
             let event = AuditEvent::SipMessageProcessed {
@@ -378,15 +416,15 @@ impl SignalingService {
                 to_uri: message.headers.get("To").cloned(),
                 processing_result: "validated".to_string(),
             };
-            
+
             if let Err(e) = audit_log(event, context).await {
                 warn!("Failed to log audit event: {}", e);
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Extract phone number from SIP URI
     fn extract_phone_number(&self, uri: &str) -> Option<String> {
         // Simple extraction - in practice would use proper SIP URI parsing
@@ -402,14 +440,17 @@ impl SignalingService {
     /// Shutdown the signaling service
     pub async fn shutdown(&self) -> Result<()> {
         info!("Shutting down signaling service");
-        
+
         // Terminate all active calls
         let sessions = self.call_sessions.read().await;
         let call_ids: Vec<String> = sessions.keys().cloned().collect();
         drop(sessions);
 
         for call_id in call_ids {
-            if let Err(e) = self.terminate_call(call_id, "service_shutdown".to_string()).await {
+            if let Err(e) = self
+                .terminate_call(call_id, "service_shutdown".to_string())
+                .await
+            {
                 warn!("Failed to terminate call during shutdown: {}", e);
             }
         }
@@ -449,19 +490,32 @@ impl SignalingProcessor {
         // Process incoming requests
         while let Some(message) = self.request_receiver.recv().await {
             match message {
-                SignalingServiceMessage::HandleSipMessage { message, response_tx } => {
+                SignalingServiceMessage::HandleSipMessage {
+                    message,
+                    response_tx,
+                } => {
                     let response = self.handle_sip_message_internal(message).await;
                     let _ = response_tx.send(response);
                 }
-                SignalingServiceMessage::SetupCall { request, response_tx } => {
+                SignalingServiceMessage::SetupCall {
+                    request,
+                    response_tx,
+                } => {
                     let response = self.handle_setup_call(request).await;
                     let _ = response_tx.send(response);
                 }
-                SignalingServiceMessage::TerminateCall { call_id, reason, response_tx } => {
+                SignalingServiceMessage::TerminateCall {
+                    call_id,
+                    reason,
+                    response_tx,
+                } => {
                     let response = self.handle_terminate_call(&call_id, &reason).await;
                     let _ = response_tx.send(response);
                 }
-                SignalingServiceMessage::GetCallState { call_id, response_tx } => {
+                SignalingServiceMessage::GetCallState {
+                    call_id,
+                    response_tx,
+                } => {
                     let sessions = self.call_sessions.read().await;
                     let session = sessions.get(&call_id).cloned();
                     let _ = response_tx.send(Ok(session));
@@ -478,7 +532,9 @@ impl SignalingProcessor {
         }
 
         // Extract call ID from message
-        let call_id = message.headers.get("Call-ID")
+        let call_id = message
+            .headers
+            .get("Call-ID")
             .ok_or_else(|| anyhow::anyhow!("Missing Call-ID header"))?
             .clone();
 
@@ -489,7 +545,9 @@ impl SignalingProcessor {
         };
 
         // Process message through plugins
-        let plugin_response = self.process_through_plugins(&message, call_session.as_ref()).await?;
+        let plugin_response = self
+            .process_through_plugins(&message, call_session.as_ref())
+            .await?;
 
         match plugin_response {
             PluginResponse::Forward(modified_message) => {
@@ -509,9 +567,13 @@ impl SignalingProcessor {
         Ok(())
     }
 
-    async fn process_through_plugins(&self, message: &SipMessage, call_session: Option<&CallSession>) -> Result<PluginResponse> {
+    async fn process_through_plugins(
+        &self,
+        message: &SipMessage,
+        call_session: Option<&CallSession>,
+    ) -> Result<PluginResponse> {
         let plugins = self.plugins.read().await;
-        
+
         // Update plugin invocation stats
         {
             let mut stats = self.stats.write().await;
@@ -525,7 +587,7 @@ impl SignalingProcessor {
 
         // Process through each plugin in sequence
         let mut current_message = message.clone();
-        
+
         for plugin in plugins.iter() {
             match plugin.handle_message(&current_message, call_session)? {
                 PluginResponse::Forward(msg) => {
@@ -543,15 +605,22 @@ impl SignalingProcessor {
         Ok(PluginResponse::Forward(current_message))
     }
 
-    async fn forward_message(&self, message: SipMessage, call_session: Option<CallSession>) -> Result<()> {
+    async fn forward_message(
+        &self,
+        message: SipMessage,
+        call_session: Option<CallSession>,
+    ) -> Result<()> {
         // TODO: Implement actual SIP message forwarding
-        debug!("Forwarding SIP message: {} for call {:?}", 
-               message.method, 
-               message.headers.get("Call-ID"));
+        debug!(
+            "Forwarding SIP message: {} for call {:?}",
+            message.method,
+            message.headers.get("Call-ID")
+        );
 
         // Update call state based on message
         if let Some(call_id) = message.headers.get("Call-ID") {
-            self.update_call_state_from_message(call_id, &message).await?;
+            self.update_call_state_from_message(call_id, &message)
+                .await?;
         }
 
         Ok(())
@@ -559,11 +628,14 @@ impl SignalingProcessor {
 
     async fn reject_message(&self, message: &SipMessage, code: u16, reason: &str) -> Result<()> {
         // TODO: Implement actual SIP rejection response
-        debug!("Rejecting SIP message {} with code {}: {}", 
-               message.method, code, reason);
+        debug!(
+            "Rejecting SIP message {} with code {}: {}",
+            message.method, code, reason
+        );
 
         if let Some(call_id) = message.headers.get("Call-ID") {
-            self.mark_call_failed(call_id, format!("Rejected: {} {}", code, reason)).await?;
+            self.mark_call_failed(call_id, format!("Rejected: {} {}", code, reason))
+                .await?;
         }
 
         Ok(())
@@ -615,7 +687,7 @@ impl SignalingProcessor {
 
     async fn handle_terminate_call(&self, call_id: &str, reason: &str) -> Result<()> {
         let mut sessions = self.call_sessions.write().await;
-        
+
         if let Some(mut session) = sessions.remove(call_id) {
             session.state = CallState::Terminated;
             session.terminated_at = Some(Utc::now());
@@ -637,9 +709,13 @@ impl SignalingProcessor {
         Ok(())
     }
 
-    async fn update_call_state_from_message(&self, call_id: &str, message: &SipMessage) -> Result<()> {
+    async fn update_call_state_from_message(
+        &self,
+        call_id: &str,
+        message: &SipMessage,
+    ) -> Result<()> {
         let mut sessions = self.call_sessions.write().await;
-        
+
         if let Some(session) = sessions.get_mut(call_id) {
             match message.method.as_str() {
                 "INVITE" => session.state = CallState::Initiated,
@@ -649,7 +725,7 @@ impl SignalingProcessor {
                     session.state = CallState::Connected;
                     if session.connected_at.is_none() {
                         session.connected_at = Some(Utc::now());
-                        
+
                         // Update connected calls statistics
                         let mut stats = self.stats.write().await;
                         stats.total_calls_connected += 1;
@@ -673,7 +749,7 @@ impl SignalingProcessor {
 
     async fn mark_call_failed(&self, call_id: &str, reason: String) -> Result<()> {
         let mut sessions = self.call_sessions.write().await;
-        
+
         if let Some(session) = sessions.get_mut(call_id) {
             session.state = CallState::Failed;
             session.failure_reason = Some(reason);
@@ -695,28 +771,38 @@ impl SignalingProcessor {
             request.source_ip,
         );
 
-        self.event_bus.publish(event).await
+        self.event_bus
+            .publish(event)
+            .await
             .context("Failed to publish call initiated event")?;
 
         Ok(())
     }
 
-    async fn publish_call_terminated_event(&self, session: &CallSession, reason: &str) -> Result<()> {
+    async fn publish_call_terminated_event(
+        &self,
+        session: &CallSession,
+        reason: &str,
+    ) -> Result<()> {
         let cdr = crate::events::CallDetailRecord {
             call_id: session.call_id.clone(),
             calling_number: session.calling_number.clone(),
             called_number: session.called_number.clone(),
             start_time: session.created_at,
             end_time: session.terminated_at.unwrap_or_else(Utc::now),
-            duration_seconds: session.connected_at
-                .map(|connected| (session.terminated_at.unwrap_or_else(Utc::now) - connected).num_seconds() as u32)
+            duration_seconds: session
+                .connected_at
+                .map(|connected| {
+                    (session.terminated_at.unwrap_or_else(Utc::now) - connected).num_seconds()
+                        as u32
+                })
                 .unwrap_or(0),
             ingress_trunk_id: 0, // TODO: Get from route info
             egress_trunk_id: Some(session.route_info.trunk_id),
             termination_cause: reason.to_string(),
             cost: Some(session.route_info.cost),
-            customer_id: None, // TODO: Get from request
-            ani_ii_digit: None, // TODO: Extract from SIP headers
+            customer_id: None,        // TODO: Get from request
+            ani_ii_digit: None,       // TODO: Extract from SIP headers
             payphone_surcharge: None, // TODO: Calculate from ANI-II
         };
 
@@ -726,11 +812,15 @@ impl SignalingProcessor {
             cdr,
             termination_reason: reason.to_string(),
             final_response_code: session.last_response_code.unwrap_or(200),
-            call_duration_seconds: (session.terminated_at.unwrap_or_else(Utc::now) - session.created_at).num_seconds() as u32,
+            call_duration_seconds: (session.terminated_at.unwrap_or_else(Utc::now)
+                - session.created_at)
+                .num_seconds() as u32,
             timestamp: Utc::now(),
         });
 
-        self.event_bus.publish(event).await
+        self.event_bus
+            .publish(event)
+            .await
             .context("Failed to publish call terminated event")?;
 
         Ok(())
@@ -743,29 +833,30 @@ impl SignalingProcessor {
         event_bus: Arc<EventBus>,
     ) {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
-        
+
         loop {
             interval.tick().await;
-            
+
             let mut sessions_guard = sessions.write().await;
             let now = Utc::now();
             let timeout_duration = chrono::Duration::seconds(config.call_timeout_seconds as i64);
-            
+
             let mut to_remove = Vec::new();
-            
+
             for (call_id, session) in sessions_guard.iter() {
                 let session_age = now - session.created_at;
-                
+
                 // Check if call has timed out
-                if session_age > timeout_duration && 
-                   !matches!(session.state, CallState::Connected | CallState::Terminated) {
+                if session_age > timeout_duration
+                    && !matches!(session.state, CallState::Connected | CallState::Terminated)
+                {
                     to_remove.push((call_id.clone(), session.clone()));
                 }
             }
-            
+
             for (call_id, session) in to_remove {
                 sessions_guard.remove(&call_id);
-                
+
                 // Publish timeout event
                 let cdr = crate::events::CallDetailRecord {
                     call_id: session.call_id.clone(),
@@ -779,7 +870,7 @@ impl SignalingProcessor {
                     termination_cause: "timeout".to_string(),
                     cost: Some(session.route_info.cost),
                     customer_id: None,
-                    ani_ii_digit: None, // TODO: Extract from SIP headers
+                    ani_ii_digit: None,       // TODO: Extract from SIP headers
                     payphone_surcharge: None, // TODO: Calculate from ANI-II
                 };
 
@@ -794,7 +885,10 @@ impl SignalingProcessor {
                 });
 
                 if let Err(e) = event_bus.publish(event).await {
-                    error!("Failed to publish timeout event for call {}: {}", call_id, e);
+                    error!(
+                        "Failed to publish timeout event for call {}: {}",
+                        call_id, e
+                    );
                 }
 
                 debug!("Cleaned up timed-out call: {}", call_id);

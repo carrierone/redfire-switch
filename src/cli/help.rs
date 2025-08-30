@@ -46,14 +46,14 @@ impl HelpSystem {
         println!("{}", "RedFire Switch CLI Help".bright_cyan().bold());
         println!("{}", "=".repeat(40).bright_cyan());
         println!();
-        
+
         println!("{}", "GENERAL COMMANDS:".bright_yellow().bold());
         self.print_command_category(&[
             ("help [command]", "Show help for command or general help"),
             ("quit/exit/bye", "Exit the CLI"),
             ("clear/cls", "Clear the screen"),
         ]);
-        
+
         println!("{}", "STATUS & MONITORING:".bright_yellow().bold());
         self.print_command_category(&[
             ("status [type]", "Show system status information"),
@@ -108,7 +108,11 @@ impl HelpSystem {
         ]);
 
         println!();
-        println!("{}", "Use 'help <command>' for detailed information about a specific command.".bright_green());
+        println!(
+            "{}",
+            "Use 'help <command>' for detailed information about a specific command."
+                .bright_green()
+        );
         println!("{}", "Use TAB for command completion.".bright_green());
         println!();
     }
@@ -118,7 +122,7 @@ impl HelpSystem {
         if let Some(help) = self.command_help.get(command) {
             println!("{}: {}", help.name.bright_cyan().bold(), help.description);
             println!();
-            
+
             println!("{}", "USAGE:".bright_yellow().bold());
             println!("  {}", help.usage.bright_white());
             println!();
@@ -126,21 +130,25 @@ impl HelpSystem {
             if !help.arguments.is_empty() {
                 println!("{}", "ARGUMENTS:".bright_yellow().bold());
                 for arg in &help.arguments {
-                    let req_indicator = if arg.required { 
-                        "[required]".red() 
-                    } else { 
-                        "[optional]".green() 
+                    let req_indicator = if arg.required {
+                        "[required]".red()
+                    } else {
+                        "[optional]".green()
                     };
-                    
-                    println!("  {} {} - {}", 
-                             arg.name.bright_white().bold(),
-                             req_indicator,
-                             arg.description);
-                    
+
+                    println!(
+                        "  {} {} - {}",
+                        arg.name.bright_white().bold(),
+                        req_indicator,
+                        arg.description
+                    );
+
                     if !arg.values.is_empty() {
-                        println!("    {}: {}", 
-                                 "Values".bright_blue(),
-                                 arg.values.join(", ").bright_magenta());
+                        println!(
+                            "    {}: {}",
+                            "Values".bright_blue(),
+                            arg.values.join(", ").bright_magenta()
+                        );
                     }
                 }
                 println!();
@@ -160,7 +168,11 @@ impl HelpSystem {
                 println!();
             }
         } else {
-            println!("{}: No help available for '{}'", "Error".red().bold(), command);
+            println!(
+                "{}: No help available for '{}'",
+                "Error".red().bold(),
+                command
+            );
             println!("Use '{}' to see all available commands.", "help".yellow());
         }
     }
@@ -218,17 +230,27 @@ impl HelpSystem {
                     description: "Object type to display".to_string(),
                     required: true,
                     values: vec![
-                        "calls".to_string(), "channels".to_string(), "gateways".to_string(),
-                        "trunks".to_string(), "routes".to_string(), "config".to_string(),
-                        "stats".to_string(), "alarms".to_string(), "events".to_string(),
+                        "calls".to_string(),
+                        "channels".to_string(),
+                        "gateways".to_string(),
+                        "trunks".to_string(),
+                        "routes".to_string(),
+                        "config".to_string(),
+                        "stats".to_string(),
+                        "alarms".to_string(),
+                        "events".to_string(),
                     ],
                 },
                 ArgumentHelp {
                     name: "filter".to_string(),
                     description: "Optional filter criteria".to_string(),
                     required: false,
-                    values: vec!["active".to_string(), "inactive".to_string(), "all".to_string()],
-                }
+                    values: vec![
+                        "active".to_string(),
+                        "inactive".to_string(),
+                        "all".to_string(),
+                    ],
+                },
             ],
             related: vec!["status".to_string(), "calls".to_string()],
         });
@@ -245,18 +267,23 @@ impl HelpSystem {
                 "calls active".to_string(),
                 "calls search +1234567890".to_string(),
             ],
-            arguments: vec![
-                ArgumentHelp {
-                    name: "action".to_string(),
-                    description: "Action to perform on calls".to_string(),
-                    required: false,
-                    values: vec![
-                        "list".to_string(), "count".to_string(), "active".to_string(),
-                        "history".to_string(), "search".to_string()
-                    ],
-                }
+            arguments: vec![ArgumentHelp {
+                name: "action".to_string(),
+                description: "Action to perform on calls".to_string(),
+                required: false,
+                values: vec![
+                    "list".to_string(),
+                    "count".to_string(),
+                    "active".to_string(),
+                    "history".to_string(),
+                    "search".to_string(),
+                ],
+            }],
+            related: vec![
+                "status".to_string(),
+                "hangup".to_string(),
+                "show".to_string(),
             ],
-            related: vec!["status".to_string(), "hangup".to_string(), "show".to_string()],
         });
 
         // Hangup command help
@@ -281,10 +308,12 @@ impl HelpSystem {
                     description: "Hangup reason code".to_string(),
                     required: false,
                     values: vec![
-                        "NORMAL_CLEARING".to_string(), "USER_BUSY".to_string(),
-                        "NO_ANSWER".to_string(), "SYSTEM_SHUTDOWN".to_string()
+                        "NORMAL_CLEARING".to_string(),
+                        "USER_BUSY".to_string(),
+                        "NO_ANSWER".to_string(),
+                        "SYSTEM_SHUTDOWN".to_string(),
                     ],
-                }
+                },
             ],
             related: vec!["calls".to_string(), "bridge".to_string()],
         });
@@ -306,8 +335,12 @@ impl HelpSystem {
                     description: "Action to perform".to_string(),
                     required: false,
                     values: vec![
-                        "list".to_string(), "status".to_string(), "enable".to_string(),
-                        "disable".to_string(), "test".to_string(), "stats".to_string()
+                        "list".to_string(),
+                        "status".to_string(),
+                        "enable".to_string(),
+                        "disable".to_string(),
+                        "test".to_string(),
+                        "stats".to_string(),
                     ],
                 },
                 ArgumentHelp {
@@ -315,7 +348,7 @@ impl HelpSystem {
                     description: "Specific gateway name".to_string(),
                     required: false,
                     values: vec!["<gateway-name>".to_string()],
-                }
+                },
             ],
             related: vec!["trunk".to_string(), "route".to_string()],
         });
@@ -336,8 +369,11 @@ impl HelpSystem {
                     description: "Configuration parameter name".to_string(),
                     required: true,
                     values: vec![
-                        "log-level".to_string(), "max-calls".to_string(), "rtp-timeout".to_string(),
-                        "sip-timeout".to_string(), "codec-priority".to_string()
+                        "log-level".to_string(),
+                        "max-calls".to_string(),
+                        "rtp-timeout".to_string(),
+                        "sip-timeout".to_string(),
+                        "codec-priority".to_string(),
                     ],
                 },
                 ArgumentHelp {
@@ -345,7 +381,7 @@ impl HelpSystem {
                     description: "Parameter value".to_string(),
                     required: true,
                     values: vec!["<value>".to_string()],
-                }
+                },
             ],
             related: vec!["get".to_string(), "reload".to_string()],
         });
@@ -367,16 +403,26 @@ impl HelpSystem {
                     description: "Component to debug".to_string(),
                     required: false,
                     values: vec![
-                        "sip".to_string(), "rtp".to_string(), "codec".to_string(),
-                        "routing".to_string(), "security".to_string(), "all".to_string(), "off".to_string()
+                        "sip".to_string(),
+                        "rtp".to_string(),
+                        "codec".to_string(),
+                        "routing".to_string(),
+                        "security".to_string(),
+                        "all".to_string(),
+                        "off".to_string(),
                     ],
                 },
                 ArgumentHelp {
                     name: "level".to_string(),
                     description: "Debug level (0-9)".to_string(),
                     required: false,
-                    values: vec!["0".to_string(), "1".to_string(), "2".to_string(), "3".to_string()],
-                }
+                    values: vec![
+                        "0".to_string(),
+                        "1".to_string(),
+                        "2".to_string(),
+                        "3".to_string(),
+                    ],
+                },
             ],
             related: vec!["trace".to_string(), "log".to_string()],
         });
@@ -398,8 +444,11 @@ impl HelpSystem {
                     description: "Codec action to perform".to_string(),
                     required: false,
                     values: vec![
-                        "list".to_string(), "test".to_string(), "benchmark".to_string(),
-                        "stats".to_string(), "priority".to_string()
+                        "list".to_string(),
+                        "test".to_string(),
+                        "benchmark".to_string(),
+                        "stats".to_string(),
+                        "priority".to_string(),
                     ],
                 },
                 ArgumentHelp {
@@ -407,10 +456,13 @@ impl HelpSystem {
                     description: "Specific codec name".to_string(),
                     required: false,
                     values: vec![
-                        "g711u".to_string(), "g711a".to_string(), "g729".to_string(),
-                        "g722".to_string(), "opus".to_string()
+                        "g711u".to_string(),
+                        "g711a".to_string(),
+                        "g729".to_string(),
+                        "g722".to_string(),
+                        "opus".to_string(),
                     ],
-                }
+                },
             ],
             related: vec!["transcode".to_string(), "gpu".to_string()],
         });
@@ -426,17 +478,18 @@ impl HelpSystem {
                 "log export /tmp/redfire.log".to_string(),
                 "log clear".to_string(),
             ],
-            arguments: vec![
-                ArgumentHelp {
-                    name: "action".to_string(),
-                    description: "Log action to perform".to_string(),
-                    required: false,
-                    values: vec![
-                        "level".to_string(), "tail".to_string(), "export".to_string(),
-                        "rotate".to_string(), "clear".to_string()
-                    ],
-                }
-            ],
+            arguments: vec![ArgumentHelp {
+                name: "action".to_string(),
+                description: "Log action to perform".to_string(),
+                required: false,
+                values: vec![
+                    "level".to_string(),
+                    "tail".to_string(),
+                    "export".to_string(),
+                    "rotate".to_string(),
+                    "clear".to_string(),
+                ],
+            }],
             related: vec!["debug".to_string(), "trace".to_string()],
         });
     }

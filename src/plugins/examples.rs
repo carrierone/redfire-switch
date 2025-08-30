@@ -1,5 +1,5 @@
 //! Example B2BUA plugin implementations
-//! 
+//!
 //! This module contains example plugins that demonstrate various capabilities
 //! and patterns for B2BUA plugin development.
 
@@ -59,23 +59,33 @@ impl B2BUAPlugin for DefaultB2BUAExample {
         Ok(())
     }
 
-    async fn handle_message(&self, message: &SipMessage, context: &PluginContext) -> Result<PluginResponse> {
+    async fn handle_message(
+        &self,
+        message: &SipMessage,
+        context: &PluginContext,
+    ) -> Result<PluginResponse> {
         let count = self.message_count.fetch_add(1, Ordering::Relaxed) + 1;
-        
-        debug!("Default B2BUA plugin processing message #{}: {}", count, message.method);
-        
+
+        debug!(
+            "Default B2BUA plugin processing message #{}: {}",
+            count, message.method
+        );
+
         // Simple logging if call session is available
         if let Some(call_session) = &context.call_session {
             debug!("Processing message for call: {}", call_session.call_id);
         }
-        
+
         // Always forward the message unchanged
         Ok(PluginResponse::Forward(message.clone()))
     }
 
     async fn get_statistics(&self) -> Result<HashMap<String, serde_json::Value>> {
         let mut stats = HashMap::new();
-        stats.insert("messages_processed".to_string(), json!(self.message_count.load(Ordering::Relaxed)));
+        stats.insert(
+            "messages_processed".to_string(),
+            json!(self.message_count.load(Ordering::Relaxed)),
+        );
         Ok(stats)
     }
 }
@@ -113,7 +123,10 @@ impl SipAuthenticatorPlugin {
                         }
                     }
                 })),
-                capabilities: vec![PluginCapability::SipInvite, PluginCapability::SecurityValidation],
+                capabilities: vec![
+                    PluginCapability::SipInvite,
+                    PluginCapability::SecurityValidation,
+                ],
             },
             credentials: Arc::new(RwLock::new(HashMap::new())),
             failed_attempts: Arc::new(RwLock::new(HashMap::new())),
@@ -153,15 +166,22 @@ impl B2BUAPlugin for SipAuthenticatorPlugin {
                 }
             }
         }
-        
+
         info!("SIP Authenticator plugin initialized");
         Ok(())
     }
 
-    async fn handle_message(&self, message: &SipMessage, _context: &PluginContext) -> Result<PluginResponse> {
+    async fn handle_message(
+        &self,
+        message: &SipMessage,
+        _context: &PluginContext,
+    ) -> Result<PluginResponse> {
         if self.should_challenge(message).await {
-            debug!("Challenging unauthenticated INVITE from {}", message.source_addr);
-            
+            debug!(
+                "Challenging unauthenticated INVITE from {}",
+                message.source_addr
+            );
+
             return Ok(PluginResponse::Reject(401, "Unauthorized".to_string()));
         }
 
@@ -216,23 +236,39 @@ impl B2BUAPlugin for CallLimiterPlugin {
         if let Some(max_calls) = config.config.get("max_calls").and_then(|v| v.as_u64()) {
             self.max_calls = max_calls as u32;
         }
-        
-        info!("Call limiter plugin initialized with max {} calls", self.max_calls);
+
+        info!(
+            "Call limiter plugin initialized with max {} calls",
+            self.max_calls
+        );
         Ok(())
     }
 
-    async fn handle_message(&self, message: &SipMessage, _context: &PluginContext) -> Result<PluginResponse> {
+    async fn handle_message(
+        &self,
+        message: &SipMessage,
+        _context: &PluginContext,
+    ) -> Result<PluginResponse> {
         if message.method == "INVITE" {
             let current = self.current_calls.load(Ordering::Relaxed);
-            
+
             if current >= self.max_calls as u64 {
-                warn!("Rejecting call due to limit reached: {} >= {}", current, self.max_calls);
-                return Ok(PluginResponse::Reject(503, "Service Unavailable - Call limit reached".to_string()));
+                warn!(
+                    "Rejecting call due to limit reached: {} >= {}",
+                    current, self.max_calls
+                );
+                return Ok(PluginResponse::Reject(
+                    503,
+                    "Service Unavailable - Call limit reached".to_string(),
+                ));
             }
-            
+
             self.current_calls.fetch_add(1, Ordering::Relaxed);
             debug!("Call accepted, current calls: {}", current + 1);
-        } else if message.method == "BYE" || (message.method.chars().all(char::is_numeric) && message.method.parse::<u16>().unwrap_or(0) >= 400) {
+        } else if message.method == "BYE"
+            || (message.method.chars().all(char::is_numeric)
+                && message.method.parse::<u16>().unwrap_or(0) >= 400)
+        {
             // Call ended or failed
             self.current_calls.fetch_sub(1, Ordering::Relaxed);
         }
@@ -242,7 +278,10 @@ impl B2BUAPlugin for CallLimiterPlugin {
 
     async fn get_statistics(&self) -> Result<HashMap<String, serde_json::Value>> {
         let mut stats = HashMap::new();
-        stats.insert("current_calls".to_string(), json!(self.current_calls.load(Ordering::Relaxed)));
+        stats.insert(
+            "current_calls".to_string(),
+            json!(self.current_calls.load(Ordering::Relaxed)),
+        );
         stats.insert("max_calls".to_string(), json!(self.max_calls));
         Ok(stats)
     }
@@ -319,14 +358,16 @@ impl HeaderManipulatorPlugin {
     async fn apply_header_rules(&self, message: &SipMessage) -> Result<SipMessage> {
         let mut modified_message = message.clone();
         let rules = self.header_rules.read().await;
-        
+
         for rule in rules.iter() {
             // TODO: Implement condition checking
-            
+
             match rule.action {
                 HeaderAction::Add => {
                     if let Some(value) = &rule.header_value {
-                        modified_message.headers.insert(rule.header_name.clone(), value.clone());
+                        modified_message
+                            .headers
+                            .insert(rule.header_name.clone(), value.clone());
                     }
                 }
                 HeaderAction::Remove => {
@@ -334,7 +375,9 @@ impl HeaderManipulatorPlugin {
                 }
                 HeaderAction::Replace => {
                     if let Some(value) = &rule.header_value {
-                        modified_message.headers.insert(rule.header_name.clone(), value.clone());
+                        modified_message
+                            .headers
+                            .insert(rule.header_name.clone(), value.clone());
                     }
                 }
                 HeaderAction::Modify => {
@@ -342,7 +385,7 @@ impl HeaderManipulatorPlugin {
                 }
             }
         }
-        
+
         Ok(modified_message)
     }
 }
@@ -357,12 +400,12 @@ impl B2BUAPlugin for HeaderManipulatorPlugin {
         // Load header rules from config
         if let Some(rules_array) = config.config.get("rules").and_then(|v| v.as_array()) {
             let mut rules = self.header_rules.write().await;
-            
+
             for rule_value in rules_array {
                 if let Some(rule_obj) = rule_value.as_object() {
                     if let (Some(action_str), Some(header_name)) = (
                         rule_obj.get("action").and_then(|v| v.as_str()),
-                        rule_obj.get("header_name").and_then(|v| v.as_str())
+                        rule_obj.get("header_name").and_then(|v| v.as_str()),
                     ) {
                         let action = match action_str {
                             "add" => HeaderAction::Add,
@@ -371,10 +414,16 @@ impl B2BUAPlugin for HeaderManipulatorPlugin {
                             "modify" => HeaderAction::Modify,
                             _ => continue,
                         };
-                        
-                        let header_value = rule_obj.get("header_value").and_then(|v| v.as_str()).map(|s| s.to_string());
-                        let condition = rule_obj.get("condition").and_then(|v| v.as_str()).map(|s| s.to_string());
-                        
+
+                        let header_value = rule_obj
+                            .get("header_value")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string());
+                        let condition = rule_obj
+                            .get("condition")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string());
+
                         rules.push(HeaderRule {
                             action,
                             header_name: header_name.to_string(),
@@ -385,13 +434,20 @@ impl B2BUAPlugin for HeaderManipulatorPlugin {
                 }
             }
         }
-        
+
         let rule_count = self.header_rules.read().await.len();
-        info!("Header manipulator plugin initialized with {} rules", rule_count);
+        info!(
+            "Header manipulator plugin initialized with {} rules",
+            rule_count
+        );
         Ok(())
     }
 
-    async fn handle_message(&self, message: &SipMessage, _context: &PluginContext) -> Result<PluginResponse> {
+    async fn handle_message(
+        &self,
+        message: &SipMessage,
+        _context: &PluginContext,
+    ) -> Result<PluginResponse> {
         let modified_message = self.apply_header_rules(message).await?;
         Ok(PluginResponse::Modify(modified_message))
     }
@@ -431,7 +487,10 @@ impl FraudDetectorPlugin {
                         }
                     }
                 })),
-                capabilities: vec![PluginCapability::SipInvite, PluginCapability::SecurityValidation],
+                capabilities: vec![
+                    PluginCapability::SipInvite,
+                    PluginCapability::SecurityValidation,
+                ],
             },
             suspicious_patterns: Arc::new(RwLock::new(vec!["900".to_string(), "976".to_string()])),
             call_rates: Arc::new(RwLock::new(HashMap::new())),
@@ -447,15 +506,15 @@ impl FraudDetectorPlugin {
         let mut rates = self.call_rates.write().await;
         let now = chrono::Utc::now();
         let one_minute_ago = now - chrono::Duration::minutes(1);
-        
+
         let timestamps = rates.entry(ip.to_string()).or_insert_with(Vec::new);
-        
+
         // Remove old timestamps
         timestamps.retain(|&ts| ts > one_minute_ago);
-        
+
         // Add current timestamp
         timestamps.push(now);
-        
+
         // Check if rate is exceeded (simplified: 30 calls per minute)
         timestamps.len() > 30
     }
@@ -468,31 +527,39 @@ impl B2BUAPlugin for FraudDetectorPlugin {
     }
 
     async fn initialize(&mut self, config: &PluginConfig, _context: &PluginContext) -> Result<()> {
-        if let Some(prefixes) = config.config.get("suspicious_prefixes").and_then(|v| v.as_array()) {
+        if let Some(prefixes) = config
+            .config
+            .get("suspicious_prefixes")
+            .and_then(|v| v.as_array())
+        {
             let mut patterns = self.suspicious_patterns.write().await;
             patterns.clear();
-            
+
             for prefix in prefixes {
                 if let Some(prefix_str) = prefix.as_str() {
                     patterns.push(prefix_str.to_string());
                 }
             }
         }
-        
+
         info!("Fraud detector plugin initialized");
         Ok(())
     }
 
-    async fn handle_message(&self, message: &SipMessage, _context: &PluginContext) -> Result<PluginResponse> {
+    async fn handle_message(
+        &self,
+        message: &SipMessage,
+        _context: &PluginContext,
+    ) -> Result<PluginResponse> {
         if message.method == "INVITE" {
             let source_ip = message.source_addr.ip().to_string();
-            
+
             // Check call rate
             if self.check_call_rate(&source_ip).await {
                 warn!("Blocking high call rate from IP: {}", source_ip);
                 return Ok(PluginResponse::Reject(429, "Too Many Requests".to_string()));
             }
-            
+
             // Check for suspicious destination numbers
             if let Some(to_header) = message.headers.get("To") {
                 // Extract number from To header (simplified parsing)
@@ -500,16 +567,19 @@ impl B2BUAPlugin for FraudDetectorPlugin {
                     let number_part = &to_header[number_start + 4..];
                     if let Some(number_end) = number_part.find('@') {
                         let number = &number_part[..number_end];
-                        
+
                         if self.is_suspicious_number(number).await {
                             warn!("Blocking suspicious destination number: {}", number);
-                            return Ok(PluginResponse::Reject(403, "Forbidden - Suspicious destination".to_string()));
+                            return Ok(PluginResponse::Reject(
+                                403,
+                                "Forbidden - Suspicious destination".to_string(),
+                            ));
                         }
                     }
                 }
             }
         }
-        
+
         Ok(PluginResponse::Forward(message.clone()))
     }
 
@@ -517,7 +587,7 @@ impl B2BUAPlugin for FraudDetectorPlugin {
         // Listen for fraud detection events to update patterns
         if let TelecomEvent::FraudDetected(fraud_event) = event {
             info!("Fraud detected event received: {}", fraud_event.fraud_type);
-            
+
             // Publish alert through event bus
             let alert_event = TelecomEvent::fraud_detected(
                 format!("fraud-plugin-{}", uuid::Uuid::new_v4()),
@@ -525,12 +595,12 @@ impl B2BUAPlugin for FraudDetectorPlugin {
                 fraud_event.risk_score,
                 std::collections::HashMap::new(),
             );
-            
+
             if let Err(e) = context.event_bus.publish(alert_event).await {
                 warn!("Failed to publish fraud alert: {}", e);
             }
         }
-        
+
         Ok(())
     }
 }
@@ -579,7 +649,11 @@ impl CdrGeneratorPlugin {
                         }
                     }
                 })),
-                capabilities: vec![PluginCapability::SipInvite, PluginCapability::SipResponse, PluginCapability::CdrGeneration],
+                capabilities: vec![
+                    PluginCapability::SipInvite,
+                    PluginCapability::SipResponse,
+                    PluginCapability::CdrGeneration,
+                ],
             },
             call_records: Arc::new(RwLock::new(HashMap::new())),
         }
@@ -587,21 +661,25 @@ impl CdrGeneratorPlugin {
 
     async fn extract_call_info(&self, message: &SipMessage) -> Option<(String, String, String)> {
         let call_id = message.headers.get("Call-ID")?.clone();
-        
+
         // Extract calling number from From header (simplified)
-        let calling_number = message.headers.get("From")
+        let calling_number = message
+            .headers
+            .get("From")
             .and_then(|from| from.split("sip:").nth(1))
             .and_then(|part| part.split('@').next())
             .unwrap_or("unknown")
             .to_string();
-        
+
         // Extract called number from To header (simplified)
-        let called_number = message.headers.get("To")
+        let called_number = message
+            .headers
+            .get("To")
             .and_then(|to| to.split("sip:").nth(1))
             .and_then(|part| part.split('@').next())
             .unwrap_or("unknown")
             .to_string();
-        
+
         Some((call_id, calling_number, called_number))
     }
 }
@@ -617,10 +695,16 @@ impl B2BUAPlugin for CdrGeneratorPlugin {
         Ok(())
     }
 
-    async fn handle_message(&self, message: &SipMessage, _context: &PluginContext) -> Result<PluginResponse> {
+    async fn handle_message(
+        &self,
+        message: &SipMessage,
+        _context: &PluginContext,
+    ) -> Result<PluginResponse> {
         if message.method == "INVITE" {
             // Start CDR for new call
-            if let Some((call_id, calling_number, called_number)) = self.extract_call_info(message).await {
+            if let Some((call_id, calling_number, called_number)) =
+                self.extract_call_info(message).await
+            {
                 let record = CallRecord {
                     call_id: call_id.clone(),
                     start_time: chrono::Utc::now(),
@@ -630,10 +714,10 @@ impl B2BUAPlugin for CdrGeneratorPlugin {
                     end_time: None,
                     final_response: None,
                 };
-                
+
                 let mut records = self.call_records.write().await;
                 records.insert(call_id, record);
-                
+
                 debug!("Started CDR for call");
             }
         } else if message.method == "BYE" {
@@ -643,7 +727,7 @@ impl B2BUAPlugin for CdrGeneratorPlugin {
                 if let Some(record) = records.get_mut(call_id) {
                     record.end_time = Some(chrono::Utc::now());
                     record.final_response = Some(200);
-                    
+
                     debug!("Completed CDR for call: {}", call_id);
                     // TODO: Output CDR to file/database
                 }
@@ -658,29 +742,35 @@ impl B2BUAPlugin for CdrGeneratorPlugin {
                         if let Some(record) = records.get_mut(call_id) {
                             record.end_time = Some(chrono::Utc::now());
                             record.final_response = Some(response_code);
-                            
-                            debug!("Marked CDR as failed for call: {} ({})", call_id, response_code);
+
+                            debug!(
+                                "Marked CDR as failed for call: {} ({})",
+                                call_id, response_code
+                            );
                         }
                     }
                 }
             }
         }
-        
+
         Ok(PluginResponse::Forward(message.clone()))
     }
 
     async fn get_statistics(&self) -> Result<HashMap<String, serde_json::Value>> {
         let records = self.call_records.read().await;
         let mut stats = HashMap::new();
-        
+
         let total_calls = records.len();
         let completed_calls = records.values().filter(|r| r.end_time.is_some()).count();
-        let failed_calls = records.values().filter(|r| r.final_response.unwrap_or(0) >= 400).count();
-        
+        let failed_calls = records
+            .values()
+            .filter(|r| r.final_response.unwrap_or(0) >= 400)
+            .count();
+
         stats.insert("total_calls".to_string(), json!(total_calls));
         stats.insert("completed_calls".to_string(), json!(completed_calls));
         stats.insert("failed_calls".to_string(), json!(failed_calls));
-        
+
         Ok(stats)
     }
 }

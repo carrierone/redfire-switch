@@ -1,5 +1,5 @@
 //! ANI-II (Automatic Number Identification Information Indicator) handling
-//! 
+//!
 //! This module provides definitions and utilities for handling ANI-II digits
 //! as defined by NANPA (North American Numbering Plan Administration).
 //! ANI-II digits provide important call classification information for billing,
@@ -77,9 +77,9 @@ impl AniIICode {
     pub fn is_payphone(&self) -> bool {
         matches!(
             self,
-            Self::CoinNonCoinUncertainty 
-            | Self::PayStationNetworkCoin 
-            | Self::PayStationNonNetworkCoin
+            Self::CoinNonCoinUncertainty
+                | Self::PayStationNetworkCoin
+                | Self::PayStationNonNetworkCoin
         )
     }
 
@@ -87,9 +87,9 @@ impl AniIICode {
     /// These are typical industry standard amounts
     pub fn default_surcharge_amount(&self) -> Option<f64> {
         match self {
-            Self::CoinNonCoinUncertainty => Some(0.49),      // $0.49 standard
-            Self::PayStationNetworkCoin => Some(0.49),       // $0.49 standard  
-            Self::PayStationNonNetworkCoin => Some(0.49),    // $0.49 standard
+            Self::CoinNonCoinUncertainty => Some(0.49), // $0.49 standard
+            Self::PayStationNetworkCoin => Some(0.49),  // $0.49 standard
+            Self::PayStationNonNetworkCoin => Some(0.49), // $0.49 standard
             _ => None,
         }
     }
@@ -196,7 +196,7 @@ impl fmt::Display for AniIISource {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let source_str = match self {
             Self::RemotePartyId => "Remote-Party-ID",
-            Self::PAssertedIdentity => "P-Asserted-Identity", 
+            Self::PAssertedIdentity => "P-Asserted-Identity",
             Self::FromHeader => "From",
             Self::CustomHeader => "X-ANI-II",
             Self::SipI => "SIP-I ISUP",
@@ -220,7 +220,10 @@ pub mod toll_free {
         // Check if it starts with known toll-free prefixes
         if clean_number.len() >= 3 {
             let prefix = &clean_number[..3];
-            matches!(prefix, "800" | "833" | "844" | "855" | "866" | "877" | "888")
+            matches!(
+                prefix,
+                "800" | "833" | "844" | "855" | "866" | "877" | "888"
+            )
         } else {
             false
         }
@@ -239,22 +242,22 @@ pub mod sip_parser {
         if let Some(ani_ii) = parse_remote_party_id(headers) {
             return Some(ani_ii);
         }
-        
+
         // Priority 2: P-Asserted-Identity header
         if let Some(ani_ii) = parse_p_asserted_identity(headers) {
             return Some(ani_ii);
         }
-        
+
         // Priority 3: Custom X-ANI-II header
         if let Some(ani_ii) = parse_custom_ani_ii_header(headers) {
             return Some(ani_ii);
         }
-        
+
         // Priority 4: From header (less reliable)
         if let Some(ani_ii) = parse_from_header(headers) {
             return Some(ani_ii);
         }
-        
+
         None
     }
 
@@ -294,12 +297,12 @@ pub mod sip_parser {
         let ani_ii_prefix = ";ani-ii=";
         let ani_ii_start = header_value.find(ani_ii_prefix)?;
         let value_start = ani_ii_start + ani_ii_prefix.len();
-        
+
         // Extract the digit(s) after ani-ii=
         let remaining = &header_value[value_start..];
         let mut chars = remaining.chars();
         let mut digit_str = String::new();
-        
+
         // Collect consecutive digits
         while let Some(ch) = chars.next() {
             if ch.is_ascii_digit() {
@@ -308,7 +311,7 @@ pub mod sip_parser {
                 break; // Stop at first non-digit (like ; or space)
             }
         }
-        
+
         // Parse the digit string (should be 1-2 digits for ANI-II)
         if digit_str.len() >= 1 && digit_str.len() <= 2 {
             let digit = digit_str.parse::<u8>().ok()?;
@@ -331,34 +334,38 @@ pub mod sip_parser {
         if let Some(ani_ii) = parse_ani_ii_from_headers(headers) {
             return Some(ani_ii);
         }
-        
+
         // Check for carrier-specific variations
         let carrier_specific_headers = [
-            "P-Calling-Party-ID",    // Some carriers use this
-            "P-Original-Called",     // Less common
-            "X-Calling-Party",       // Custom header variation
-            "Remote-ID",            // Shorter variation
+            "P-Calling-Party-ID", // Some carriers use this
+            "P-Original-Called",  // Less common
+            "X-Calling-Party",    // Custom header variation
+            "Remote-ID",          // Shorter variation
         ];
-        
+
         for header_name in &carrier_specific_headers {
             if let Some(header_value) = headers.get(*header_name) {
-                if let Some(ani_ii) = extract_ani_ii_parameter(header_value, AniIISource::CustomHeader) {
+                if let Some(ani_ii) =
+                    extract_ani_ii_parameter(header_value, AniIISource::CustomHeader)
+                {
                     return Some(ani_ii);
                 }
             }
         }
-        
+
         None
     }
 
     /// Extract calling number with ANI-II from headers
     /// Returns (calling_number, ani_ii_info) tuple
-    pub fn parse_calling_info_with_ani_ii(headers: &HashMap<String, String>) -> (Option<String>, Option<AniIIInfo>) {
+    pub fn parse_calling_info_with_ani_ii(
+        headers: &HashMap<String, String>,
+    ) -> (Option<String>, Option<AniIIInfo>) {
         let ani_ii = parse_ani_ii_extended(headers);
-        
+
         // Extract calling number from appropriate header
         let calling_number = extract_calling_number(headers);
-        
+
         (calling_number, ani_ii)
     }
 
@@ -368,17 +375,17 @@ pub mod sip_parser {
         if let Some(number) = extract_number_from_header(headers.get("Remote-Party-ID")?) {
             return Some(number);
         }
-        
+
         // Try P-Asserted-Identity
         if let Some(number) = extract_number_from_header(headers.get("P-Asserted-Identity")?) {
             return Some(number);
         }
-        
+
         // Fallback to From header
         if let Some(number) = extract_number_from_header(headers.get("From")?) {
             return Some(number);
         }
-        
+
         None
     }
 
@@ -388,17 +395,17 @@ pub mod sip_parser {
         // Find sip: URI
         let sip_start = header_value.find("sip:")?;
         let after_sip = &header_value[sip_start + 4..];
-        
+
         // Find the @ symbol to get the user part
         let at_pos = after_sip.find('@')?;
         let user_part = &after_sip[..at_pos];
-        
+
         // Clean up the number (remove non-digits and + prefix)
         let cleaned = user_part
             .chars()
             .filter(|c| c.is_ascii_digit() || *c == '+')
             .collect::<String>();
-        
+
         if !cleaned.is_empty() {
             Some(cleaned)
         } else {
@@ -417,7 +424,7 @@ pub mod sip_parser {
                 "Remote-Party-ID".to_string(),
                 "\"Anonymous\" <sip:+12345678901@carrier.com>;party=calling;screen=yes;privacy=off;ani-ii=70".to_string()
             );
-            
+
             let ani_ii = parse_ani_ii_from_headers(&headers).expect("Should find ANI-II");
             assert_eq!(ani_ii.code, AniIICode::PayStationNonNetworkCoin);
             assert_eq!(ani_ii.raw_digit, 70);
@@ -430,9 +437,9 @@ pub mod sip_parser {
             let mut headers = HashMap::new();
             headers.insert(
                 "P-Asserted-Identity".to_string(),
-                "<sip:+18005551234@carrier.com>;ani-ii=23".to_string()
+                "<sip:+18005551234@carrier.com>;ani-ii=23".to_string(),
             );
-            
+
             let ani_ii = parse_ani_ii_from_headers(&headers).expect("Should find ANI-II");
             assert_eq!(ani_ii.code, AniIICode::CoinNonCoinUncertainty);
             assert_eq!(ani_ii.raw_digit, 23);
@@ -443,7 +450,7 @@ pub mod sip_parser {
         fn test_parse_custom_header() {
             let mut headers = HashMap::new();
             headers.insert("X-ANI-II".to_string(), "27".to_string());
-            
+
             let ani_ii = parse_ani_ii_from_headers(&headers).expect("Should find ANI-II");
             assert_eq!(ani_ii.code, AniIICode::PayStationNetworkCoin);
             assert_eq!(ani_ii.raw_digit, 27);
@@ -454,9 +461,9 @@ pub mod sip_parser {
             let mut headers = HashMap::new();
             headers.insert(
                 "Remote-Party-ID".to_string(),
-                "\"Payphone\" <sip:+15551234567@carrier.com>;party=calling;ani-ii=70".to_string()
+                "\"Payphone\" <sip:+15551234567@carrier.com>;party=calling;ani-ii=70".to_string(),
             );
-            
+
             let (calling_number, ani_ii) = parse_calling_info_with_ani_ii(&headers);
             assert_eq!(calling_number, Some("+15551234567".to_string()));
             assert!(ani_ii.is_some());
@@ -470,9 +477,9 @@ pub mod sip_parser {
             let mut headers = HashMap::new();
             headers.insert(
                 "From".to_string(),
-                "\"Regular User\" <sip:+15551234567@provider.com>;tag=abc123".to_string()
+                "\"Regular User\" <sip:+15551234567@provider.com>;tag=abc123".to_string(),
             );
-            
+
             let ani_ii = parse_ani_ii_from_headers(&headers);
             assert!(ani_ii.is_none());
         }
@@ -482,9 +489,9 @@ pub mod sip_parser {
             let mut headers = HashMap::new();
             headers.insert(
                 "Remote-Party-ID".to_string(),
-                "<sip:+12345678901@carrier.com>;ani-ii=999".to_string() // Invalid
+                "<sip:+12345678901@carrier.com>;ani-ii=999".to_string(), // Invalid
             );
-            
+
             let ani_ii = parse_ani_ii_from_headers(&headers);
             assert!(ani_ii.is_none());
         }
@@ -497,12 +504,15 @@ pub mod sip_i_parser {
     use std::collections::HashMap;
 
     /// Parse ANI-II from SIP-I message body containing ISUP content
-    pub fn parse_ani_ii_from_sip_i(headers: &HashMap<String, String>, message_body: &str) -> Option<AniIIInfo> {
+    pub fn parse_ani_ii_from_sip_i(
+        headers: &HashMap<String, String>,
+        message_body: &str,
+    ) -> Option<AniIIInfo> {
         // Check if this is a SIP-I message
         if !is_sip_i_message(headers) {
             return None;
         }
-        
+
         // Parse the ISUP content from the message body
         parse_isup_calling_party_number(message_body)
     }
@@ -511,18 +521,23 @@ pub mod sip_i_parser {
     fn is_sip_i_message(headers: &HashMap<String, String>) -> bool {
         // Check Content-Type for ISUP encapsulation
         if let Some(content_type) = headers.get("Content-Type") {
-            if content_type.contains("application/isup") || content_type.contains("application/isdn") {
+            if content_type.contains("application/isup")
+                || content_type.contains("application/isdn")
+            {
                 return true;
             }
         }
-        
+
         // Check for SIP-I specific headers
-        if headers.contains_key("P-ISUP-OLI") || 
-           headers.contains_key("X-ISUP-ANI-II") ||
-           headers.get("Content-Encoding").map_or(false, |v| v.contains("isup")) {
+        if headers.contains_key("P-ISUP-OLI")
+            || headers.contains_key("X-ISUP-ANI-II")
+            || headers
+                .get("Content-Encoding")
+                .map_or(false, |v| v.contains("isup"))
+        {
             return true;
         }
-        
+
         false
     }
 
@@ -532,17 +547,17 @@ pub mod sip_i_parser {
         // This is a simplified ISUP parser - in production would use proper ISUP library
         // ISUP messages are typically in binary format, but some SIP-I implementations
         // may encode them as hex strings or include ANI-II in headers
-        
+
         // Look for hex-encoded ISUP content
         if let Some(ani_ii) = parse_hex_encoded_isup(isup_body) {
             return Some(ani_ii);
         }
-        
+
         // Look for text-encoded ISUP parameters
         if let Some(ani_ii) = parse_text_encoded_isup(isup_body) {
             return Some(ani_ii);
         }
-        
+
         None
     }
 
@@ -554,14 +569,14 @@ pub mod sip_i_parser {
             .chars()
             .filter(|c| c.is_ascii_hexdigit())
             .collect();
-        
+
         if cleaned.len() < 20 {
             return None; // Too short to be valid ISUP
         }
-        
+
         // Look for Calling Party Number parameter (0x0A in ISUP)
         let calling_party_marker = "0a"; // Calling Party Number parameter code
-        
+
         if let Some(start_pos) = cleaned.to_lowercase().find(calling_party_marker) {
             // Parse the parameter starting at this position
             // This is a simplified implementation - would need full ISUP parsing in production
@@ -577,7 +592,7 @@ pub mod sip_i_parser {
                 }
             }
         }
-        
+
         None
     }
 
@@ -591,18 +606,16 @@ pub mod sip_i_parser {
             "calling-party-category:",
             "originat-line-info:",
         ];
-        
+
         for pattern in &patterns {
             if let Some(start) = text_content.to_lowercase().find(pattern) {
                 let after_pattern = &text_content[start + pattern.len()..];
                 let trimmed = after_pattern.trim();
-                
+
                 // Extract the numeric value
-                let digit_str: String = trimmed
-                    .chars()
-                    .take_while(|c| c.is_ascii_digit())
-                    .collect();
-                
+                let digit_str: String =
+                    trimmed.chars().take_while(|c| c.is_ascii_digit()).collect();
+
                 if let Ok(digit) = digit_str.parse::<u8>() {
                     if let Some(ani_ii) = AniIIInfo::from_digit(digit, AniIISource::SipI) {
                         return Some(ani_ii);
@@ -610,7 +623,7 @@ pub mod sip_i_parser {
                 }
             }
         }
-        
+
         None
     }
 
@@ -623,14 +636,14 @@ pub mod sip_i_parser {
                 return AniIIInfo::from_digit(digit, AniIISource::SipI);
             }
         }
-        
+
         // Check X-ISUP-ANI-II custom header
         if let Some(ani_ii_value) = headers.get("X-ISUP-ANI-II") {
             if let Ok(digit) = ani_ii_value.trim().parse::<u8>() {
                 return AniIIInfo::from_digit(digit, AniIISource::SipI);
             }
         }
-        
+
         // Check P-Calling-Party-Category header
         if let Some(category) = headers.get("P-Calling-Party-Category") {
             // Calling party category sometimes maps to ANI-II
@@ -641,29 +654,32 @@ pub mod sip_i_parser {
                     10 => Some(0),  // Ordinary subscriber maps to ANI-II 0
                     _ => None,
                 };
-                
+
                 if let Some(digit) = ani_ii_digit {
                     return AniIIInfo::from_digit(digit, AniIISource::SipI);
                 }
             }
         }
-        
+
         None
     }
 
     /// Parse complete SIP-I message for ANI-II information
     /// Tries both header and body parsing approaches
-    pub fn parse_sip_i_message_complete(headers: &HashMap<String, String>, body: &str) -> Option<AniIIInfo> {
+    pub fn parse_sip_i_message_complete(
+        headers: &HashMap<String, String>,
+        body: &str,
+    ) -> Option<AniIIInfo> {
         // Try header-based parsing first (faster)
         if let Some(ani_ii) = parse_ani_ii_from_sip_i_headers(headers) {
             return Some(ani_ii);
         }
-        
+
         // Try body parsing if no header info found
         if let Some(ani_ii) = parse_ani_ii_from_sip_i(headers, body) {
             return Some(ani_ii);
         }
-        
+
         None
     }
 
@@ -672,18 +688,18 @@ pub mod sip_i_parser {
         if !is_sip_i_message(headers) {
             return false;
         }
-        
+
         // Basic validation of ISUP content
         if body.is_empty() {
             return false;
         }
-        
+
         // Check if body contains valid hex or text content
         let has_hex = body.chars().any(|c| c.is_ascii_hexdigit());
-        let has_isup_keywords = body.to_lowercase().contains("iam") || 
-                               body.to_lowercase().contains("isup") ||
-                               body.to_lowercase().contains("calling");
-        
+        let has_isup_keywords = body.to_lowercase().contains("iam")
+            || body.to_lowercase().contains("isup")
+            || body.to_lowercase().contains("calling");
+
         has_hex || has_isup_keywords
     }
 
@@ -695,7 +711,7 @@ pub mod sip_i_parser {
         fn test_sip_i_message_detection() {
             let mut headers = HashMap::new();
             headers.insert("Content-Type".to_string(), "application/isup".to_string());
-            
+
             assert!(is_sip_i_message(&headers));
         }
 
@@ -703,7 +719,7 @@ pub mod sip_i_parser {
         fn test_p_isup_oli_header() {
             let mut headers = HashMap::new();
             headers.insert("P-ISUP-OLI".to_string(), "70".to_string());
-            
+
             let ani_ii = parse_ani_ii_from_sip_i_headers(&headers).expect("Should find ANI-II");
             assert_eq!(ani_ii.raw_digit, 70);
             assert_eq!(ani_ii.code, AniIICode::PayStationNonNetworkCoin);
@@ -714,7 +730,7 @@ pub mod sip_i_parser {
         fn test_calling_party_category_mapping() {
             let mut headers = HashMap::new();
             headers.insert("P-Calling-Party-Category".to_string(), "15".to_string()); // Payphone
-            
+
             let ani_ii = parse_ani_ii_from_sip_i_headers(&headers).expect("Should find ANI-II");
             assert_eq!(ani_ii.raw_digit, 70); // Should map to ANI-II 70
             assert_eq!(ani_ii.code, AniIICode::PayStationNonNetworkCoin);
@@ -723,7 +739,7 @@ pub mod sip_i_parser {
         #[test]
         fn test_text_encoded_isup() {
             let isup_text = "IAM message: calling-party-number=+15551234567, ani-ii: 23, called-party=+18005551234";
-            
+
             let ani_ii = parse_text_encoded_isup(isup_text).expect("Should find ANI-II");
             assert_eq!(ani_ii.raw_digit, 23);
             assert_eq!(ani_ii.code, AniIICode::CoinNonCoinUncertainty);
@@ -733,7 +749,7 @@ pub mod sip_i_parser {
         fn test_hex_encoded_isup() {
             // Simplified hex representation with calling party number parameter
             let hex_isup = "01 00 0a 05 01 23 55 12 34 56 78 90"; // Contains ANI-II 23
-            
+
             // This test would need a more complete hex parser in production
             // For now, just test the parsing doesn't crash
             let result = parse_hex_encoded_isup(hex_isup);
@@ -745,9 +761,9 @@ pub mod sip_i_parser {
             let mut headers = HashMap::new();
             headers.insert("Content-Type".to_string(), "application/isup".to_string());
             headers.insert("P-ISUP-OLI".to_string(), "27".to_string());
-            
+
             let body = "IAM: calling-party with OLI=27";
-            
+
             let ani_ii = parse_sip_i_message_complete(&headers, body).expect("Should find ANI-II");
             assert_eq!(ani_ii.raw_digit, 27);
             assert_eq!(ani_ii.code, AniIICode::PayStationNetworkCoin);
@@ -757,9 +773,9 @@ pub mod sip_i_parser {
         fn test_invalid_sip_i_content() {
             let mut headers = HashMap::new();
             headers.insert("Content-Type".to_string(), "text/plain".to_string()); // Not SIP-I
-            
+
             let body = "Regular SIP message body";
-            
+
             let ani_ii = parse_sip_i_message_complete(&headers, body);
             assert!(ani_ii.is_none());
         }
@@ -809,7 +825,12 @@ pub mod surcharge_calculator {
         }
 
         /// Create a result with surcharge details
-        pub fn with_surcharge(amount: f64, reason: String, ani_ii_code: u8, source: SurchargeSource) -> Self {
+        pub fn with_surcharge(
+            amount: f64,
+            reason: String,
+            ani_ii_code: u8,
+            source: SurchargeSource,
+        ) -> Self {
             Self {
                 applies: true,
                 amount,
@@ -852,8 +873,11 @@ pub mod surcharge_calculator {
             if let Some(amount) = get_trunk_surcharge_amount(ani_ii.raw_digit, trunk_cfg) {
                 return SurchargeResult::with_surcharge(
                     amount,
-                    format!("Trunk-configured surcharge for ANI-II {} - {}", 
-                           ani_ii.raw_digit, ani_ii.code.description()),
+                    format!(
+                        "Trunk-configured surcharge for ANI-II {} - {}",
+                        ani_ii.raw_digit,
+                        ani_ii.code.description()
+                    ),
                     ani_ii.raw_digit,
                     SurchargeSource::TrunkOverride,
                 );
@@ -864,8 +888,11 @@ pub mod surcharge_calculator {
         if let Some(default_amount) = ani_ii.code.default_surcharge_amount() {
             SurchargeResult::with_surcharge(
                 default_amount,
-                format!("Default payphone surcharge for ANI-II {} - {}", 
-                       ani_ii.raw_digit, ani_ii.code.description()),
+                format!(
+                    "Default payphone surcharge for ANI-II {} - {}",
+                    ani_ii.raw_digit,
+                    ani_ii.code.description()
+                ),
                 ani_ii.raw_digit,
                 SurchargeSource::Default,
             )
@@ -875,7 +902,10 @@ pub mod surcharge_calculator {
     }
 
     /// Get trunk-specific surcharge amount for ANI-II code
-    fn get_trunk_surcharge_amount(ani_ii_code: u8, trunk_config: &PayphoneSurchargeConfig) -> Option<f64> {
+    fn get_trunk_surcharge_amount(
+        ani_ii_code: u8,
+        trunk_config: &PayphoneSurchargeConfig,
+    ) -> Option<f64> {
         match ani_ii_code {
             23 => trunk_config.code_23_amount,
             27 => trunk_config.code_27_amount,
@@ -924,10 +954,16 @@ pub mod surcharge_calculator {
             for (name, amount_opt) in &amounts {
                 if let Some(amount) = amount_opt {
                     if *amount < 0.0 {
-                        return Err(format!("{} surcharge amount cannot be negative: {}", name, amount));
+                        return Err(format!(
+                            "{} surcharge amount cannot be negative: {}",
+                            name, amount
+                        ));
                     }
                     if *amount > 5.00 {
-                        return Err(format!("{} surcharge amount seems too high: ${:.2}", name, amount));
+                        return Err(format!(
+                            "{} surcharge amount seems too high: ${:.2}",
+                            name, amount
+                        ));
                     }
                 }
             }
@@ -943,14 +979,12 @@ pub mod surcharge_calculator {
     ) -> BatchSurchargeResult {
         let mut total_amount = 0.0;
         let mut applicable_calls = 0;
-        let mut by_code: std::collections::HashMap<u8, (usize, f64)> = std::collections::HashMap::new();
+        let mut by_code: std::collections::HashMap<u8, (usize, f64)> =
+            std::collections::HashMap::new();
 
         for (ani_ii, is_toll_free, trunk_config) in call_records {
-            let result = calculate_payphone_surcharge(
-                ani_ii.as_ref(),
-                *is_toll_free,
-                trunk_config.as_ref(),
-            );
+            let result =
+                calculate_payphone_surcharge(ani_ii.as_ref(), *is_toll_free, trunk_config.as_ref());
 
             if result.applies {
                 total_amount += result.amount;
@@ -968,10 +1002,10 @@ pub mod surcharge_calculator {
             total_calls: call_records.len(),
             applicable_calls,
             total_surcharge_amount: total_amount,
-            average_surcharge: if applicable_calls > 0 { 
-                total_amount / applicable_calls as f64 
-            } else { 
-                0.0 
+            average_surcharge: if applicable_calls > 0 {
+                total_amount / applicable_calls as f64
+            } else {
+                0.0
             },
             surcharges_by_code: by_code,
         }
@@ -1015,7 +1049,7 @@ pub mod surcharge_calculator {
         fn test_default_payphone_surcharge() {
             let ani_ii = AniIIInfo::from_digit(70, AniIISource::RemotePartyId).unwrap();
             let result = calculate_payphone_surcharge(Some(&ani_ii), true, None);
-            
+
             assert!(result.applies);
             assert_eq!(result.amount, 0.49);
             assert_eq!(result.ani_ii_code, Some(70));
@@ -1030,9 +1064,9 @@ pub mod surcharge_calculator {
                 code_23_amount: Some(0.65), // Override
                 ..Default::default()
             };
-            
+
             let result = calculate_payphone_surcharge(Some(&ani_ii), true, Some(&trunk_config));
-            
+
             assert!(result.applies);
             assert_eq!(result.amount, 0.65); // Should use override
             assert!(matches!(result.source, SurchargeSource::TrunkOverride));
@@ -1045,7 +1079,7 @@ pub mod surcharge_calculator {
                 enabled: false,
                 ..Default::default()
             };
-            
+
             let result = calculate_payphone_surcharge(Some(&ani_ii), true, Some(&trunk_config));
             assert!(!result.applies);
         }
@@ -1053,14 +1087,26 @@ pub mod surcharge_calculator {
         #[test]
         fn test_batch_calculation() {
             let calls = vec![
-                (Some(AniIIInfo::from_digit(70, AniIISource::RemotePartyId).unwrap()), true, None),
-                (Some(AniIIInfo::from_digit(23, AniIISource::RemotePartyId).unwrap()), true, None),
-                (Some(AniIIInfo::from_digit(0, AniIISource::RemotePartyId).unwrap()), true, None), // No surcharge
+                (
+                    Some(AniIIInfo::from_digit(70, AniIISource::RemotePartyId).unwrap()),
+                    true,
+                    None,
+                ),
+                (
+                    Some(AniIIInfo::from_digit(23, AniIISource::RemotePartyId).unwrap()),
+                    true,
+                    None,
+                ),
+                (
+                    Some(AniIIInfo::from_digit(0, AniIISource::RemotePartyId).unwrap()),
+                    true,
+                    None,
+                ), // No surcharge
                 (None, true, None), // No ANI-II
             ];
-            
+
             let result = calculate_batch_surcharges(&calls);
-            
+
             assert_eq!(result.total_calls, 4);
             assert_eq!(result.applicable_calls, 2);
             assert_eq!(result.total_surcharge_amount, 0.98); // 2 × $0.49
@@ -1072,14 +1118,14 @@ pub mod surcharge_calculator {
         fn test_surcharge_config_validation() {
             let good_config = PayphoneSurchargeConfig::default();
             assert!(validate_surcharge_config(&good_config).is_ok());
-            
+
             let bad_config = PayphoneSurchargeConfig {
                 enabled: true,
                 code_23_amount: Some(-0.10), // Negative
                 ..Default::default()
             };
             assert!(validate_surcharge_config(&bad_config).is_err());
-            
+
             let expensive_config = PayphoneSurchargeConfig {
                 enabled: true,
                 code_23_amount: Some(10.00), // Too expensive
@@ -1208,9 +1254,18 @@ mod tests {
     #[test]
     fn test_ani_ii_code_from_digit() {
         assert_eq!(AniIICode::from_digit(0), Some(AniIICode::RegularLine));
-        assert_eq!(AniIICode::from_digit(23), Some(AniIICode::CoinNonCoinUncertainty));
-        assert_eq!(AniIICode::from_digit(27), Some(AniIICode::PayStationNetworkCoin));
-        assert_eq!(AniIICode::from_digit(70), Some(AniIICode::PayStationNonNetworkCoin));
+        assert_eq!(
+            AniIICode::from_digit(23),
+            Some(AniIICode::CoinNonCoinUncertainty)
+        );
+        assert_eq!(
+            AniIICode::from_digit(27),
+            Some(AniIICode::PayStationNetworkCoin)
+        );
+        assert_eq!(
+            AniIICode::from_digit(70),
+            Some(AniIICode::PayStationNonNetworkCoin)
+        );
         assert_eq!(AniIICode::from_digit(255), None); // Invalid code
     }
 
@@ -1225,9 +1280,18 @@ mod tests {
 
     #[test]
     fn test_surcharge_amounts() {
-        assert_eq!(AniIICode::CoinNonCoinUncertainty.default_surcharge_amount(), Some(0.49));
-        assert_eq!(AniIICode::PayStationNetworkCoin.default_surcharge_amount(), Some(0.49));
-        assert_eq!(AniIICode::PayStationNonNetworkCoin.default_surcharge_amount(), Some(0.49));
+        assert_eq!(
+            AniIICode::CoinNonCoinUncertainty.default_surcharge_amount(),
+            Some(0.49)
+        );
+        assert_eq!(
+            AniIICode::PayStationNetworkCoin.default_surcharge_amount(),
+            Some(0.49)
+        );
+        assert_eq!(
+            AniIICode::PayStationNonNetworkCoin.default_surcharge_amount(),
+            Some(0.49)
+        );
         assert_eq!(AniIICode::RegularLine.default_surcharge_amount(), None);
     }
 
@@ -1243,7 +1307,8 @@ mod tests {
 
     #[test]
     fn test_ani_ii_info_creation() {
-        let info = AniIIInfo::from_digit(23, AniIISource::RemotePartyId).expect("Should create ANI-II info");
+        let info = AniIIInfo::from_digit(23, AniIISource::RemotePartyId)
+            .expect("Should create ANI-II info");
         assert_eq!(info.code, AniIICode::CoinNonCoinUncertainty);
         assert_eq!(info.raw_digit, 23);
         assert!(info.triggers_surcharge);

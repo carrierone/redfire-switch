@@ -1,5 +1,5 @@
 //! Media Service - Handles RTP proxy and codec operations
-//! 
+//!
 //! This service manages media streams, codec negotiation, and RTP proxying
 //! for telecommunications calls with event-driven monitoring.
 
@@ -50,7 +50,7 @@ impl Default for MediaConfig {
             enable_transcoding: false,
             supported_codecs: vec![
                 "PCMU".to_string(),
-                "PCMA".to_string(), 
+                "PCMA".to_string(),
                 "G729".to_string(),
                 "G722".to_string(),
                 "GSM".to_string(),
@@ -186,11 +186,17 @@ impl MediaService {
     }
 
     /// Create a new media session
-    pub async fn create_session(&self, request: MediaSessionRequest) -> Result<MediaSessionResponse> {
+    pub async fn create_session(
+        &self,
+        request: MediaSessionRequest,
+    ) -> Result<MediaSessionResponse> {
         let (response_tx, response_rx) = tokio::sync::oneshot::channel();
 
         self.request_sender
-            .send(MediaServiceMessage::CreateSession { request, response_tx })
+            .send(MediaServiceMessage::CreateSession {
+                request,
+                response_tx,
+            })
             .map_err(|_| anyhow::anyhow!("Failed to send create session request"))?;
 
         response_rx
@@ -203,7 +209,10 @@ impl MediaService {
         let (response_tx, response_rx) = tokio::sync::oneshot::channel();
 
         self.request_sender
-            .send(MediaServiceMessage::DestroySession { session_id, response_tx })
+            .send(MediaServiceMessage::DestroySession {
+                session_id,
+                response_tx,
+            })
             .map_err(|_| anyhow::anyhow!("Failed to send destroy session request"))?;
 
         response_rx
@@ -252,7 +261,7 @@ impl MediaService {
     /// Shutdown the media service
     pub async fn shutdown(&self) -> Result<()> {
         info!("Shutting down media service");
-        
+
         // Close all active sessions
         let sessions = self.sessions.read().await;
         let session_ids: Vec<String> = sessions.keys().cloned().collect();
@@ -290,22 +299,37 @@ impl MediaProcessor {
         // Process incoming requests
         while let Some(message) = self.request_receiver.recv().await {
             match message {
-                MediaServiceMessage::CreateSession { request, response_tx } => {
+                MediaServiceMessage::CreateSession {
+                    request,
+                    response_tx,
+                } => {
                     let response = self.handle_create_session(request).await;
                     let _ = response_tx.send(response);
                 }
-                MediaServiceMessage::DestroySession { session_id, response_tx } => {
+                MediaServiceMessage::DestroySession {
+                    session_id,
+                    response_tx,
+                } => {
                     let response = self.handle_destroy_session(&session_id).await;
                     let _ = response_tx.send(response);
                 }
-                MediaServiceMessage::UpdateSessionStats { session_id, rx_packets, tx_packets, jitter_ms } => {
-                    self.handle_update_stats(&session_id, rx_packets, tx_packets, jitter_ms).await;
+                MediaServiceMessage::UpdateSessionStats {
+                    session_id,
+                    rx_packets,
+                    tx_packets,
+                    jitter_ms,
+                } => {
+                    self.handle_update_stats(&session_id, rx_packets, tx_packets, jitter_ms)
+                        .await;
                 }
             }
         }
     }
 
-    async fn handle_create_session(&self, request: MediaSessionRequest) -> Result<MediaSessionResponse> {
+    async fn handle_create_session(
+        &self,
+        request: MediaSessionRequest,
+    ) -> Result<MediaSessionResponse> {
         // Check if we've reached the maximum number of sessions
         let sessions = self.sessions.read().await;
         if sessions.len() >= self.config.max_sessions {
@@ -314,13 +338,18 @@ impl MediaProcessor {
         drop(sessions);
 
         // Allocate RTP port
-        let rtp_port = self.allocate_port().await
+        let rtp_port = self
+            .allocate_port()
+            .await
             .context("Failed to allocate RTP port")?;
 
         // Allocate RTCP port if enabled
         let rtcp_port = if self.config.enable_rtcp {
-            Some(self.allocate_port().await
-                .context("Failed to allocate RTCP port")?)
+            Some(
+                self.allocate_port()
+                    .await
+                    .context("Failed to allocate RTCP port")?,
+            )
         } else {
             None
         };
@@ -359,7 +388,8 @@ impl MediaProcessor {
         drop(stats);
 
         // Publish event
-        self.publish_session_created_event(&request, rtp_port, &negotiated_codec).await?;
+        self.publish_session_created_event(&request, rtp_port, &negotiated_codec)
+            .await?;
 
         let response = MediaSessionResponse {
             session_id: request.session_id,
@@ -376,7 +406,7 @@ impl MediaProcessor {
 
     async fn handle_destroy_session(&self, session_id: &str) -> Result<()> {
         let mut sessions = self.sessions.write().await;
-        
+
         if let Some(session) = sessions.remove(session_id) {
             // Release allocated ports
             let mut ports = self.allocated_ports.write().await;
@@ -402,9 +432,15 @@ impl MediaProcessor {
         Ok(())
     }
 
-    async fn handle_update_stats(&self, session_id: &str, rx_packets: u64, tx_packets: u64, jitter_ms: f64) {
+    async fn handle_update_stats(
+        &self,
+        session_id: &str,
+        rx_packets: u64,
+        tx_packets: u64,
+        jitter_ms: f64,
+    ) {
         let mut sessions = self.sessions.write().await;
-        
+
         if let Some(session) = sessions.get_mut(session_id) {
             session.rx_packets = rx_packets;
             session.tx_packets = tx_packets;
@@ -415,7 +451,7 @@ impl MediaProcessor {
 
     async fn allocate_port(&self) -> Result<u16> {
         let mut ports = self.allocated_ports.write().await;
-        
+
         for port in self.config.rtp_port_start..=self.config.rtp_port_end {
             if !ports.contains_key(&port) {
                 // Try to bind to the port to ensure it's available
@@ -432,13 +468,18 @@ impl MediaProcessor {
     fn negotiate_codec(&self, preferred: Option<&str>) -> String {
         // If a preferred codec is specified and supported, use it
         if let Some(preferred_codec) = preferred {
-            if self.config.supported_codecs.contains(&preferred_codec.to_string()) {
+            if self
+                .config
+                .supported_codecs
+                .contains(&preferred_codec.to_string())
+            {
                 return preferred_codec.to_string();
             }
         }
 
         // Default to first supported codec
-        self.config.supported_codecs
+        self.config
+            .supported_codecs
             .first()
             .unwrap_or(&"PCMU".to_string())
             .clone()
@@ -446,16 +487,21 @@ impl MediaProcessor {
 
     fn calculate_bandwidth(&self, codec: &str) -> u32 {
         match codec {
-            "G729" => 8,      // kbps
-            "GSM" => 13,      // kbps
-            "PCMU" => 64,     // kbps
-            "PCMA" => 64,     // kbps
-            "G722" => 64,     // kbps
-            _ => 64,          // Default to PCMU bandwidth
+            "G729" => 8,  // kbps
+            "GSM" => 13,  // kbps
+            "PCMU" => 64, // kbps
+            "PCMA" => 64, // kbps
+            "G722" => 64, // kbps
+            _ => 64,      // Default to PCMU bandwidth
         }
     }
 
-    async fn publish_session_created_event(&self, request: &MediaSessionRequest, rtp_port: u16, codec: &str) -> Result<()> {
+    async fn publish_session_created_event(
+        &self,
+        request: &MediaSessionRequest,
+        rtp_port: u16,
+        codec: &str,
+    ) -> Result<()> {
         let media_info = MediaSessionInfo {
             rtp_local_port: rtp_port,
             rtp_remote_port: request.caller_port,
@@ -475,7 +521,9 @@ impl MediaProcessor {
             timestamp: Utc::now(),
         });
 
-        self.event_bus.publish(event).await
+        self.event_bus
+            .publish(event)
+            .await
             .context("Failed to publish session created event")?;
 
         Ok(())
@@ -495,7 +543,7 @@ impl MediaProcessor {
             termination_cause: "normal".to_string(),
             cost: None,
             customer_id: None,
-            ani_ii_digit: None, // ANI-II not available in media layer
+            ani_ii_digit: None,       // ANI-II not available in media layer
             payphone_surcharge: None, // Surcharge not applicable in media layer
         };
 
@@ -509,7 +557,9 @@ impl MediaProcessor {
             timestamp: Utc::now(),
         });
 
-        self.event_bus.publish(event).await
+        self.event_bus
+            .publish(event)
+            .await
             .context("Failed to publish session destroyed event")?;
 
         Ok(())
@@ -521,22 +571,22 @@ impl MediaProcessor {
         config: MediaConfig,
     ) {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
-        
+
         loop {
             interval.tick().await;
-            
+
             let mut sessions_guard = sessions.write().await;
             let now = Utc::now();
             let timeout_duration = chrono::Duration::seconds(config.rtp_timeout_seconds as i64);
-            
+
             let mut to_remove = Vec::new();
-            
+
             for (session_id, session) in sessions_guard.iter() {
                 if now - session.last_packet_time > timeout_duration {
                     to_remove.push(session_id.clone());
                 }
             }
-            
+
             for session_id in to_remove {
                 sessions_guard.remove(&session_id);
                 debug!("Cleaned up stale media session: {}", session_id);

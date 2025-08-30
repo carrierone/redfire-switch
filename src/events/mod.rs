@@ -1,5 +1,5 @@
 //! Event-driven architecture for telecommunications services
-//! 
+//!
 //! This module provides a comprehensive event system that enables loose coupling
 //! between microservices and supports real-time monitoring and analytics.
 
@@ -188,7 +188,7 @@ pub struct CallDetailRecord {
     pub termination_cause: String,
     pub cost: Option<f64>,
     pub customer_id: Option<i32>,
-    
+
     // ANI-II information for billing and classification
     pub ani_ii_digit: Option<u8>,
     pub payphone_surcharge: Option<f64>,
@@ -207,7 +207,7 @@ pub enum HealthStatus {
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EventType {
     CallInitiated,
-    CallRouted, 
+    CallRouted,
     CallConnected,
     CallTerminated,
     RouteAdvanced,
@@ -318,7 +318,7 @@ impl EventFilter {
                 TelecomEvent::RouteAdvanced(e) => &e.call_id,
                 _ => return true, // Non-call events pass call ID filter
             };
-            
+
             if !call_id.contains(pattern) {
                 return false;
             }
@@ -337,7 +337,7 @@ impl EventFilter {
                 TelecomEvent::ConfigChanged(e) => e.timestamp,
                 TelecomEvent::PluginEvent(e) => e.timestamp,
             };
-            
+
             if event_time < min_time {
                 return false;
             }
@@ -463,7 +463,7 @@ mod tests {
     #[test]
     fn test_event_filter_matches() {
         let filter = EventFilter::for_types(vec![EventType::CallInitiated]);
-        
+
         let matching_event = TelecomEvent::call_initiated(
             "test-call".to_string(),
             "test-session".to_string(),

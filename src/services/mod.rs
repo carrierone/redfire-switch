@@ -1,5 +1,5 @@
 //! Microservices architecture for RedFire Switch
-//! 
+//!
 //! This module provides the microservices architecture with focused,
 //! loosely-coupled services that communicate through events.
 
@@ -53,12 +53,15 @@ impl ServiceRegistry {
         info!("Initializing all microservices");
 
         // Initialize control service first (for configuration management)
-        self.initialize_control_service(ControlConfig::default()).await?;
+        self.initialize_control_service(ControlConfig::default())
+            .await?;
 
         // Initialize other services
         self.initialize_routing_service().await?;
-        self.initialize_media_service(MediaConfig::default()).await?;
-        self.initialize_signaling_service(SignalingConfig::default()).await?;
+        self.initialize_media_service(MediaConfig::default())
+            .await?;
+        self.initialize_signaling_service(SignalingConfig::default())
+            .await?;
 
         info!("All microservices initialized successfully");
         Ok(())
@@ -72,8 +75,14 @@ impl ServiceRegistry {
 
         // Create dependencies (these would normally be injected)
         let lcr_engine = Arc::new(crate::lcr::LcrEngine::new("sqlite::memory:").await.unwrap());
-        let origination_routes = Arc::new(tokio::sync::Mutex::new(crate::origination_routing::OriginationRoutingEngine::new(crate::origination_routing::OriginationConfig::default())));
-        let termination_routes = Arc::new(tokio::sync::Mutex::new(crate::termination_routing::TerminationRoutingService::new(lcr_engine.clone())));
+        let origination_routes = Arc::new(tokio::sync::Mutex::new(
+            crate::origination_routing::OriginationRoutingEngine::new(
+                crate::origination_routing::OriginationConfig::default(),
+            ),
+        ));
+        let termination_routes = Arc::new(tokio::sync::Mutex::new(
+            crate::termination_routing::TerminationRoutingService::new(lcr_engine.clone()),
+        ));
 
         let service = Arc::new(RoutingService::new(
             RoutingConfig::default(),
@@ -109,7 +118,7 @@ impl ServiceRegistry {
         }
 
         let service = Arc::new(SignalingService::new(config, self.event_bus.clone()));
-        
+
         // Register default B2BUA plugin
         let default_plugin = Box::new(DefaultB2BUAPlugin::new());
         service.register_plugin(default_plugin).await?;
@@ -332,12 +341,15 @@ mod tests {
     async fn test_service_health_checking() {
         let event_bus = Arc::new(EventBus::new());
         let mut registry = ServiceRegistry::new(event_bus);
-        
-        registry.initialize_all().await.expect("Failed to initialize services");
-        
+
+        registry
+            .initialize_all()
+            .await
+            .expect("Failed to initialize services");
+
         let health_results = registry.health_check_all().await;
         assert!(health_results.is_ok());
-        
+
         let health_map = health_results.expect("Health check should succeed");
         assert!(health_map.len() >= 4); // At least 4 services
         assert!(health_map.values().all(|&healthy| healthy));

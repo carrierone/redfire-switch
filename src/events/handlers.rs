@@ -70,10 +70,15 @@ pub struct FileHandler {
 }
 
 impl FileHandler {
-    pub async fn new(name: String, file_path: PathBuf, event_types: Vec<EventType>) -> Result<Self> {
+    pub async fn new(
+        name: String,
+        file_path: PathBuf,
+        event_types: Vec<EventType>,
+    ) -> Result<Self> {
         // Create parent directories if they don't exist
         if let Some(parent) = file_path.parent() {
-            tokio::fs::create_dir_all(parent).await
+            tokio::fs::create_dir_all(parent)
+                .await
                 .with_context(|| format!("Failed to create directory: {:?}", parent))?;
         }
 
@@ -93,7 +98,7 @@ impl FileHandler {
 
     async fn ensure_file_handle(&self) -> Result<()> {
         let mut handle_guard = self.file_handle.write().await;
-        
+
         if handle_guard.is_none() {
             let file = OpenOptions::new()
                 .create(true)
@@ -101,7 +106,7 @@ impl FileHandler {
                 .open(&self.file_path)
                 .await
                 .with_context(|| format!("Failed to open file: {:?}", self.file_path))?;
-            
+
             *handle_guard = Some(file);
         }
 
@@ -120,17 +125,18 @@ impl EventHandler for FileHandler {
 
         self.ensure_file_handle().await?;
 
-        let event_json = serde_json::to_string(event)
-            .with_context(|| "Failed to serialize event to JSON")?;
+        let event_json =
+            serde_json::to_string(event).with_context(|| "Failed to serialize event to JSON")?;
 
         let mut handle_guard = self.file_handle.write().await;
         if let Some(file) = handle_guard.as_mut() {
-            file.write_all(event_json.as_bytes()).await
+            file.write_all(event_json.as_bytes())
+                .await
                 .with_context(|| "Failed to write event to file")?;
-            file.write_all(b"\n").await
+            file.write_all(b"\n")
+                .await
                 .with_context(|| "Failed to write newline to file")?;
-            file.flush().await
-                .with_context(|| "Failed to flush file")?;
+            file.flush().await.with_context(|| "Failed to flush file")?;
         }
 
         Ok(())
@@ -207,32 +213,35 @@ impl EventHandler for MetricsHandler {
             }
             TelecomEvent::CallConnected(e) => {
                 metrics.total_calls_connected += 1;
-                
+
                 // Update average call setup time
                 let setup_time = e.connection_time_ms as f64;
                 if metrics.total_calls_connected == 1 {
                     metrics.average_call_setup_time_ms = setup_time;
                 } else {
                     let count = metrics.total_calls_connected as f64;
-                    metrics.average_call_setup_time_ms = 
+                    metrics.average_call_setup_time_ms =
                         (metrics.average_call_setup_time_ms * (count - 1.0) + setup_time) / count;
                 }
             }
             TelecomEvent::CallTerminated(e) => {
                 metrics.total_calls_terminated += 1;
-                
+
                 // Update average call duration
                 let duration = e.call_duration_seconds as f64;
                 if metrics.total_calls_terminated == 1 {
                     metrics.average_call_duration_seconds = duration;
                 } else {
                     let count = metrics.total_calls_terminated as f64;
-                    metrics.average_call_duration_seconds = 
+                    metrics.average_call_duration_seconds =
                         (metrics.average_call_duration_seconds * (count - 1.0) + duration) / count;
                 }
-                
+
                 // Track response codes
-                *metrics.calls_by_response_code.entry(e.final_response_code).or_insert(0) += 1;
+                *metrics
+                    .calls_by_response_code
+                    .entry(e.final_response_code)
+                    .or_insert(0) += 1;
             }
             TelecomEvent::RouteAdvanced(_) => {
                 metrics.total_routes_advanced += 1;
@@ -241,10 +250,9 @@ impl EventHandler for MetricsHandler {
                 metrics.fraud_alerts_generated += 1;
             }
             TelecomEvent::HealthStatus(e) => {
-                metrics.health_status_by_service.insert(
-                    e.service_name.clone(),
-                    format!("{:?}", e.status)
-                );
+                metrics
+                    .health_status_by_service
+                    .insert(e.service_name.clone(), format!("{:?}", e.status));
             }
             _ => {
                 // Other events don't update metrics
@@ -288,25 +296,33 @@ impl FraudMonitorHandler {
         }
     }
 
-    async fn analyze_call_pattern(&self, calling_number: &str, called_number: &str) -> Option<String> {
+    async fn analyze_call_pattern(
+        &self,
+        calling_number: &str,
+        called_number: &str,
+    ) -> Option<String> {
         let mut patterns = self.call_patterns.write().await;
         let now = Utc::now();
 
-        let pattern = patterns.entry(calling_number.to_string()).or_insert_with(|| {
-            let mut destinations = std::collections::HashSet::new();
-            destinations.insert(called_number.to_string());
-            
-            CallPattern {
-                calling_number: calling_number.to_string(),
-                call_count: 0,
-                unique_destinations: destinations,
-                first_call_time: now,
-                last_call_time: now,
-            }
-        });
+        let pattern = patterns
+            .entry(calling_number.to_string())
+            .or_insert_with(|| {
+                let mut destinations = std::collections::HashSet::new();
+                destinations.insert(called_number.to_string());
+
+                CallPattern {
+                    calling_number: calling_number.to_string(),
+                    call_count: 0,
+                    unique_destinations: destinations,
+                    first_call_time: now,
+                    last_call_time: now,
+                }
+            });
 
         pattern.call_count += 1;
-        pattern.unique_destinations.insert(called_number.to_string());
+        pattern
+            .unique_destinations
+            .insert(called_number.to_string());
         pattern.last_call_time = now;
 
         // Check for suspicious patterns
@@ -339,15 +355,13 @@ impl FraudMonitorHandler {
 impl EventHandler for FraudMonitorHandler {
     async fn handle_event(&self, event: &TelecomEvent) -> Result<()> {
         if let TelecomEvent::CallInitiated(call_event) = event {
-            if let Some(alert_reason) = self.analyze_call_pattern(
-                &call_event.calling_number,
-                &call_event.called_number
-            ).await {
+            if let Some(alert_reason) = self
+                .analyze_call_pattern(&call_event.calling_number, &call_event.called_number)
+                .await
+            {
                 warn!(
                     "Fraud alert for call {}: {} from {}",
-                    call_event.call_id,
-                    alert_reason,
-                    call_event.calling_number
+                    call_event.call_id, alert_reason, call_event.calling_number
                 );
 
                 // In a real system, you would publish a FraudDetected event here
@@ -410,7 +424,7 @@ impl EventHandler for HealthStatusHandler {
     async fn handle_event(&self, event: &TelecomEvent) -> Result<()> {
         if let TelecomEvent::HealthStatus(health_event) = event {
             let mut health_map = self.service_health.write().await;
-            
+
             let key = format!("{}:{}", health_event.service_name, health_event.instance_id);
             let status_str = format!("{:?}", health_event.status);
 
@@ -442,15 +456,12 @@ impl EventHandler for HealthStatusHandler {
             if !was_healthy && status_str == "Healthy" {
                 info!(
                     "Service {}:{} recovered to healthy status",
-                    health_event.service_name,
-                    health_event.instance_id
+                    health_event.service_name, health_event.instance_id
                 );
             } else if was_healthy && status_str != "Healthy" {
                 warn!(
                     "Service {}:{} became unhealthy: {}",
-                    health_event.service_name,
-                    health_event.instance_id,
-                    status_str
+                    health_event.service_name, health_event.instance_id, status_str
                 );
             }
         }
@@ -478,7 +489,7 @@ mod tests {
     #[tokio::test]
     async fn test_logging_handler() {
         let handler = LoggingHandler::new("test-logger".to_string(), tracing::Level::DEBUG);
-        
+
         let event = TelecomEvent::call_initiated(
             "test-call".to_string(),
             "test-session".to_string(),
@@ -500,7 +511,9 @@ mod tests {
             "test-file-handler".to_string(),
             file_path.clone(),
             vec![EventType::CallInitiated],
-        ).await.expect("Failed to create file handler");
+        )
+        .await
+        .expect("Failed to create file handler");
 
         let event = TelecomEvent::call_initiated(
             "test-call".to_string(),
@@ -514,7 +527,8 @@ mod tests {
         assert_eq!(handler.get_event_count(), 1);
 
         // Verify file was created and contains event
-        let file_contents = fs::read_to_string(&file_path).await
+        let file_contents = fs::read_to_string(&file_path)
+            .await
             .expect("Failed to read file");
         assert!(file_contents.contains("test-call"));
     }
@@ -550,7 +564,7 @@ mod tests {
             let event = TelecomEvent::call_initiated(
                 format!("call-{}", i),
                 format!("session-{}", i),
-                "1234567890".to_string(), // Same calling number
+                "1234567890".to_string(),  // Same calling number
                 format!("098765432{}", i), // Different called numbers
                 IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
             );
@@ -560,6 +574,12 @@ mod tests {
 
         let patterns = handler.get_call_patterns().await;
         assert_eq!(patterns.len(), 1);
-        assert_eq!(patterns.get("1234567890").expect("Pattern should exist").call_count, 10);
+        assert_eq!(
+            patterns
+                .get("1234567890")
+                .expect("Pattern should exist")
+                .call_count,
+            10
+        );
     }
 }

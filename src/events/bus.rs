@@ -41,16 +41,16 @@ impl Default for EventBusConfig {
 pub struct EventBus {
     /// Broadcast channel for real-time event distribution
     sender: broadcast::Sender<Arc<TelecomEvent>>,
-    
+
     /// Registered event handlers
     handlers: RwLock<HashMap<String, HandlerRegistration>>,
-    
+
     /// Event processing statistics
     stats: RwLock<EventStats>,
-    
+
     /// Configuration
     config: EventBusConfig,
-    
+
     /// Event persistence storage (if enabled)
     persisted_events: RwLock<Vec<Arc<TelecomEvent>>>,
 }
@@ -64,7 +64,7 @@ impl EventBus {
     /// Create a new event bus with custom configuration
     pub fn with_config(config: EventBusConfig) -> Self {
         let (sender, _receiver) = broadcast::channel(config.buffer_size);
-        
+
         Self {
             sender,
             handlers: RwLock::new(HashMap::new()),
@@ -78,12 +78,18 @@ impl EventBus {
     pub async fn register_handler(&self, handler: Arc<dyn EventHandler>) -> Result<()> {
         let handler_name = handler.name().to_string();
         let event_types = handler.interested_events();
-        
-        debug!("Registering event handler: {} for events: {:?}", handler_name, event_types);
+
+        debug!(
+            "Registering event handler: {} for events: {:?}",
+            handler_name, event_types
+        );
 
         // Perform initial health check
         if let Err(e) = handler.health_check().await {
-            warn!("Handler {} failed initial health check: {}", handler_name, e);
+            warn!(
+                "Handler {} failed initial health check: {}",
+                handler_name, e
+            );
         }
 
         let registration = HandlerRegistration {
@@ -104,7 +110,7 @@ impl EventBus {
     /// Unregister an event handler
     pub async fn unregister_handler(&self, handler_name: &str) -> Result<()> {
         let mut handlers = self.handlers.write().await;
-        
+
         if handlers.remove(handler_name).is_some() {
             info!("Unregistered event handler: {}", handler_name);
             Ok(())
@@ -117,8 +123,12 @@ impl EventBus {
     pub async fn publish(&self, event: TelecomEvent) -> Result<()> {
         let event_arc = Arc::new(event);
         let event_type = EventType::from(event_arc.as_ref());
-        
-        debug!("Publishing event: {:?} with ID: {}", event_type, event_arc.event_id());
+
+        debug!(
+            "Publishing event: {:?} with ID: {}",
+            event_type,
+            event_arc.event_id()
+        );
 
         // Update statistics
         {
@@ -155,8 +165,9 @@ impl EventBus {
 
         for (handler_name, registration) in handlers.iter() {
             // Check if handler is interested in this event type
-            if !registration.event_types.contains(&EventType::All) 
-                && !registration.event_types.contains(&event_type) {
+            if !registration.event_types.contains(&EventType::All)
+                && !registration.event_types.contains(&event_type)
+            {
                 continue;
             }
 
@@ -170,15 +181,22 @@ impl EventBus {
             tokio::spawn(async move {
                 let result = timeout(
                     Duration::from_secs(30), // TODO: Use config timeout
-                    handler.handle_event(event_clone.as_ref())
-                ).await;
+                    handler.handle_event(event_clone.as_ref()),
+                )
+                .await;
 
                 match result {
                     Ok(Ok(_)) => {
-                        debug!("Handler {} processed event successfully", handler_name_clone);
+                        debug!(
+                            "Handler {} processed event successfully",
+                            handler_name_clone
+                        );
                     }
                     Ok(Err(e)) => {
-                        error!("Handler {} failed to process event: {}", handler_name_clone, e);
+                        error!(
+                            "Handler {} failed to process event: {}",
+                            handler_name_clone, e
+                        );
                     }
                     Err(_) => {
                         error!("Handler {} timed out processing event", handler_name_clone);
@@ -193,25 +211,29 @@ impl EventBus {
             let mut stats = self.stats.write().await;
             stats.total_events_handled += handled_count;
             stats.handler_error_count += error_count;
-            
+
             // Update rolling average processing time
             if stats.total_events_handled > 0 {
-                stats.average_processing_time_ms = 
-                    (stats.average_processing_time_ms * (stats.total_events_handled - handled_count) as f64 
-                     + processing_time) / stats.total_events_handled as f64;
+                stats.average_processing_time_ms = (stats.average_processing_time_ms
+                    * (stats.total_events_handled - handled_count) as f64
+                    + processing_time)
+                    / stats.total_events_handled as f64;
             } else {
                 stats.average_processing_time_ms = processing_time;
             }
         }
 
-        debug!("Processed event with {} handlers in {:.2}ms", handled_count, processing_time);
+        debug!(
+            "Processed event with {} handlers in {:.2}ms",
+            handled_count, processing_time
+        );
         Ok(())
     }
 
     /// Subscribe to events with optional filtering
     pub fn subscribe(&self, filter: Option<EventFilter>) -> broadcast::Receiver<Arc<TelecomEvent>> {
         let receiver = self.sender.subscribe();
-        
+
         // If no filter, return receiver as-is
         if filter.is_none() {
             return receiver;
@@ -254,10 +276,10 @@ impl EventBus {
         }
 
         let mut persisted = self.persisted_events.write().await;
-        
+
         // Add new event
         persisted.push(event);
-        
+
         // Trim old events if over limit
         if persisted.len() > self.config.max_persisted_events {
             let excess = persisted.len() - self.config.max_persisted_events;
@@ -268,13 +290,16 @@ impl EventBus {
     }
 
     /// Get persisted events (if persistence is enabled)
-    pub async fn get_persisted_events(&self, filter: Option<EventFilter>) -> Result<Vec<Arc<TelecomEvent>>> {
+    pub async fn get_persisted_events(
+        &self,
+        filter: Option<EventFilter>,
+    ) -> Result<Vec<Arc<TelecomEvent>>> {
         if !self.config.enable_persistence {
             return Err(anyhow::anyhow!("Event persistence is not enabled"));
         }
 
         let persisted = self.persisted_events.read().await;
-        
+
         let filtered_events = if let Some(filter) = filter {
             persisted
                 .iter()
@@ -296,7 +321,7 @@ impl EventBus {
 
         let mut persisted = self.persisted_events.write().await;
         persisted.clear();
-        
+
         info!("Cleared all persisted events");
         Ok(())
     }
@@ -305,24 +330,24 @@ impl EventBus {
     pub fn start_health_check_task(self: &Arc<Self>) -> tokio::task::JoinHandle<()> {
         let bus = self.clone();
         let interval = self.config.health_check_interval;
-        
+
         tokio::spawn(async move {
             let mut timer = tokio::time::interval(interval);
-            
+
             loop {
                 timer.tick().await;
-                
+
                 match bus.health_check_handlers().await {
                     Ok(results) => {
                         let mut unhealthy_count = 0;
-                        
+
                         for (handler_name, result) in results {
                             if let Err(e) = result {
                                 warn!("Handler {} health check failed: {}", handler_name, e);
                                 unhealthy_count += 1;
                             }
                         }
-                        
+
                         if unhealthy_count > 0 {
                             warn!("{} handlers failed health check", unhealthy_count);
                         } else {
@@ -345,17 +370,17 @@ impl EventBus {
     /// Shutdown the event bus gracefully
     pub async fn shutdown(&self) -> Result<()> {
         info!("Shutting down event bus");
-        
+
         // Clear handlers to prevent new event processing
         let mut handlers = self.handlers.write().await;
         handlers.clear();
-        
+
         // Clear persisted events if enabled
         if self.config.enable_persistence {
             let mut persisted = self.persisted_events.write().await;
             persisted.clear();
         }
-        
+
         info!("Event bus shutdown complete");
         Ok(())
     }
@@ -420,7 +445,9 @@ mod tests {
             vec![EventType::CallInitiated],
         ));
 
-        bus.register_handler(handler).await.expect("Failed to register handler");
+        bus.register_handler(handler)
+            .await
+            .expect("Failed to register handler");
 
         let handlers = bus.get_handlers().await;
         assert_eq!(handlers.len(), 1);
@@ -435,7 +462,9 @@ mod tests {
             vec![EventType::CallInitiated],
         ));
 
-        bus.register_handler(handler.clone()).await.expect("Failed to register handler");
+        bus.register_handler(handler.clone())
+            .await
+            .expect("Failed to register handler");
 
         let event = TelecomEvent::call_initiated(
             "test-call".to_string(),
@@ -468,8 +497,12 @@ mod tests {
             vec![EventType::HealthStatus],
         ));
 
-        bus.register_handler(call_handler.clone()).await.expect("Failed to register call handler");
-        bus.register_handler(health_handler.clone()).await.expect("Failed to register health handler");
+        bus.register_handler(call_handler.clone())
+            .await
+            .expect("Failed to register call handler");
+        bus.register_handler(health_handler.clone())
+            .await
+            .expect("Failed to register health handler");
 
         // Publish call event
         let call_event = TelecomEvent::call_initiated(
@@ -479,7 +512,9 @@ mod tests {
             "0987654321".to_string(),
             IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
         );
-        bus.publish(call_event).await.expect("Failed to publish call event");
+        bus.publish(call_event)
+            .await
+            .expect("Failed to publish call event");
 
         // Publish health event
         let health_event = TelecomEvent::health_status(
@@ -488,7 +523,9 @@ mod tests {
             crate::events::HealthStatus::Healthy,
             HashMap::new(),
         );
-        bus.publish(health_event).await.expect("Failed to publish health event");
+        bus.publish(health_event)
+            .await
+            .expect("Failed to publish health event");
 
         // Give handlers time to process
         sleep(Duration::from_millis(100)).await;
@@ -505,7 +542,7 @@ mod tests {
             max_persisted_events: 100,
             ..Default::default()
         };
-        
+
         let bus = EventBus::with_config(config);
 
         let event = TelecomEvent::call_initiated(
@@ -518,7 +555,10 @@ mod tests {
 
         bus.publish(event).await.expect("Failed to publish event");
 
-        let persisted = bus.get_persisted_events(None).await.expect("Failed to get persisted events");
+        let persisted = bus
+            .get_persisted_events(None)
+            .await
+            .expect("Failed to get persisted events");
         assert_eq!(persisted.len(), 1);
     }
 }

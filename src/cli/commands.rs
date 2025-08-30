@@ -134,10 +134,22 @@ impl CommandExecutor {
                 Ok(CommandResult::Table(headers, rows))
             }
             "channels" => {
-                let headers = vec!["Channel".to_string(), "Status".to_string(), "Codec".to_string()];
+                let headers = vec![
+                    "Channel".to_string(),
+                    "Status".to_string(),
+                    "Codec".to_string(),
+                ];
                 let rows = vec![
-                    vec!["SIP/carrier1-001".to_string(), "Active".to_string(), "G.729".to_string()],
-                    vec!["SIP/carrier2-002".to_string(), "Active".to_string(), "G.711u".to_string()],
+                    vec![
+                        "SIP/carrier1-001".to_string(),
+                        "Active".to_string(),
+                        "G.729".to_string(),
+                    ],
+                    vec![
+                        "SIP/carrier2-002".to_string(),
+                        "Active".to_string(),
+                        "G.711u".to_string(),
+                    ],
                 ];
                 Ok(CommandResult::Table(headers, rows))
             }
@@ -149,42 +161,95 @@ impl CommandExecutor {
                     "Success Rate".to_string(),
                 ];
                 let rows = vec![
-                    vec!["carrier1".to_string(), "Online".to_string(), "25".to_string(), "99.2%".to_string()],
-                    vec!["carrier2".to_string(), "Online".to_string(), "17".to_string(), "98.8%".to_string()],
-                    vec!["carrier3".to_string(), "Offline".to_string(), "0".to_string(), "N/A".to_string()],
+                    vec![
+                        "carrier1".to_string(),
+                        "Online".to_string(),
+                        "25".to_string(),
+                        "99.2%".to_string(),
+                    ],
+                    vec![
+                        "carrier2".to_string(),
+                        "Online".to_string(),
+                        "17".to_string(),
+                        "98.8%".to_string(),
+                    ],
+                    vec![
+                        "carrier3".to_string(),
+                        "Offline".to_string(),
+                        "0".to_string(),
+                        "N/A".to_string(),
+                    ],
                 ];
                 Ok(CommandResult::Table(headers, rows))
             }
             "memory" => {
-                let headers = vec!["Component".to_string(), "Used".to_string(), "Total".to_string(), "Usage %".to_string()];
+                let headers = vec![
+                    "Component".to_string(),
+                    "Used".to_string(),
+                    "Total".to_string(),
+                    "Usage %".to_string(),
+                ];
                 let rows = vec![
-                    vec!["System RAM".to_string(), "2.4 GB".to_string(), "8.0 GB".to_string(), "30%".to_string()],
-                    vec!["GPU Memory".to_string(), "1.2 GB".to_string(), "4.0 GB".to_string(), "30%".to_string()],
-                    vec!["Call Cache".to_string(), "128 MB".to_string(), "512 MB".to_string(), "25%".to_string()],
+                    vec![
+                        "System RAM".to_string(),
+                        "2.4 GB".to_string(),
+                        "8.0 GB".to_string(),
+                        "30%".to_string(),
+                    ],
+                    vec![
+                        "GPU Memory".to_string(),
+                        "1.2 GB".to_string(),
+                        "4.0 GB".to_string(),
+                        "30%".to_string(),
+                    ],
+                    vec![
+                        "Call Cache".to_string(),
+                        "128 MB".to_string(),
+                        "512 MB".to_string(),
+                        "25%".to_string(),
+                    ],
                 ];
                 Ok(CommandResult::Table(headers, rows))
             }
             "cpu" => {
-                let headers = vec!["Core".to_string(), "Usage %".to_string(), "Frequency".to_string()];
+                let headers = vec![
+                    "Core".to_string(),
+                    "Usage %".to_string(),
+                    "Frequency".to_string(),
+                ];
                 let rows = vec![
-                    vec!["CPU 0".to_string(), "15.2%".to_string(), "2.4 GHz".to_string()],
-                    vec!["CPU 1".to_string(), "12.8%".to_string(), "2.4 GHz".to_string()],
-                    vec!["CPU 2".to_string(), "18.5%".to_string(), "2.4 GHz".to_string()],
-                    vec!["CPU 3".to_string(), "14.1%".to_string(), "2.4 GHz".to_string()],
+                    vec![
+                        "CPU 0".to_string(),
+                        "15.2%".to_string(),
+                        "2.4 GHz".to_string(),
+                    ],
+                    vec![
+                        "CPU 1".to_string(),
+                        "12.8%".to_string(),
+                        "2.4 GHz".to_string(),
+                    ],
+                    vec![
+                        "CPU 2".to_string(),
+                        "18.5%".to_string(),
+                        "2.4 GHz".to_string(),
+                    ],
+                    vec![
+                        "CPU 3".to_string(),
+                        "14.1%".to_string(),
+                        "2.4 GHz".to_string(),
+                    ],
                 ];
                 Ok(CommandResult::Table(headers, rows))
             }
-            "all" => {
-                Ok(CommandResult::Success(format!(
-                    "System Status Summary:\n\
+            "all" => Ok(CommandResult::Success(format!(
+                "System Status Summary:\n\
                      ├─ Active Calls: 42\n\
                      ├─ Online Gateways: 2/3\n\
                      ├─ CPU Usage: 15.2%\n\
                      ├─ Memory Usage: 30%\n\
                      ├─ GPU Acceleration: Enabled\n\
                      └─ System Uptime: 5 days, 3 hours"
-                )))
-            }
+            ))),
             _ => Err(anyhow!("Unknown status type: {}", status_type)),
         }
     }
@@ -314,20 +379,20 @@ impl CommandExecutor {
                     "Duration".to_string(),
                     "Status".to_string(),
                 ];
-                let rows = vec![
-                    vec![
-                        "uuid-1234".to_string(),
-                        "Inbound".to_string(),
-                        "+1234567890".to_string(),
-                        "+0987654321".to_string(),
-                        "00:02:35".to_string(),
-                        "Connected".to_string(),
-                    ],
-                ];
+                let rows = vec![vec![
+                    "uuid-1234".to_string(),
+                    "Inbound".to_string(),
+                    "+1234567890".to_string(),
+                    "+0987654321".to_string(),
+                    "00:02:35".to_string(),
+                    "Connected".to_string(),
+                ]];
                 Ok(CommandResult::Table(headers, rows))
             }
             "count" => Ok(CommandResult::Success("Active calls: 42".to_string())),
-            "active" => Ok(CommandResult::Success("42 active calls currently in progress".to_string())),
+            "active" => Ok(CommandResult::Success(
+                "42 active calls currently in progress".to_string(),
+            )),
             _ => Err(anyhow!("Unknown calls action: {}", action)),
         }
     }
@@ -340,29 +405,31 @@ impl CommandExecutor {
             "Codec".to_string(),
             "Duration".to_string(),
         ];
-        let rows = vec![
-            vec![
-                "SIP/carrier1-001".to_string(),
-                "UP".to_string(),
-                "uuid-1234".to_string(),
-                "G.729".to_string(),
-                "00:02:35".to_string(),
-            ],
-        ];
+        let rows = vec![vec![
+            "SIP/carrier1-001".to_string(),
+            "UP".to_string(),
+            "uuid-1234".to_string(),
+            "G.729".to_string(),
+            "00:02:35".to_string(),
+        ]];
         Ok(CommandResult::Table(headers, rows))
     }
 
     // Call control commands
     async fn cmd_hangup(&self, args: Vec<&str>) -> Result<CommandResult> {
         if args.is_empty() {
-            return Err(anyhow!("Missing argument. Usage: hangup <call-id|all> [reason]"));
+            return Err(anyhow!(
+                "Missing argument. Usage: hangup <call-id|all> [reason]"
+            ));
         }
 
         let target = args[0];
         let reason = args.get(1).unwrap_or(&"NORMAL_CLEARING");
 
         match target {
-            "all" => Ok(CommandResult::Success("Hung up all active calls".to_string())),
+            "all" => Ok(CommandResult::Success(
+                "Hung up all active calls".to_string(),
+            )),
             call_id => Ok(CommandResult::Success(format!(
                 "Hung up call {} with reason: {}",
                 call_id, reason
@@ -426,17 +493,23 @@ impl CommandExecutor {
                 ];
                 Ok(CommandResult::Table(headers, rows))
             }
-            "status" => Ok(CommandResult::Success("2 gateways online, 1 offline".to_string())),
+            "status" => Ok(CommandResult::Success(
+                "2 gateways online, 1 offline".to_string(),
+            )),
             _ => Err(anyhow!("Unknown gateway action: {}", action)),
         }
     }
 
     async fn cmd_trunk(&self, args: Vec<&str>) -> Result<CommandResult> {
-        Ok(CommandResult::Success("Trunk management not implemented yet".to_string()))
+        Ok(CommandResult::Success(
+            "Trunk management not implemented yet".to_string(),
+        ))
     }
 
     async fn cmd_route(&self, args: Vec<&str>) -> Result<CommandResult> {
-        Ok(CommandResult::Success("Route management not implemented yet".to_string()))
+        Ok(CommandResult::Success(
+            "Route management not implemented yet".to_string(),
+        ))
     }
 
     async fn cmd_lcr(&self, args: Vec<&str>) -> Result<CommandResult> {
@@ -453,7 +526,9 @@ impl CommandExecutor {
                     number
                 )))
             }
-            "stats" => Ok(CommandResult::Success("LCR stats: 99.2% success rate".to_string())),
+            "stats" => Ok(CommandResult::Success(
+                "LCR stats: 99.2% success rate".to_string(),
+            )),
             _ => Err(anyhow!("Unknown LCR action: {}", action)),
         }
     }
@@ -479,7 +554,7 @@ impl CommandExecutor {
         }
 
         let param = args[0];
-        
+
         // Mock configuration values
         let value = match param {
             "log-level" => "info",
@@ -500,7 +575,9 @@ impl CommandExecutor {
     }
 
     async fn cmd_save(&self, args: Vec<&str>) -> Result<CommandResult> {
-        Ok(CommandResult::Success("Configuration saved to disk".to_string()))
+        Ok(CommandResult::Success(
+            "Configuration saved to disk".to_string(),
+        ))
     }
 
     // Codec commands
@@ -516,10 +593,30 @@ impl CommandExecutor {
                     "Quality".to_string(),
                 ];
                 let rows = vec![
-                    vec!["G.729".to_string(), "Active".to_string(), "Yes".to_string(), "4.2".to_string()],
-                    vec!["G.711u".to_string(), "Active".to_string(), "Yes".to_string(), "4.5".to_string()],
-                    vec!["G.711a".to_string(), "Active".to_string(), "Yes".to_string(), "4.5".to_string()],
-                    vec!["G.722".to_string(), "Active".to_string(), "Yes".to_string(), "4.3".to_string()],
+                    vec![
+                        "G.729".to_string(),
+                        "Active".to_string(),
+                        "Yes".to_string(),
+                        "4.2".to_string(),
+                    ],
+                    vec![
+                        "G.711u".to_string(),
+                        "Active".to_string(),
+                        "Yes".to_string(),
+                        "4.5".to_string(),
+                    ],
+                    vec![
+                        "G.711a".to_string(),
+                        "Active".to_string(),
+                        "Yes".to_string(),
+                        "4.5".to_string(),
+                    ],
+                    vec![
+                        "G.722".to_string(),
+                        "Active".to_string(),
+                        "Yes".to_string(),
+                        "4.3".to_string(),
+                    ],
                 ];
                 Ok(CommandResult::Table(headers, rows))
             }
@@ -527,7 +624,8 @@ impl CommandExecutor {
                 "Codec benchmark results:\n\
                  ├─ G.729: 450 channels\n\
                  ├─ G.711u: 800 channels\n\
-                 └─ GPU acceleration: 15x speedup".to_string()
+                 └─ GPU acceleration: 15x speedup"
+                    .to_string(),
             )),
             _ => Err(anyhow!("Unknown codec action: {}", action)),
         }
@@ -553,7 +651,8 @@ impl CommandExecutor {
              ├─ GPU 0: NVIDIA RTX 4090 (Available)\n\
              ├─ Memory: 3.2GB/24GB used\n\
              ├─ Utilization: 25%\n\
-             └─ Active transcoding sessions: 42".to_string()
+             └─ Active transcoding sessions: 42"
+                .to_string(),
         ))
     }
 
@@ -567,11 +666,15 @@ impl CommandExecutor {
     }
 
     async fn cmd_trace(&self, args: Vec<&str>) -> Result<CommandResult> {
-        Ok(CommandResult::Success("Trace functionality not implemented yet".to_string()))
+        Ok(CommandResult::Success(
+            "Trace functionality not implemented yet".to_string(),
+        ))
     }
 
     async fn cmd_log(&self, args: Vec<&str>) -> Result<CommandResult> {
-        Ok(CommandResult::Success("Log management not implemented yet".to_string()))
+        Ok(CommandResult::Success(
+            "Log management not implemented yet".to_string(),
+        ))
     }
 
     async fn cmd_test(&self, args: Vec<&str>) -> Result<CommandResult> {
@@ -580,15 +683,21 @@ impl CommandExecutor {
 
     // Security commands
     async fn cmd_security(&self, args: Vec<&str>) -> Result<CommandResult> {
-        Ok(CommandResult::Success("Security status: All systems secure".to_string()))
+        Ok(CommandResult::Success(
+            "Security status: All systems secure".to_string(),
+        ))
     }
 
     async fn cmd_auth(&self, args: Vec<&str>) -> Result<CommandResult> {
-        Ok(CommandResult::Success("Authentication system operational".to_string()))
+        Ok(CommandResult::Success(
+            "Authentication system operational".to_string(),
+        ))
     }
 
     async fn cmd_firewall(&self, args: Vec<&str>) -> Result<CommandResult> {
-        Ok(CommandResult::Success("Firewall active, 0 blocked IPs".to_string()))
+        Ok(CommandResult::Success(
+            "Firewall active, 0 blocked IPs".to_string(),
+        ))
     }
 
     // System commands
@@ -599,7 +708,10 @@ impl CommandExecutor {
         let mut session = self.session.write().await;
         let _ = session.connect(format!("{}:{}", host, port)).await;
 
-        Ok(CommandResult::Success(format!("Connected to {}:{}", host, port)))
+        Ok(CommandResult::Success(format!(
+            "Connected to {}:{}",
+            host, port
+        )))
     }
 
     async fn cmd_disconnect(&self, args: Vec<&str>) -> Result<CommandResult> {
@@ -612,12 +724,15 @@ impl CommandExecutor {
         Ok(CommandResult::Success(
             "RedFire Switch v0.1.0\n\
              Built with Rust 1.70.0\n\
-             GPU acceleration enabled".to_string()
+             GPU acceleration enabled"
+                .to_string(),
         ))
     }
 
     async fn cmd_uptime(&self, args: Vec<&str>) -> Result<CommandResult> {
-        Ok(CommandResult::Success("System uptime: 5 days, 3 hours, 42 minutes".to_string()))
+        Ok(CommandResult::Success(
+            "System uptime: 5 days, 3 hours, 42 minutes".to_string(),
+        ))
     }
 }
 
@@ -649,7 +764,6 @@ pub fn get_all_commands() -> Vec<Command> {
             usage: "channels".to_string(),
             category: CommandCategory::Status,
         },
-        
         // Call control commands
         Command {
             name: "hangup".to_string(),
@@ -669,7 +783,6 @@ pub fn get_all_commands() -> Vec<Command> {
             usage: "transfer <call-id> <destination>".to_string(),
             category: CommandCategory::CallControl,
         },
-        
         // Gateway commands
         Command {
             name: "gateway".to_string(),
@@ -695,7 +808,6 @@ pub fn get_all_commands() -> Vec<Command> {
             usage: "lcr [action]".to_string(),
             category: CommandCategory::Gateway,
         },
-        
         // Configuration commands
         Command {
             name: "set".to_string(),
@@ -715,7 +827,6 @@ pub fn get_all_commands() -> Vec<Command> {
             usage: "reload [component]".to_string(),
             category: CommandCategory::Configuration,
         },
-        
         // Codec commands
         Command {
             name: "codec".to_string(),
@@ -735,7 +846,6 @@ pub fn get_all_commands() -> Vec<Command> {
             usage: "gpu".to_string(),
             category: CommandCategory::Codec,
         },
-        
         // Debug commands
         Command {
             name: "debug".to_string(),
@@ -755,7 +865,6 @@ pub fn get_all_commands() -> Vec<Command> {
             usage: "log [action]".to_string(),
             category: CommandCategory::Debug,
         },
-        
         // System commands
         Command {
             name: "connect".to_string(),

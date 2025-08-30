@@ -11,7 +11,8 @@ use tracing::{debug, info, warn};
 
 use crate::lcr::types::{CallRoute, RouteRequest};
 use crate::termination_routing::{
-    FailedAttempt, RouteAdvanceDecision, SipResponseCode, TerminationRoutingRequest, TerminationRoutingService,
+    FailedAttempt, RouteAdvanceDecision, SipResponseCode, TerminationRoutingRequest,
+    TerminationRoutingService,
 };
 
 /// Route advancement manager for B2BUA operations
@@ -225,14 +226,17 @@ impl RouteAdvancementEngine {
             .iter()
             .map(|attempt| attempt.trunk_id)
             .collect();
-        
-        debug!("Excluding previously failed trunk IDs: {:?}", failed_trunk_ids);
+
+        debug!(
+            "Excluding previously failed trunk IDs: {:?}",
+            failed_trunk_ids
+        );
 
         // Create new termination request with failed attempts history
         let route_request = routing_state.original_request.clone();
         // Add excluded trunk IDs to route request (this would require extending RouteRequest)
         // For now, we'll filter in the response handling
-        
+
         let termination_request = TerminationRoutingRequest {
             call_id: call_id.to_string(),
             ani: routing_state.ani.clone(),
@@ -249,13 +253,15 @@ impl RouteAdvancementEngine {
             let mut service = self.termination_service.lock().await;
             service.route_termination(termination_request).await?
         };
-        
+
         // Filter out previously failed routes from the response
         let filtered_response = if let Some(selected_route) = &routing_response.selected_route {
             if failed_trunk_ids.contains(&selected_route.egress_trunk.id) {
                 // This route was already tried and failed, skip it
-                info!("Skipping previously failed trunk {} for call {}", 
-                     selected_route.egress_trunk.name, call_id);
+                info!(
+                    "Skipping previously failed trunk {} for call {}",
+                    selected_route.egress_trunk.name, call_id
+                );
                 return self.complete_call_routing(
                     call_id,
                     last_response_code,
@@ -267,7 +273,7 @@ impl RouteAdvancementEngine {
         } else {
             routing_response
         };
-        
+
         let routing_response = filtered_response;
 
         if routing_response.success {

@@ -13,8 +13,8 @@ use tracing::{debug, error, info, warn};
 // Import SIP stack components
 use redfire_sip_stack::{
     AuthResult, SipAuthenticator, SipCallContext, SipCoreConfig, SipCoreEngine, SipMessage,
-    SipMethod, SipParser, SipStateConfig, SipStateManager, SipTransport,
-    SipTransportManager, TransportConfig,
+    SipMethod, SipParser, SipStateConfig, SipStateManager, SipTransport, SipTransportManager,
+    TransportConfig,
 };
 
 // Import codec engine components

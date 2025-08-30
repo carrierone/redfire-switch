@@ -164,39 +164,39 @@ pub struct CallDetailRecord {
     pub session_id: String,
     pub a_leg_call_id: String,
     pub b_leg_call_id: Option<String>,
-    
+
     // Call parties
-    pub ani: String,                    // A-Number (calling party)
-    pub dnis: String,                   // B-Number (called party)
-    
+    pub ani: String,  // A-Number (calling party)
+    pub dnis: String, // B-Number (called party)
+
     // Timing
     pub start_time: DateTime<Utc>,
     pub answer_time: Option<DateTime<Utc>>,
     pub end_time: Option<DateTime<Utc>>,
     pub duration_seconds: Option<u64>,
-    
+
     // Ingress leg (where call came FROM)
     pub ingress_trunk_id: u32,
     pub ingress_trunk_name: String,
     pub ingress_ip: IpAddr,
-    pub ingress_rate_per_minute: f64,   // Cost for receiving this call
-    pub ingress_cost: f64,              // Total ingress cost (negative = revenue)
-    pub ingress_revenue: Option<f64>,   // Revenue if we bill for ingress
-    
+    pub ingress_rate_per_minute: f64, // Cost for receiving this call
+    pub ingress_cost: f64,            // Total ingress cost (negative = revenue)
+    pub ingress_revenue: Option<f64>, // Revenue if we bill for ingress
+
     // Egress leg (where call went TO)
     pub egress_trunk_id: Option<u32>,
     pub egress_trunk_name: Option<String>,
     pub egress_ip: Option<IpAddr>,
-    pub egress_rate_per_minute: f64,    // Cost for sending this call
-    pub egress_cost: f64,               // Total egress cost
-    pub egress_revenue: Option<f64>,    // Revenue if we bill for egress
-    
+    pub egress_rate_per_minute: f64, // Cost for sending this call
+    pub egress_cost: f64,            // Total egress cost
+    pub egress_revenue: Option<f64>, // Revenue if we bill for egress
+
     // Net calculation
-    pub total_cost: f64,                // ingress_cost + egress_cost (positive values only)
-    pub total_revenue: f64,             // ingress_revenue + egress_revenue
-    pub net_margin: f64,                // total_revenue - total_cost
-    pub profit_margin_percent: f64,     // (net_margin / total_revenue) * 100
-    
+    pub total_cost: f64,    // ingress_cost + egress_cost (positive values only)
+    pub total_revenue: f64, // ingress_revenue + egress_revenue
+    pub net_margin: f64,    // total_revenue - total_cost
+    pub profit_margin_percent: f64, // (net_margin / total_revenue) * 100
+
     // Technical details
     pub codec_negotiated: Option<String>,
     pub transcoding_used: bool,
@@ -204,14 +204,14 @@ pub struct CallDetailRecord {
     pub termination_reason: Option<String>,
     pub route_attempts: u32,
     pub final_route: Option<String>,
-    
+
     // ANI-II (Automatic Number Identification Information Indicator) details
-    pub ani_ii_ingress: Option<u8>,        // ANI-II digit from ingress leg
-    pub ani_ii_egress: Option<u8>,         // ANI-II digit sent to egress leg  
-    pub ani_ii_source: Option<String>,     // Source of ANI-II (which header)
-    
+    pub ani_ii_ingress: Option<u8>,    // ANI-II digit from ingress leg
+    pub ani_ii_egress: Option<u8>,     // ANI-II digit sent to egress leg
+    pub ani_ii_source: Option<String>, // Source of ANI-II (which header)
+
     // Payphone surcharge information (for toll-free calls)
-    pub is_toll_free: bool,                // Flag indicating toll-free number
+    pub is_toll_free: bool, // Flag indicating toll-free number
     pub payphone_surcharge_amount: Option<f64>, // Surcharge amount in USD
     pub payphone_surcharge_reason: Option<String>, // Reason for surcharge (ANI-II code)
 }
@@ -233,30 +233,30 @@ pub struct TrunkRateConfig {
     pub trunk_name: String,
     pub direction: TrunkDirection,
     pub ip_addresses: Vec<IpAddr>,
-    
+
     // Rate configuration
     pub default_rate_per_minute: f64,
     pub rate_deck_id: Option<u32>,
     pub rate_overrides: HashMap<String, f64>, // Number prefix → rate
-    
+
     // Revenue vs Cost designation
-    pub is_revenue_trunk: bool,    // true = customer trunk (we bill them), false = carrier trunk (we pay them)
-    pub billing_increment: u32,    // Billing increment in seconds (6, 30, 60)
-    pub minimum_duration: u32,     // Minimum billable seconds
-    
+    pub is_revenue_trunk: bool, // true = customer trunk (we bill them), false = carrier trunk (we pay them)
+    pub billing_increment: u32, // Billing increment in seconds (6, 30, 60)
+    pub minimum_duration: u32,  // Minimum billable seconds
+
     // Trunk type for proper routing
-    pub trunk_type: TrunkType,     // Origination, Termination, or Bidirectional
-    
+    pub trunk_type: TrunkType, // Origination, Termination, or Bidirectional
+
     // Call direction detection
-    pub our_number_blocks: Vec<String>,      // DIDs/TF numbers we serve
+    pub our_number_blocks: Vec<String>, // DIDs/TF numbers we serve
     pub customer_number_blocks: Vec<String>, // Customer ANI ranges
-    
+
     // Payphone surcharge configuration for toll-free calls
-    pub payphone_surcharges_enabled: bool,   // Enable payphone surcharges
-    pub payphone_surcharge_23: Option<f64>,  // ANI-II Code 23 surcharge amount
-    pub payphone_surcharge_27: Option<f64>,  // ANI-II Code 27 surcharge amount  
-    pub payphone_surcharge_70: Option<f64>,  // ANI-II Code 70 surcharge amount
-    
+    pub payphone_surcharges_enabled: bool, // Enable payphone surcharges
+    pub payphone_surcharge_23: Option<f64>, // ANI-II Code 23 surcharge amount
+    pub payphone_surcharge_27: Option<f64>, // ANI-II Code 27 surcharge amount
+    pub payphone_surcharge_70: Option<f64>, // ANI-II Code 70 surcharge amount
+
     // ANI-II blocking configuration for customer protection
     pub ani_ii_blocking: Option<crate::ani_ii::blocking::AniIIBlockingConfig>, // ANI-II blocking rules
 }
@@ -264,33 +264,33 @@ pub struct TrunkRateConfig {
 /// Trunk direction for proper routing
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum TrunkDirection {
-    Ingress,        // Calls come FROM this trunk
-    Egress,         // Calls go TO this trunk
-    Bidirectional,  // Both directions
+    Ingress,       // Calls come FROM this trunk
+    Egress,        // Calls go TO this trunk
+    Bidirectional, // Both directions
 }
 
 /// Trunk type for business logic
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum TrunkType {
-    Customer,       // Customer endpoints (we bill them)
-    Carrier,        // Carrier interconnects (we pay them or they pay us)
-    Internal,       // Internal routing (no billing)
+    Customer, // Customer endpoints (we bill them)
+    Carrier,  // Carrier interconnects (we pay them or they pay us)
+    Internal, // Internal routing (no billing)
 }
 
 /// Traffic type determination
 #[derive(Debug, Clone)]
 pub enum TrafficType {
     Origination {
-        customer_dnis: String,      // Our customer's number being called
-        calling_party: String,      // Who is calling them
-        source_carrier_ip: IpAddr,  // Which carrier sent us this call
-        ingress_trunk_id: u32,      // Trunk that delivered the call
+        customer_dnis: String,     // Our customer's number being called
+        calling_party: String,     // Who is calling them
+        source_carrier_ip: IpAddr, // Which carrier sent us this call
+        ingress_trunk_id: u32,     // Trunk that delivered the call
     },
     Termination {
-        customer_ani: String,       // Our customer making the call
-        destination: String,        // Where they want to call
-        customer_ip: IpAddr,       // Our customer's IP
-        ingress_trunk_id: u32,      // Customer's trunk
+        customer_ani: String,  // Our customer making the call
+        destination: String,   // Where they want to call
+        customer_ip: IpAddr,   // Our customer's IP
+        ingress_trunk_id: u32, // Customer's trunk
     },
 }
 
@@ -300,7 +300,7 @@ pub struct CustomerInfo {
     pub customer_id: String,
     pub sip_endpoint: SocketAddr,
     pub customer_name: String,
-    
+
     // ANI-II blocking for specific DIDs owned by this customer
     pub did_ani_ii_blocks: Vec<crate::ani_ii::blocking::DidAniIIBlocking>,
 }
@@ -308,35 +308,45 @@ pub struct CustomerInfo {
 /// Implementation of cost calculation methods
 impl CallDetailRecord {
     /// Calculate costs based on trunk configurations
-    pub fn calculate_costs(&mut self, ingress_trunk: &TrunkRateConfig, egress_trunk: Option<&TrunkRateConfig>) {
+    pub fn calculate_costs(
+        &mut self,
+        ingress_trunk: &TrunkRateConfig,
+        egress_trunk: Option<&TrunkRateConfig>,
+    ) {
         if let Some(duration) = self.duration_seconds {
             let minutes = (duration as f64) / 60.0;
-            
+
             // Apply billing increment rounding
-            let billable_minutes = self.calculate_billable_minutes(minutes, ingress_trunk.billing_increment);
-            
+            let billable_minutes =
+                self.calculate_billable_minutes(minutes, ingress_trunk.billing_increment);
+
             // Calculate ingress cost/revenue based on trunk type
             if ingress_trunk.is_revenue_trunk {
                 // Customer trunk - we bill them (negative cost = revenue)
                 self.ingress_cost = -(ingress_trunk.default_rate_per_minute * billable_minutes);
-                self.ingress_revenue = Some(ingress_trunk.default_rate_per_minute * billable_minutes);
+                self.ingress_revenue =
+                    Some(ingress_trunk.default_rate_per_minute * billable_minutes);
             } else {
                 // Carrier trunk - we pay them (positive cost)
                 self.ingress_cost = ingress_trunk.default_rate_per_minute * billable_minutes;
                 self.ingress_revenue = None;
             }
-            
+
             // Calculate egress cost/revenue if there's an egress trunk
             if let Some(egress_trunk) = egress_trunk {
-                let egress_billable_minutes = self.calculate_billable_minutes(minutes, egress_trunk.billing_increment);
-                
+                let egress_billable_minutes =
+                    self.calculate_billable_minutes(minutes, egress_trunk.billing_increment);
+
                 if egress_trunk.is_revenue_trunk {
                     // Customer trunk - we bill them (negative cost = revenue)
-                    self.egress_cost = -(egress_trunk.default_rate_per_minute * egress_billable_minutes);
-                    self.egress_revenue = Some(egress_trunk.default_rate_per_minute * egress_billable_minutes);
+                    self.egress_cost =
+                        -(egress_trunk.default_rate_per_minute * egress_billable_minutes);
+                    self.egress_revenue =
+                        Some(egress_trunk.default_rate_per_minute * egress_billable_minutes);
                 } else {
                     // Carrier trunk - we pay them (positive cost)
-                    self.egress_cost = egress_trunk.default_rate_per_minute * egress_billable_minutes;
+                    self.egress_cost =
+                        egress_trunk.default_rate_per_minute * egress_billable_minutes;
                     self.egress_revenue = None;
                 }
             } else {
@@ -347,43 +357,44 @@ impl CallDetailRecord {
                     // Egress cost remains 0 for customer delivery
                 }
             }
-            
+
             // Calculate totals - only positive values count as costs
             self.total_cost = self.ingress_cost.max(0.0) + self.egress_cost.max(0.0);
-            self.total_revenue = self.ingress_revenue.unwrap_or(0.0) + self.egress_revenue.unwrap_or(0.0);
+            self.total_revenue =
+                self.ingress_revenue.unwrap_or(0.0) + self.egress_revenue.unwrap_or(0.0);
             self.net_margin = self.total_revenue - self.total_cost;
-            
+
             if self.total_revenue > 0.0 {
                 self.profit_margin_percent = (self.net_margin / self.total_revenue) * 100.0;
             }
         }
     }
-    
+
     /// Calculate billable minutes based on billing increment
     fn calculate_billable_minutes(&self, actual_minutes: f64, billing_increment: u32) -> f64 {
         if billing_increment <= 1 {
             return actual_minutes; // Per-second billing
         }
-        
+
         let increment_minutes = (billing_increment as f64) / 60.0;
         (actual_minutes / increment_minutes).ceil() * increment_minutes
     }
-    
+
     /// Apply rate overrides based on destination number
     pub fn apply_rate_overrides(&mut self, trunk: &TrunkRateConfig, is_ingress: bool) {
         let number = if is_ingress { &self.ani } else { &self.dnis };
-        
+
         // Find the longest matching prefix
         let mut best_match_rate = None;
         let mut best_match_length = 0;
-        
+
         for (prefix, rate) in &trunk.rate_overrides {
             if number.starts_with(prefix) && prefix.len() > best_match_length {
                 best_match_rate = Some(*rate);
                 best_match_length = prefix.len();
             }
         }
-        
+
         if let Some(override_rate) = best_match_rate {
             if is_ingress {
                 self.ingress_rate_per_minute = override_rate;
@@ -488,12 +499,20 @@ impl Class4B2BUA {
     async fn process_sip_message(&self, message: &str, addr: SocketAddr) -> Result<()> {
         // Basic message validation
         if message.len() < 10 {
-            warn!("Received suspiciously short SIP message from {}: {} bytes", addr, message.len());
+            warn!(
+                "Received suspiciously short SIP message from {}: {} bytes",
+                addr,
+                message.len()
+            );
             return Ok(());
         }
-        
+
         if message.len() > 65536 {
-            warn!("Received oversized SIP message from {}: {} bytes, truncating", addr, message.len());
+            warn!(
+                "Received oversized SIP message from {}: {} bytes, truncating",
+                addr,
+                message.len()
+            );
             // Continue processing but this could indicate an attack
         }
 
@@ -510,10 +529,13 @@ impl Class4B2BUA {
                 return Ok(());
             }
         };
-        
+
         // Validate required headers for requests and responses
         if !self.validate_sip_message(&sip_message) {
-            warn!("Invalid SIP message from {}: missing required headers", addr);
+            warn!(
+                "Invalid SIP message from {}: missing required headers",
+                addr
+            );
             return Ok(());
         }
 
@@ -526,7 +548,8 @@ impl Class4B2BUA {
             Some(method) => {
                 debug!("Responding 405 Method Not Allowed for method: {}", method);
                 if let Some(call_id) = sip_message.headers.get("Call-ID") {
-                    self.send_sip_response(addr, call_id, 405, "Method Not Allowed", "").await?;
+                    self.send_sip_response(addr, call_id, 405, "Method Not Allowed", "")
+                        .await?;
                 }
                 Ok(())
             }
@@ -538,20 +561,30 @@ impl Class4B2BUA {
     }
 
     /// Parse ANI-II information from SIP message using RFC-compliant parser
-    fn parse_ani_ii_from_sip_message(&self, sip_message: &SipMessage, body: &str) -> Option<crate::ani_ii_rfc_compliant::AniIIInfo> {
+    fn parse_ani_ii_from_sip_message(
+        &self,
+        sip_message: &SipMessage,
+        body: &str,
+    ) -> Option<crate::ani_ii_rfc_compliant::AniIIInfo> {
         // Use the new RFC-compliant ANI-II parser
-        if let Some(oli_info) = crate::sip_rfc_compliance::extract_oli_info(&sip_message.headers, Some(body)) {
-            if let Some(ani_ii_info) = crate::ani_ii_rfc_compliant::AniIIInfo::from_oli_info(oli_info) {
+        if let Some(oli_info) =
+            crate::sip_rfc_compliance::extract_oli_info(&sip_message.headers, Some(body))
+        {
+            if let Some(ani_ii_info) =
+                crate::ani_ii_rfc_compliant::AniIIInfo::from_oli_info(oli_info)
+            {
                 return Some(ani_ii_info);
             }
         }
-        
+
         // Fallback to legacy parsers only if RFC-compliant parsing fails
-        if let Some(legacy_ani_ii) = crate::ani_ii::sip_parser::parse_ani_ii_extended(&sip_message.headers) {
+        if let Some(legacy_ani_ii) =
+            crate::ani_ii::sip_parser::parse_ani_ii_extended(&sip_message.headers)
+        {
             // Convert legacy format to RFC-compliant format
             return crate::ani_ii_rfc_compliant::AniIIInfo::from_legacy(legacy_ani_ii).ok();
         }
-        
+
         None
     }
 
@@ -583,7 +616,12 @@ impl Class4B2BUA {
     }
 
     /// Update CDR with ANI-II information and surcharge details
-    fn update_cdr_with_ani_ii(&self, cdr: &mut CallDetailRecord, ani_ii: Option<&crate::ani_ii::AniIIInfo>, surcharge_result: &crate::ani_ii::surcharge_calculator::SurchargeResult) {
+    fn update_cdr_with_ani_ii(
+        &self,
+        cdr: &mut CallDetailRecord,
+        ani_ii: Option<&crate::ani_ii::AniIIInfo>,
+        surcharge_result: &crate::ani_ii::surcharge_calculator::SurchargeResult,
+    ) {
         if let Some(ani_ii_info) = ani_ii {
             cdr.ani_ii_ingress = Some(ani_ii_info.raw_digit);
             cdr.ani_ii_source = Some(ani_ii_info.source.to_string());
@@ -596,13 +634,19 @@ impl Class4B2BUA {
     }
 
     /// Add ANI-II information to outbound SIP INVITE headers
-    fn add_ani_ii_to_headers(&self, headers: &mut std::collections::HashMap<String, String>, ani_ii: Option<&crate::ani_ii::AniIIInfo>) {
+    fn add_ani_ii_to_headers(
+        &self,
+        headers: &mut std::collections::HashMap<String, String>,
+        ani_ii: Option<&crate::ani_ii::AniIIInfo>,
+    ) {
         if let Some(ani_ii_info) = ani_ii {
             // Add ANI-II to Remote-Party-ID header if it doesn't already exist
             if !headers.contains_key("Remote-Party-ID") {
                 // Create a basic Remote-Party-ID header with ANI-II
-                let remote_party_id = format!("<sip:anonymous@127.0.0.1>;party=calling;privacy=off;ani-ii={}", 
-                                             ani_ii_info.raw_digit);
+                let remote_party_id = format!(
+                    "<sip:anonymous@127.0.0.1>;party=calling;privacy=off;ani-ii={}",
+                    ani_ii_info.raw_digit
+                );
                 headers.insert("Remote-Party-ID".to_string(), remote_party_id);
             } else {
                 // Modify existing Remote-Party-ID to include ANI-II
@@ -615,12 +659,13 @@ impl Class4B2BUA {
 
             // Also add custom header for carriers that prefer this approach
             headers.insert("X-ANI-II".to_string(), ani_ii_info.raw_digit.to_string());
-            
+
             // Add P-Asserted-Identity if not present and we have calling number info
             if !headers.contains_key("P-Asserted-Identity") {
                 // This would typically use the actual calling number from the session
                 // For now, using a placeholder - in production would extract from session
-                let p_asserted = format!("<sip:calling@carrier.com>;ani-ii={}", ani_ii_info.raw_digit);
+                let p_asserted =
+                    format!("<sip:calling@carrier.com>;ani-ii={}", ani_ii_info.raw_digit);
                 headers.insert("P-Asserted-Identity".to_string(), p_asserted);
             }
         }
@@ -628,53 +673,75 @@ impl Class4B2BUA {
 
     /// Create outbound INVITE with ANI-II information for B-leg
     fn create_b_leg_invite_with_ani_ii(
-        &self, 
-        session: &CallSession, 
-        target_gateway: &str, 
-        ani_ii: Option<&crate::ani_ii::AniIIInfo>
+        &self,
+        session: &CallSession,
+        target_gateway: &str,
+        ani_ii: Option<&crate::ani_ii::AniIIInfo>,
     ) -> Result<String> {
         let mut headers = std::collections::HashMap::new();
-        
+
         // Basic SIP headers
-        headers.insert("Via".to_string(), format!("SIP/2.0/UDP {};branch=z9hG4bK{}", 
-                      self.config.bind_address, Uuid::new_v4()));
-        headers.insert("From".to_string(), format!("<sip:{}@{}>;tag={}", 
-                      session.cdr.ani, self.config.bind_address, session.a_leg.from_tag));
-        headers.insert("To".to_string(), format!("<sip:{}@{}>", session.cdr.dnis, target_gateway));
+        headers.insert(
+            "Via".to_string(),
+            format!(
+                "SIP/2.0/UDP {};branch=z9hG4bK{}",
+                self.config.bind_address,
+                Uuid::new_v4()
+            ),
+        );
+        headers.insert(
+            "From".to_string(),
+            format!(
+                "<sip:{}@{}>;tag={}",
+                session.cdr.ani, self.config.bind_address, session.a_leg.from_tag
+            ),
+        );
+        headers.insert(
+            "To".to_string(),
+            format!("<sip:{}@{}>", session.cdr.dnis, target_gateway),
+        );
         headers.insert("Call-ID".to_string(), session.a_leg.call_id.clone());
         headers.insert("CSeq".to_string(), "1 INVITE".to_string());
-        
+
         // Add ANI-II information to headers
         self.add_ani_ii_to_headers(&mut headers, ani_ii);
-        
+
         // Build the INVITE message
-        let mut invite = format!("INVITE sip:{}@{} SIP/2.0\r\n", session.cdr.dnis, target_gateway);
+        let mut invite = format!(
+            "INVITE sip:{}@{} SIP/2.0\r\n",
+            session.cdr.dnis, target_gateway
+        );
         for (name, value) in &headers {
             invite.push_str(&format!("{}: {}\r\n", name, value));
         }
         invite.push_str("Content-Length: 0\r\n\r\n");
-        
+
         Ok(invite)
     }
 
     /// Handle INVITE messages (call setup) - Updated for proper origination/termination logic
     async fn handle_invite(&self, sip_message: SipMessage, addr: SocketAddr) -> Result<()> {
         // Extract actual request line for proper RFC 3261 validation
-        let request_uri = sip_message.headers.get("Request-URI")
+        let request_uri = sip_message
+            .headers
+            .get("Request-URI")
             .cloned()
             .unwrap_or_else(|| "sip:unknown@unknown.com".to_string());
         let request_line = format!("INVITE {} SIP/2.0", request_uri);
-        
+
         // RFC 3261 compliance validation with actual request line
         if let Err(e) = crate::sip_rfc_compliance::Rfc3261Validator::validate_message(
             &sip_message.headers,
-            &request_line
+            &request_line,
         ) {
-            let call_id = sip_message.headers.get("Call-ID")
+            let call_id = sip_message
+                .headers
+                .get("Call-ID")
                 .cloned()
                 .unwrap_or_else(|| "invalid-call-id".to_string());
             warn!("RFC 3261 validation failed from {}: {}", addr, e);
-            self.send_sip_response(addr, &call_id, 400, "Bad Request", "").await?;
+            self.send_sip_response(addr, &call_id, 400, "Bad Request", "")
+                .await?;
             return Ok(());
         }
 
@@ -683,7 +750,10 @@ impl Class4B2BUA {
             .get("Call-ID")
             .ok_or_else(|| anyhow!("Missing Call-ID header"))?;
 
-        info!("Processing RFC 3261 compliant INVITE for call {} from {}", call_id, addr);
+        info!(
+            "Processing RFC 3261 compliant INVITE for call {} from {}",
+            call_id, addr
+        );
 
         // Check if this is a new call or retransmission
         if self.session_manager.session_exists(call_id).await {
@@ -695,67 +765,104 @@ impl Class4B2BUA {
         let traffic_type = match self.determine_traffic_type(&sip_message, addr.ip()) {
             Ok(traffic_type) => traffic_type,
             Err(e) => {
-                warn!("Failed to determine traffic type for call {}: {}", call_id, e);
-                self.send_sip_response(addr, call_id, 500, "Internal Server Error", "").await?;
+                warn!(
+                    "Failed to determine traffic type for call {}: {}",
+                    call_id, e
+                );
+                self.send_sip_response(addr, call_id, 500, "Internal Server Error", "")
+                    .await?;
                 return Ok(());
             }
         };
 
         // Send 100 Trying immediately
-        self.send_sip_response(addr, call_id, 100, "Trying", "").await?;
+        self.send_sip_response(addr, call_id, 100, "Trying", "")
+            .await?;
 
         // Process based on traffic type
         match traffic_type {
-            TrafficType::Origination { customer_dnis, calling_party, source_carrier_ip, ingress_trunk_id } => {
-                info!("ORIGINATION: {} calling DID {} from carrier {} (trunk {})", 
-                      calling_party, customer_dnis, source_carrier_ip, ingress_trunk_id);
-                self.process_origination_traffic(sip_message, addr, customer_dnis, calling_party, ingress_trunk_id).await
-            },
-            TrafficType::Termination { customer_ani, destination, customer_ip, ingress_trunk_id } => {
-                info!("TERMINATION: Customer {} calling {} via IP {} (trunk {})", 
-                      customer_ani, destination, customer_ip, ingress_trunk_id);
-                self.process_termination_traffic(sip_message, addr, customer_ani, destination, ingress_trunk_id).await
+            TrafficType::Origination {
+                customer_dnis,
+                calling_party,
+                source_carrier_ip,
+                ingress_trunk_id,
+            } => {
+                info!(
+                    "ORIGINATION: {} calling DID {} from carrier {} (trunk {})",
+                    calling_party, customer_dnis, source_carrier_ip, ingress_trunk_id
+                );
+                self.process_origination_traffic(
+                    sip_message,
+                    addr,
+                    customer_dnis,
+                    calling_party,
+                    ingress_trunk_id,
+                )
+                .await
+            }
+            TrafficType::Termination {
+                customer_ani,
+                destination,
+                customer_ip,
+                ingress_trunk_id,
+            } => {
+                info!(
+                    "TERMINATION: Customer {} calling {} via IP {} (trunk {})",
+                    customer_ani, destination, customer_ip, ingress_trunk_id
+                );
+                self.process_termination_traffic(
+                    sip_message,
+                    addr,
+                    customer_ani,
+                    destination,
+                    ingress_trunk_id,
+                )
+                .await
             }
         }
     }
-    
+
     /// Process origination traffic (DID/Toll-Free inbound from carrier to customer)
     async fn process_origination_traffic(
-        &self, 
-        sip_message: SipMessage, 
+        &self,
+        sip_message: SipMessage,
         addr: SocketAddr,
         customer_dnis: String,
         calling_party: String,
-        ingress_trunk_id: u32
+        ingress_trunk_id: u32,
     ) -> Result<()> {
         let call_id = sip_message.headers.get("Call-ID").unwrap();
-        
+
         // Parse ANI-II information from the SIP message using RFC-compliant parser
         let ani_ii = crate::ani_ii_rfc_compliant::RfcCompliantAniIIParser::parse_from_sip_message(
-            &sip_message.headers, 
-            None
+            &sip_message.headers,
+            None,
         );
         if let Some(ref ani_ii_info) = ani_ii {
-            info!("Origination call {} has ANI-II code {} ({})", 
-                  call_id, ani_ii_info.raw_digit, ani_ii_info.code.description());
+            info!(
+                "Origination call {} has ANI-II code {} ({})",
+                call_id,
+                ani_ii_info.raw_digit,
+                ani_ii_info.code.description()
+            );
         }
-        
+
         // Check if this is a toll-free call (need to check before blocking logic)
-        let is_toll_free = crate::ani_ii_rfc_compliant::RfcCompliantAniIIParser::is_toll_free(&customer_dnis);
-        
+        let is_toll_free =
+            crate::ani_ii_rfc_compliant::RfcCompliantAniIIParser::is_toll_free(&customer_dnis);
+
         // Check ANI-II blocking for toll-free calls
         if is_toll_free {
             if let Some(ref ani_ii_info) = ani_ii {
                 // First check trunk-level blocking
-                let trunk_blocking_result = self.check_trunk_ani_ii_blocking(
-                    ingress_trunk_id, 
-                    ani_ii_info.raw_digit
-                ).await;
-                
+                let trunk_blocking_result = self
+                    .check_trunk_ani_ii_blocking(ingress_trunk_id, ani_ii_info.raw_digit)
+                    .await;
+
                 if trunk_blocking_result.blocked {
                     warn!("Blocking toll-free origination call {} from ANI-II {} due to trunk policy: {}", 
                           call_id, ani_ii_info.raw_digit, trunk_blocking_result.reason);
-                    
+
                     // Create CDR for blocked call
                     let blocked_cdr = self.create_blocked_call_cdr(
                         &calling_party,
@@ -764,49 +871,53 @@ impl Class4B2BUA {
                         Some(ani_ii_info.raw_digit),
                         &trunk_blocking_result.reason,
                     );
-                    
+
                     // Publish CDR for blocked call analytics
                     let generator = self.cdr_generator.clone();
                     tokio::spawn(async move {
                         generator.generate_cdr(blocked_cdr).await;
                     });
-                    
+
                     self.send_sip_response(
-                        addr, 
-                        call_id, 
-                        trunk_blocking_result.response_code.unwrap_or(403), 
+                        addr,
+                        call_id,
+                        trunk_blocking_result.response_code.unwrap_or(403),
                         &trunk_blocking_result.reason,
-                        ""
-                    ).await?;
+                        "",
+                    )
+                    .await?;
                     return Ok(());
                 }
             }
         }
-        
+
         // Find the customer who owns this DID
         let customer_route = self.find_customer_for_dnis(&customer_dnis).await?;
-        
+
         if customer_route.is_none() {
             warn!("No customer found for DID {}", customer_dnis);
-            self.send_sip_response(addr, call_id, 404, "Number Not Found", "").await?;
+            self.send_sip_response(addr, call_id, 404, "Number Not Found", "")
+                .await?;
             return Ok(());
         }
-        
+
         let customer_info = customer_route.unwrap();
-        
+
         // Check DID-level ANI-II blocking for toll-free calls (overrides trunk-level config)
         if is_toll_free {
             if let Some(ref ani_ii_info) = ani_ii {
-                let did_blocking_result = self.check_did_ani_ii_blocking(
-                    &customer_info, 
-                    &customer_dnis,
-                    ani_ii_info.raw_digit
-                ).await;
-                
+                let did_blocking_result = self
+                    .check_did_ani_ii_blocking(
+                        &customer_info,
+                        &customer_dnis,
+                        ani_ii_info.raw_digit,
+                    )
+                    .await;
+
                 if did_blocking_result.blocked {
                     warn!("Blocking toll-free origination call {} from ANI-II {} due to DID policy: {}", 
                           call_id, ani_ii_info.raw_digit, did_blocking_result.reason);
-                    
+
                     // Create CDR for blocked call
                     let blocked_cdr = self.create_blocked_call_cdr(
                         &calling_party,
@@ -815,48 +926,53 @@ impl Class4B2BUA {
                         Some(ani_ii_info.raw_digit),
                         &did_blocking_result.reason,
                     );
-                    
+
                     // Publish CDR for blocked call analytics
                     let generator = self.cdr_generator.clone();
                     tokio::spawn(async move {
                         generator.generate_cdr(blocked_cdr).await;
                     });
-                    
+
                     self.send_sip_response(
-                        addr, 
-                        call_id, 
-                        did_blocking_result.response_code.unwrap_or(403), 
+                        addr,
+                        call_id,
+                        did_blocking_result.response_code.unwrap_or(403),
                         &did_blocking_result.reason,
-                        ""
-                    ).await?;
+                        "",
+                    )
+                    .await?;
                     return Ok(());
                 }
             }
         }
-        
+
         // Calculate payphone surcharge for approved calls using RFC-compliant parser
-        let (surcharge_applies, surcharge_amount, surcharge_reason) = 
+        let (surcharge_applies, surcharge_amount, surcharge_reason) =
             crate::ani_ii_rfc_compliant::RfcCompliantAniIIParser::calculate_surcharge(
                 ani_ii.as_ref(),
                 is_toll_free,
-                None // TODO: Add trunk-specific config
+                None, // TODO: Add trunk-specific config
             );
-        
+
         if surcharge_applies {
-            info!("Payphone surcharge of ${:.2} applies for call {} ({})", 
-                  surcharge_amount, call_id, surcharge_reason);
+            info!(
+                "Payphone surcharge of ${:.2} applies for call {} ({})",
+                surcharge_amount, call_id, surcharge_reason
+            );
         }
-        
+
         // Create origination session
-        let mut session = self.create_origination_session(
-            &sip_message, 
-            addr, 
-            calling_party.clone(), 
-            customer_dnis.clone(),
-            ingress_trunk_id,
-            customer_info
-        ).await?;
-        
+        let mut session = self
+            .create_origination_session(
+                &sip_message,
+                addr,
+                calling_party.clone(),
+                customer_dnis.clone(),
+                ingress_trunk_id,
+                customer_info,
+            )
+            .await?;
+
         // Update CDR with RFC-compliant ANI-II information and surcharge details
         if let Some(ref ani_ii_info) = ani_ii {
             session.cdr.ani_ii_ingress = Some(ani_ii_info.raw_digit);
@@ -867,32 +983,36 @@ impl Class4B2BUA {
                 session.cdr.payphone_surcharge_reason = Some(surcharge_reason.clone());
             }
         }
-        
+
         // Store session
         self.session_manager.add_session(session.clone()).await;
-        
+
         // Route directly to customer (no LCR needed for origination)
         self.deliver_to_customer(session).await
     }
-    
+
     /// Process termination traffic (customer outbound to carrier)
     async fn process_termination_traffic(
         &self,
         sip_message: SipMessage,
-        addr: SocketAddr, 
+        addr: SocketAddr,
         customer_ani: String,
         destination: String,
-        ingress_trunk_id: u32
+        ingress_trunk_id: u32,
     ) -> Result<()> {
         let call_id = sip_message.headers.get("Call-ID").unwrap();
-        
+
         // Parse ANI-II information from the SIP message (if present from customer)
         let ani_ii = self.parse_ani_ii_from_sip_message(&sip_message, "");
         if let Some(ref ani_ii_info) = ani_ii {
-            info!("Termination call {} has ANI-II code {} ({})", 
-                  call_id, ani_ii_info.raw_digit, ani_ii_info.code.description());
+            info!(
+                "Termination call {} has ANI-II code {} ({})",
+                call_id,
+                ani_ii_info.raw_digit,
+                ani_ii_info.code.description()
+            );
         }
-        
+
         // Validate customer permissions
         let origination_request = OriginationRequest {
             ani: customer_ani.clone(),
@@ -903,50 +1023,61 @@ impl Class4B2BUA {
             route_type: RouteType::NANPA,
             timestamp: Utc::now(),
         };
-        
+
         let origination_result = {
             let mut engine = self.origination_engine.lock().await;
             engine.route_origination(origination_request).await?
         };
-        
+
         if !origination_result.allowed {
-            info!("Customer {} not allowed to call {}: {}", 
-                  customer_ani, destination, origination_result.reason);
-            self.send_sip_response(addr, call_id, 403, "Forbidden", &origination_result.reason).await?;
+            info!(
+                "Customer {} not allowed to call {}: {}",
+                customer_ani, destination, origination_result.reason
+            );
+            self.send_sip_response(addr, call_id, 403, "Forbidden", &origination_result.reason)
+                .await?;
             return Ok(());
         }
-        
+
         // Check if this is a toll-free call (less likely for termination, but possible)
         let is_toll_free = crate::ani_ii::toll_free::is_toll_free(&destination);
-        let (surcharge_applies, surcharge_amount, surcharge_reason) = 
+        let (surcharge_applies, surcharge_amount, surcharge_reason) =
             crate::ani_ii_rfc_compliant::RfcCompliantAniIIParser::calculate_surcharge(
                 ani_ii.as_ref(),
                 is_toll_free,
                 None, // TODO: Use trunk-specific config
             );
-        
+
         // Create termination session
-        let session = self.create_termination_session(
-            &sip_message, 
-            addr, 
-            customer_ani, 
-            destination,
-            ingress_trunk_id
-        ).await?;
-        
+        let session = self
+            .create_termination_session(
+                &sip_message,
+                addr,
+                customer_ani,
+                destination,
+                ingress_trunk_id,
+            )
+            .await?;
+
         // Log ANI-II information (TODO: add to CDR when fields are available)
         if let Some(ani_ii_info) = &ani_ii {
-            debug!("ANI-II information: code={}, source={}, is_payphone={}, restricted={}", 
-                   ani_ii_info.raw_digit, ani_ii_info.source, 
-                   ani_ii_info.is_payphone, ani_ii_info.restricted);
-            debug!("Payphone surcharge: applies={}, amount=${}, reason={}", 
-                   surcharge_applies, surcharge_amount, surcharge_reason);
+            debug!(
+                "ANI-II information: code={}, source={}, is_payphone={}, restricted={}",
+                ani_ii_info.raw_digit,
+                ani_ii_info.source,
+                ani_ii_info.is_payphone,
+                ani_ii_info.restricted
+            );
+            debug!(
+                "Payphone surcharge: applies={}, amount=${}, reason={}",
+                surcharge_applies, surcharge_amount, surcharge_reason
+            );
             // TODO: Add ANI-II fields to CallDetailRecord struct
         }
-        
+
         // Store session
         self.session_manager.add_session(session.clone()).await;
-        
+
         // Find best route using LCR for termination
         self.begin_termination_routing(session).await
     }
@@ -959,13 +1090,19 @@ impl Class4B2BUA {
         // Perform early codec validation before routing - FIX: Move codec negotiation earlier
         let a_leg_codecs = &session.codec_negotiation.a_leg_codecs;
         if a_leg_codecs.is_empty() {
-            warn!("No codecs available from A-leg for call {}", session.session_id);
+            warn!(
+                "No codecs available from A-leg for call {}",
+                session.session_id
+            );
             self.terminate_session(&session.session_id, 488, "No acceptable codec")
                 .await?;
             return Ok(());
         }
-        
-        debug!("A-leg codecs for call {}: {:?}", session.session_id, a_leg_codecs);
+
+        debug!(
+            "A-leg codecs for call {}: {:?}",
+            session.session_id, a_leg_codecs
+        );
 
         let route_request = RouteRequest {
             ani: session.cdr.ani.clone(),
@@ -1053,9 +1190,9 @@ impl Class4B2BUA {
         session.cdr.egress_ip = Some(route.egress_trunk.host.parse()?);
         session.cdr.egress_trunk_id = Some(route.egress_trunk.id as u32);
         session.cdr.egress_trunk_name = Some(route.egress_trunk.name.clone());
-        
+
         self.session_manager.update_session(session.clone()).await;
-        
+
         // Add B-leg call ID mapping
         {
             let mut mapping = self.session_manager.call_id_mapping.write().await;
@@ -1094,7 +1231,11 @@ impl Class4B2BUA {
         );
 
         // Fix race condition: properly handle Optional session
-        let session = match self.session_manager.get_session_by_any_call_id(call_id).await {
+        let session = match self
+            .session_manager
+            .get_session_by_any_call_id(call_id)
+            .await
+        {
             Some(session) => session,
             None => {
                 debug!("Received response for unknown call: {}", call_id);
@@ -1103,9 +1244,18 @@ impl Class4B2BUA {
         };
 
         match response_code {
-            100..=199 => self.handle_provisional_response(session, response_code, &sip_message).await,
-            200..=299 => self.handle_success_response(session, response_code, &sip_message).await,
-            300..=699 => self.handle_error_response(session, response_code, &sip_message).await,
+            100..=199 => {
+                self.handle_provisional_response(session, response_code, &sip_message)
+                    .await
+            }
+            200..=299 => {
+                self.handle_success_response(session, response_code, &sip_message)
+                    .await
+            }
+            300..=699 => {
+                self.handle_error_response(session, response_code, &sip_message)
+                    .await
+            }
             _ => {
                 warn!("Unexpected response code {}: ignoring", response_code);
                 Ok(())
@@ -1152,9 +1302,10 @@ impl Class4B2BUA {
             match self.negotiate_codecs(&mut session, message).await {
                 Ok(_) => {
                     // Codec negotiation successful
-                    session.cdr.codec_negotiated = session.codec_negotiation.negotiated_codec.clone();
+                    session.cdr.codec_negotiated =
+                        session.codec_negotiation.negotiated_codec.clone();
                     session.cdr.transcoding_used = session.codec_negotiation.transcoding_required;
-                    
+
                     self.session_manager.update_session(session.clone()).await;
 
                     // Forward 200 OK to A-leg
@@ -1165,26 +1316,37 @@ impl Class4B2BUA {
                         self.send_sip_message(a_leg_addr, &forwarded_response)
                             .await?;
                     }
-                },
+                }
                 Err(e) => {
                     // Codec negotiation failed - trigger route advancement with cleanup
-                    warn!("Codec negotiation failed, attempting route advancement: {}", e);
-                    
+                    warn!(
+                        "Codec negotiation failed, attempting route advancement: {}",
+                        e
+                    );
+
                     // Clean up current B-leg connection before advancing
                     if let Some(ref b_leg) = session.b_leg {
-                        info!("Sending BYE to current B-leg {} before route advancement", b_leg.call_id);
+                        info!(
+                            "Sending BYE to current B-leg {} before route advancement",
+                            b_leg.call_id
+                        );
                         let bye_message = self.create_bye_message(&session, true).await?;
-                        if let Err(bye_err) = self.send_sip_message(b_leg.remote_addr, &bye_message).await {
-                            warn!("Failed to send BYE to B-leg during route advancement: {}", bye_err);
+                        if let Err(bye_err) =
+                            self.send_sip_message(b_leg.remote_addr, &bye_message).await
+                        {
+                            warn!(
+                                "Failed to send BYE to B-leg during route advancement: {}",
+                                bye_err
+                            );
                         }
-                        
+
                         // Remove B-leg call ID mapping
                         {
                             let mut mapping = self.session_manager.call_id_mapping.write().await;
                             mapping.remove(&b_leg.call_id);
                         }
                     }
-                    
+
                     // Check if we should attempt route advancement
                     let advancement_result = {
                         let mut route_advancement = self.route_advancement.lock().await;
@@ -1195,7 +1357,10 @@ impl Class4B2BUA {
 
                     match advancement_result.action {
                         crate::route_advancement::AdvancementAction::RouteToNext => {
-                            info!("Advancing to next route for call {} due to codec mismatch", session.session_id);
+                            info!(
+                                "Advancing to next route for call {} due to codec mismatch",
+                                session.session_id
+                            );
 
                             if let Some(new_route) = advancement_result.new_route {
                                 // Reset session state for new attempt
@@ -1203,17 +1368,25 @@ impl Class4B2BUA {
                                 clean_session.b_leg = None; // Clear previous B-leg
                                 clean_session.cdr.b_leg_call_id = None;
                                 clean_session.state = SessionState::Routing;
-                                
+
                                 self.attempt_termination(clean_session, new_route).await?;
                             } else {
-                                self.terminate_session(&session.session_id, 488, "No compatible codec on B leg")
-                                    .await?;
+                                self.terminate_session(
+                                    &session.session_id,
+                                    488,
+                                    "No compatible codec on B leg",
+                                )
+                                .await?;
                             }
                         }
                         _ => {
                             // No more routes available
-                            self.terminate_session(&session.session_id, 488, "No compatible codec on B leg")
-                                .await?;
+                            self.terminate_session(
+                                &session.session_id,
+                                488,
+                                "No compatible codec on B leg",
+                            )
+                            .await?;
                         }
                     }
                 }
@@ -1294,7 +1467,11 @@ impl Class4B2BUA {
 
         debug!("Processing ACK for call {} from {}", call_id, addr);
 
-        let session = match self.session_manager.get_session_by_any_call_id(call_id).await {
+        let session = match self
+            .session_manager
+            .get_session_by_any_call_id(call_id)
+            .await
+        {
             Some(session) => session,
             None => {
                 debug!("Received ACK for unknown call: {}", call_id);
@@ -1304,21 +1481,36 @@ impl Class4B2BUA {
 
         // Determine which leg sent the ACK and forward to the other leg
         let is_from_a_leg = session.a_leg.remote_addr == addr;
-        
+
         if is_from_a_leg {
             // ACK from A-leg, forward to B-leg
             if let Some(ref b_leg) = session.b_leg {
-                let forwarded_ack = self.create_forwarded_ack(&session, &sip_message, true).await?;
-                self.send_sip_message(b_leg.remote_addr, &forwarded_ack).await?;
-                debug!("Forwarded ACK from A-leg to B-leg for call {}", session.session_id);
+                let forwarded_ack = self
+                    .create_forwarded_ack(&session, &sip_message, true)
+                    .await?;
+                self.send_sip_message(b_leg.remote_addr, &forwarded_ack)
+                    .await?;
+                debug!(
+                    "Forwarded ACK from A-leg to B-leg for call {}",
+                    session.session_id
+                );
             } else {
-                warn!("Received ACK from A-leg but no B-leg exists for call {}", session.session_id);
+                warn!(
+                    "Received ACK from A-leg but no B-leg exists for call {}",
+                    session.session_id
+                );
             }
         } else {
             // ACK from B-leg, forward to A-leg
-            let forwarded_ack = self.create_forwarded_ack(&session, &sip_message, false).await?;
-            self.send_sip_message(session.a_leg.remote_addr, &forwarded_ack).await?;
-            debug!("Forwarded ACK from B-leg to A-leg for call {}", session.session_id);
+            let forwarded_ack = self
+                .create_forwarded_ack(&session, &sip_message, false)
+                .await?;
+            self.send_sip_message(session.a_leg.remote_addr, &forwarded_ack)
+                .await?;
+            debug!(
+                "Forwarded ACK from B-leg to A-leg for call {}",
+                session.session_id
+            );
         }
 
         // Update call state to connected if both legs are established
@@ -1378,7 +1570,10 @@ impl Class4B2BUA {
                             .num_seconds() as u64,
                     );
                 } else {
-                    warn!("End time not set for session {}, using current time", session_id);
+                    warn!(
+                        "End time not set for session {}, using current time",
+                        session_id
+                    );
                     let now = Utc::now();
                     session.cdr.duration_seconds = Some(
                         now.signed_duration_since(answer_time)
@@ -1390,8 +1585,11 @@ impl Class4B2BUA {
 
             // Calculate final costs before sending CDR
             let ingress_trunk = self.find_trunk_by_id(session.cdr.ingress_trunk_id);
-            let egress_trunk = session.cdr.egress_trunk_id.and_then(|id| self.find_trunk_by_id(id));
-            
+            let egress_trunk = session
+                .cdr
+                .egress_trunk_id
+                .and_then(|id| self.find_trunk_by_id(id));
+
             if let Some(ingress_trunk) = ingress_trunk {
                 session.cdr.apply_rate_overrides(ingress_trunk, true);
                 if let Some(egress_trunk) = egress_trunk {
@@ -1399,7 +1597,7 @@ impl Class4B2BUA {
                 }
                 session.cdr.calculate_costs(ingress_trunk, egress_trunk);
             }
-            
+
             // Send CDR with calculated costs
             if self.config.enable_cdr_generation {
                 self.cdr_generator.generate_cdr(session.cdr.clone()).await;
@@ -1417,21 +1615,26 @@ impl Class4B2BUA {
     }
 
     // Helper methods for SIP message processing
-    
+
     /// Determine traffic type based on called number and source IP
-    fn determine_traffic_type(&self, sip_message: &SipMessage, source_ip: IpAddr) -> Result<TrafficType> {
+    fn determine_traffic_type(
+        &self,
+        sip_message: &SipMessage,
+        source_ip: IpAddr,
+    ) -> Result<TrafficType> {
         let called_number = self.extract_called_number(sip_message)?;
         let calling_number = self.extract_calling_number(sip_message)?;
-        
+
         // Find the ingress trunk based on source IP
-        let ingress_trunk = self.trunk_configs
+        let ingress_trunk = self
+            .trunk_configs
             .iter()
             .find(|trunk| trunk.ip_addresses.contains(&source_ip))
             .ok_or_else(|| anyhow!("No trunk found for source IP: {}", source_ip))?;
-        
+
         // Check if DNIS belongs to our customers (origination traffic)
         let is_our_dnis = self.is_our_customer_dnis(&called_number, ingress_trunk);
-        
+
         if is_our_dnis {
             // Someone calling our customer's number = ORIGINATION traffic
             Ok(TrafficType::Origination {
@@ -1450,7 +1653,7 @@ impl Class4B2BUA {
             })
         }
     }
-    
+
     /// Check if a DNIS belongs to our customers
     fn is_our_customer_dnis(&self, dnis: &str, trunk: &TrunkRateConfig) -> bool {
         // Check trunk-specific number blocks first
@@ -1459,11 +1662,11 @@ impl Class4B2BUA {
                 return true;
             }
         }
-        
+
         // Check global number blocks from config if available
         false // TODO: Add global number block checking
     }
-    
+
     /// Match number against pattern (supports wildcards)
     fn matches_number_pattern(&self, number: &str, pattern: &str) -> bool {
         if pattern.contains('*') {
@@ -1475,21 +1678,21 @@ impl Class4B2BUA {
             number == pattern
         }
     }
-    
+
     /// Find trunk configuration by IP address
     fn find_trunk_by_ip(&self, ip: IpAddr) -> Option<&TrunkRateConfig> {
         self.trunk_configs
             .iter()
             .find(|trunk| trunk.ip_addresses.contains(&ip))
     }
-    
+
     /// Validate SIP message has required headers
     fn validate_sip_message(&self, sip_message: &SipMessage) -> bool {
         // All SIP messages must have Call-ID
         if !sip_message.headers.contains_key("Call-ID") {
             return false;
         }
-        
+
         // Requests must have Via, From, To, CSeq
         if sip_message.method.is_some() {
             let required_headers = ["Via", "From", "To", "CSeq"];
@@ -1499,7 +1702,7 @@ impl Class4B2BUA {
                 }
             }
         }
-        
+
         // Responses must have Via, From, To, CSeq and status code
         if sip_message.method.is_none() {
             if sip_message.status_code.is_none() {
@@ -1512,23 +1715,23 @@ impl Class4B2BUA {
                 }
             }
         }
-        
+
         true
     }
-    
+
     /// Handle OPTIONS messages (for health checks and capability discovery)
     async fn handle_options(&self, sip_message: SipMessage, addr: SocketAddr) -> Result<()> {
         let call_id = sip_message
             .headers
             .get("Call-ID")
             .ok_or_else(|| anyhow!("Missing Call-ID header in OPTIONS"))?;
-        
+
         debug!("Processing OPTIONS request from {}", addr);
-        
+
         // Respond with 200 OK and our capabilities
         let allow_methods = "INVITE,ACK,BYE,CANCEL,OPTIONS";
         let supported_codecs = "PCMU,PCMA,G729,G722";
-        
+
         let options_response = format!(
             "SIP/2.0 200 OK\r\nVia: {}\r\nFrom: {}\r\nTo: {}\r\nCall-ID: {}\r\nCSeq: {}\r\nAllow: {}\r\nSupported: {}\r\nContent-Length: 0\r\n\r\n",
             sip_message.headers.get("Via").unwrap_or(&String::new()),
@@ -1539,7 +1742,7 @@ impl Class4B2BUA {
             allow_methods,
             supported_codecs
         );
-        
+
         self.send_sip_message(addr, &options_response).await?;
         Ok(())
     }
@@ -1599,8 +1802,11 @@ impl Class4B2BUA {
         called: String,
     ) -> Result<CallSession> {
         let session_id = Uuid::new_v4().to_string();
-        let call_id = sip_message.headers.get("Call-ID")
-            .ok_or_else(|| anyhow!("Missing Call-ID header"))?.clone();
+        let call_id = sip_message
+            .headers
+            .get("Call-ID")
+            .ok_or_else(|| anyhow!("Missing Call-ID header"))?
+            .clone();
         let from_tag = self.extract_tag(&sip_message.headers, "From")?;
 
         let a_leg = CallLeg {
@@ -1620,17 +1826,17 @@ impl Class4B2BUA {
             session_id: session_id.clone(),
             a_leg_call_id: call_id,
             b_leg_call_id: None,
-            
+
             // Call parties
             ani: calling.clone(),
             dnis: called.clone(),
-            
+
             // Timing
             start_time: Utc::now(),
             answer_time: None,
             end_time: None,
             duration_seconds: None,
-            
+
             // Ingress leg (will be determined by call direction logic)
             ingress_trunk_id: 0, // TODO: Extract from trunk mapping
             ingress_trunk_name: "Unknown".to_string(),
@@ -1638,7 +1844,7 @@ impl Class4B2BUA {
             ingress_rate_per_minute: 0.0,
             ingress_cost: 0.0,
             ingress_revenue: None,
-            
+
             // Egress leg (will be set during routing)
             egress_trunk_id: None,
             egress_trunk_name: None,
@@ -1646,13 +1852,13 @@ impl Class4B2BUA {
             egress_rate_per_minute: 0.0,
             egress_cost: 0.0,
             egress_revenue: None,
-            
+
             // Net calculation (will be calculated at end)
             total_cost: 0.0,
             total_revenue: 0.0,
             net_margin: 0.0,
             profit_margin_percent: 0.0,
-            
+
             // Technical details
             codec_negotiated: None,
             transcoding_used: false,
@@ -1660,12 +1866,12 @@ impl Class4B2BUA {
             termination_reason: None,
             route_attempts: 0,
             final_route: None,
-            
+
             // ANI-II (Automatic Number Identification Information Indicator) details
-            ani_ii_ingress: None,           // Will be parsed from SIP headers
-            ani_ii_egress: None,            // Will be set during egress routing
-            ani_ii_source: None,            // Will be set when ANI-II is found
-            
+            ani_ii_ingress: None, // Will be parsed from SIP headers
+            ani_ii_egress: None,  // Will be set during egress routing
+            ani_ii_source: None,  // Will be set when ANI-II is found
+
             // Payphone surcharge information (for toll-free calls)
             is_toll_free: crate::ani_ii::toll_free::is_toll_free(&called),
             payphone_surcharge_amount: None, // Will be calculated if ANI-II indicates payphone
@@ -1693,16 +1899,19 @@ impl Class4B2BUA {
     }
 
     // Additional helper methods for origination/termination processing
-    
+
     /// Find customer information for a DID (origination traffic)
     async fn find_customer_for_dnis(&self, dnis: &str) -> Result<Option<CustomerInfo>> {
         // TODO: Implement customer lookup based on DID assignment
         // This would typically query a database of DID assignments
-        
+
         // For now, return a mock customer for any DID that matches our patterns
-        if self.trunk_configs.iter().any(|trunk| 
-            trunk.our_number_blocks.iter().any(|pattern| 
-                self.matches_number_pattern(dnis, pattern))) {
+        if self.trunk_configs.iter().any(|trunk| {
+            trunk
+                .our_number_blocks
+                .iter()
+                .any(|pattern| self.matches_number_pattern(dnis, pattern))
+        }) {
             Ok(Some(CustomerInfo {
                 customer_id: "MOCK_CUSTOMER".to_string(),
                 sip_endpoint: "192.168.1.100:5060".parse()?,
@@ -1713,7 +1922,7 @@ impl Class4B2BUA {
             Ok(None)
         }
     }
-    
+
     /// Create session for origination traffic
     async fn create_origination_session(
         &self,
@@ -1725,11 +1934,15 @@ impl Class4B2BUA {
         customer_info: CustomerInfo,
     ) -> Result<CallSession> {
         let session_id = Uuid::new_v4().to_string();
-        let call_id = sip_message.headers.get("Call-ID")
-            .ok_or_else(|| anyhow!("Missing Call-ID header"))?.clone();
+        let call_id = sip_message
+            .headers
+            .get("Call-ID")
+            .ok_or_else(|| anyhow!("Missing Call-ID header"))?
+            .clone();
         let from_tag = self.extract_tag(&sip_message.headers, "From")?;
-        
-        let ingress_trunk = self.find_trunk_by_id(ingress_trunk_id)
+
+        let ingress_trunk = self
+            .find_trunk_by_id(ingress_trunk_id)
             .ok_or_else(|| anyhow!("Trunk {} not found", ingress_trunk_id))?;
 
         let a_leg = CallLeg {
@@ -1749,17 +1962,17 @@ impl Class4B2BUA {
             session_id: session_id.clone(),
             a_leg_call_id: call_id,
             b_leg_call_id: None,
-            
+
             // Call parties
             ani: calling_party,
             dnis: customer_dnis.clone(),
-            
+
             // Timing
             start_time: Utc::now(),
             answer_time: None,
             end_time: None,
             duration_seconds: None,
-            
+
             // Ingress leg (from carrier - WE PAY THEM for origination)
             ingress_trunk_id,
             ingress_trunk_name: ingress_trunk.trunk_name.clone(),
@@ -1767,21 +1980,21 @@ impl Class4B2BUA {
             ingress_rate_per_minute: ingress_trunk.default_rate_per_minute,
             ingress_cost: 0.0, // Will be calculated at end (positive = we pay carrier)
             ingress_revenue: None, // No revenue from ingress on origination
-            
+
             // Egress leg (to customer - WE BILL THEM for DID service)
             egress_trunk_id: None, // Customer endpoint, not a trunk
             egress_trunk_name: Some(format!("Customer_{}", customer_info.customer_id)),
             egress_ip: Some(customer_info.sip_endpoint.ip()),
             egress_rate_per_minute: 0.10, // TODO: Get customer's DID rate from config ($0.10/min example)
-            egress_cost: 0.0, // No cost to deliver to customer
-            egress_revenue: Some(0.0), // Will be calculated - we bill customer for DID
-            
+            egress_cost: 0.0,             // No cost to deliver to customer
+            egress_revenue: Some(0.0),    // Will be calculated - we bill customer for DID
+
             // Net calculation (will be calculated at end)
             total_cost: 0.0,
             total_revenue: 0.0,
             net_margin: 0.0,
             profit_margin_percent: 0.0,
-            
+
             // Technical details
             codec_negotiated: None,
             transcoding_used: false,
@@ -1789,18 +2002,18 @@ impl Class4B2BUA {
             termination_reason: None,
             route_attempts: 0,
             final_route: Some(customer_info.customer_id.clone()),
-            
+
             // ANI-II (Automatic Number Identification Information Indicator) details
-            ani_ii_ingress: None,           // Will be parsed from SIP headers
-            ani_ii_egress: None,            // Will be set during egress routing
-            ani_ii_source: None,            // Will be set when ANI-II is found
-            
+            ani_ii_ingress: None, // Will be parsed from SIP headers
+            ani_ii_egress: None,  // Will be set during egress routing
+            ani_ii_source: None,  // Will be set when ANI-II is found
+
             // Payphone surcharge information (for toll-free calls)
             is_toll_free: crate::ani_ii::toll_free::is_toll_free(&customer_dnis),
             payphone_surcharge_amount: None, // Will be calculated if ANI-II indicates payphone
             payphone_surcharge_reason: None, // Will be set if surcharge applies
         };
-        
+
         // Set revenue flag for ingress if it's a revenue trunk
         if ingress_trunk.is_revenue_trunk {
             cdr.ingress_revenue = Some(0.0); // Will be calculated at end
@@ -1825,7 +2038,7 @@ impl Class4B2BUA {
             cdr,
         })
     }
-    
+
     /// Create session for termination traffic
     async fn create_termination_session(
         &self,
@@ -1836,11 +2049,15 @@ impl Class4B2BUA {
         ingress_trunk_id: u32,
     ) -> Result<CallSession> {
         let session_id = Uuid::new_v4().to_string();
-        let call_id = sip_message.headers.get("Call-ID")
-            .ok_or_else(|| anyhow!("Missing Call-ID header"))?.clone();
+        let call_id = sip_message
+            .headers
+            .get("Call-ID")
+            .ok_or_else(|| anyhow!("Missing Call-ID header"))?
+            .clone();
         let from_tag = self.extract_tag(&sip_message.headers, "From")?;
-        
-        let ingress_trunk = self.find_trunk_by_id(ingress_trunk_id)
+
+        let ingress_trunk = self
+            .find_trunk_by_id(ingress_trunk_id)
             .ok_or_else(|| anyhow!("Trunk {} not found", ingress_trunk_id))?;
 
         let a_leg = CallLeg {
@@ -1860,17 +2077,17 @@ impl Class4B2BUA {
             session_id: session_id.clone(),
             a_leg_call_id: call_id,
             b_leg_call_id: None,
-            
+
             // Call parties
             ani: customer_ani,
             dnis: destination.clone(),
-            
+
             // Timing
             start_time: Utc::now(),
             answer_time: None,
             end_time: None,
             duration_seconds: None,
-            
+
             // Ingress leg (from customer - WE BILL THEM for outbound service)
             ingress_trunk_id,
             ingress_trunk_name: ingress_trunk.trunk_name.clone(),
@@ -1878,7 +2095,7 @@ impl Class4B2BUA {
             ingress_rate_per_minute: ingress_trunk.default_rate_per_minute,
             ingress_cost: 0.0, // No cost from customer (negative cost = revenue)
             ingress_revenue: Some(0.0), // Will be calculated - we bill customer for outbound
-            
+
             // Egress leg (to carrier - we pay them, will be set during routing)
             egress_trunk_id: None,
             egress_trunk_name: None,
@@ -1886,13 +2103,13 @@ impl Class4B2BUA {
             egress_rate_per_minute: 0.0,
             egress_cost: 0.0,
             egress_revenue: None,
-            
+
             // Net calculation (will be calculated at end)
             total_cost: 0.0,
             total_revenue: 0.0,
             net_margin: 0.0,
             profit_margin_percent: 0.0,
-            
+
             // Technical details
             codec_negotiated: None,
             transcoding_used: false,
@@ -1900,12 +2117,12 @@ impl Class4B2BUA {
             termination_reason: None,
             route_attempts: 0,
             final_route: None,
-            
+
             // ANI-II (Automatic Number Identification Information Indicator) details
-            ani_ii_ingress: None,           // Will be parsed from SIP headers
-            ani_ii_egress: None,            // Will be set during egress routing
-            ani_ii_source: None,            // Will be set when ANI-II is found
-            
+            ani_ii_ingress: None, // Will be parsed from SIP headers
+            ani_ii_egress: None,  // Will be set during egress routing
+            ani_ii_source: None,  // Will be set when ANI-II is found
+
             // Payphone surcharge information (for toll-free calls)
             is_toll_free: crate::ani_ii::toll_free::is_toll_free(&destination),
             payphone_surcharge_amount: None, // Will be calculated if ANI-II indicates payphone
@@ -1931,20 +2148,25 @@ impl Class4B2BUA {
             cdr,
         })
     }
-    
+
     /// Deliver call to customer (origination traffic)
     async fn deliver_to_customer(&self, session: CallSession) -> Result<()> {
-        info!("Delivering origination call {} to customer", session.session_id);
-        
+        info!(
+            "Delivering origination call {} to customer",
+            session.session_id
+        );
+
         // TODO: Implement direct delivery to customer SIP endpoint
         // This would create B-leg directly to customer without LCR
-        
+
         Ok(())
     }
-    
+
     /// Find trunk by ID
     fn find_trunk_by_id(&self, trunk_id: u32) -> Option<&TrunkRateConfig> {
-        self.trunk_configs.iter().find(|trunk| trunk.trunk_id == trunk_id)
+        self.trunk_configs
+            .iter()
+            .find(|trunk| trunk.trunk_id == trunk_id)
     }
 
     fn extract_calling_number(&self, sip_message: &SipMessage) -> Result<String> {
@@ -1956,20 +2178,26 @@ impl Class4B2BUA {
                 if let Some(at_pos) = after_sip.find('@') {
                     let number = &after_sip[..at_pos];
                     // Basic validation - should be numeric for NANPA numbers
-                    if number.chars().all(|c| c.is_ascii_digit() || c == '+') && !number.is_empty() {
+                    if number.chars().all(|c| c.is_ascii_digit() || c == '+') && !number.is_empty()
+                    {
                         return Ok(number.to_string());
                     }
                 }
             }
-            
+
             // Also try tel: URI format
             if let Some(start) = from.find("tel:") {
                 let after_tel = &from[start + 4..];
                 // Extract until semicolon or angle bracket
-                let end_pos = after_tel.find(';').unwrap_or_else(|| 
-                    after_tel.find('>').unwrap_or(after_tel.len()));
+                let end_pos = after_tel
+                    .find(';')
+                    .unwrap_or_else(|| after_tel.find('>').unwrap_or(after_tel.len()));
                 let number = &after_tel[..end_pos];
-                if number.chars().all(|c| c.is_ascii_digit() || c == '+' || c == '-') && !number.is_empty() {
+                if number
+                    .chars()
+                    .all(|c| c.is_ascii_digit() || c == '+' || c == '-')
+                    && !number.is_empty()
+                {
                     // Remove dashes and return clean number
                     return Ok(number.replace('-', ""));
                 }
@@ -1986,13 +2214,14 @@ impl Class4B2BUA {
                 if let Some(at_pos) = after_sip.find('@') {
                     let number = &after_sip[..at_pos];
                     // Basic validation - should be numeric for NANPA numbers
-                    if number.chars().all(|c| c.is_ascii_digit() || c == '+') && !number.is_empty() {
+                    if number.chars().all(|c| c.is_ascii_digit() || c == '+') && !number.is_empty()
+                    {
                         return Ok(number.to_string());
                     }
                 }
             }
         }
-        
+
         // Try extracting from request URI if available in a request message
         // This would need the full SIP message first line to parse properly
         // For now, return error to force proper header parsing
@@ -2016,26 +2245,26 @@ impl Class4B2BUA {
         // Extract codecs from SDP in message body
         // This is a simplified implementation - in production would use proper SDP parser
         let mut codecs = Vec::new();
-        
+
         // Look for Content-Type header to confirm SDP
         if let Some(content_type) = sip_message.headers.get("Content-Type") {
             if content_type.contains("application/sdp") {
                 // In a real implementation, we'd parse the SDP body
                 // For now, return common codecs based on typical SDP patterns
                 codecs.extend(vec![
-                    "PCMU".to_string(),  // G.711 μ-law
-                    "PCMA".to_string(),  // G.711 A-law  
-                    "G729".to_string(),  // G.729
-                    "G722".to_string(),  // G.722
+                    "PCMU".to_string(), // G.711 μ-law
+                    "PCMA".to_string(), // G.711 A-law
+                    "G729".to_string(), // G.729
+                    "G722".to_string(), // G.722
                 ]);
             }
         }
-        
+
         // Fallback to default codecs if no SDP found
         if codecs.is_empty() {
             codecs = vec!["PCMU".to_string(), "G729".to_string()];
         }
-        
+
         debug!("Extracted codecs: {:?}", codecs);
         codecs
     }
@@ -2046,34 +2275,37 @@ impl Class4B2BUA {
         message: &SipMessage,
     ) -> Result<()> {
         // Attempt codec negotiation
-        match self.codec_translator
+        match self
+            .codec_translator
             .negotiate_codecs(&mut session.codec_negotiation, message)
-            .await {
+            .await
+        {
             Ok(_) => {
                 info!(
                     "Codec negotiation successful for call {}: {:?}",
-                    session.session_id, 
-                    session.codec_negotiation.negotiated_codec
+                    session.session_id, session.codec_negotiation.negotiated_codec
                 );
                 Ok(())
-            },
+            }
             Err(e) => {
                 warn!(
-                    "Codec negotiation failed for call {}: {}", 
+                    "Codec negotiation failed for call {}: {}",
                     session.session_id, e
                 );
-                
+
                 // If transcoding is disabled, this should trigger route advancement
                 if !self.config.enable_codec_translation {
                     // Log CDR with specific cause
                     session.cdr.termination_cause = Some(488); // Not Acceptable Here
-                    session.cdr.termination_reason = Some("No compatible codec on B leg".to_string());
-                    
+                    session.cdr.termination_reason =
+                        Some("No compatible codec on B leg".to_string());
+
                     return Err(anyhow!(
-                        "No compatible codec found and transcoding disabled: {}", e
+                        "No compatible codec found and transcoding disabled: {}",
+                        e
                     ));
                 }
-                
+
                 Err(e)
             }
         }
@@ -2104,13 +2336,13 @@ impl Class4B2BUA {
         let from = original.headers.get("From").unwrap_or(&empty_string);
         let to = original.headers.get("To").unwrap_or(&empty_string);
         let cseq = original.headers.get("CSeq").unwrap_or(&empty_string);
-        
+
         Ok(format!(
             "SIP/2.0 {} {}\r\nVia: {}\r\nFrom: {}\r\nTo: {}\r\nCall-ID: {}\r\nCSeq: {}\r\nContent-Length: 0\r\n\r\n",
             code, reason, via, from, to, session.a_leg.call_id, cseq
         ))
     }
-    
+
     /// Create forwarded ACK message
     async fn create_forwarded_ack(
         &self,
@@ -2119,45 +2351,78 @@ impl Class4B2BUA {
         to_b_leg: bool,
     ) -> Result<String> {
         let target_leg = if to_b_leg {
-            session.b_leg.as_ref().ok_or_else(|| anyhow!("No B-leg available for ACK forwarding"))?
+            session
+                .b_leg
+                .as_ref()
+                .ok_or_else(|| anyhow!("No B-leg available for ACK forwarding"))?
         } else {
             &session.a_leg
         };
-        
+
         let request_uri = if to_b_leg {
-            format!("sip:{}@{}:{}", session.cdr.dnis, 
-                   target_leg.remote_addr.ip(), target_leg.remote_addr.port())
+            format!(
+                "sip:{}@{}:{}",
+                session.cdr.dnis,
+                target_leg.remote_addr.ip(),
+                target_leg.remote_addr.port()
+            )
         } else {
-            format!("sip:{}@{}:{}", session.cdr.ani,
-                   target_leg.remote_addr.ip(), target_leg.remote_addr.port())
+            format!(
+                "sip:{}@{}:{}",
+                session.cdr.ani,
+                target_leg.remote_addr.ip(),
+                target_leg.remote_addr.port()
+            )
         };
-        
-        let via = format!("SIP/2.0/UDP {}:{};branch=z9hG4bK{}", 
-                         self.socket.local_addr()?.ip(), 
-                         self.socket.local_addr()?.port(),
-                         target_leg.from_tag);
-        
+
+        let via = format!(
+            "SIP/2.0/UDP {}:{};branch=z9hG4bK{}",
+            self.socket.local_addr()?.ip(),
+            self.socket.local_addr()?.port(),
+            target_leg.from_tag
+        );
+
         let from = if to_b_leg {
-            format!("sip:{}@{}:{};tag={}", session.cdr.ani,
-                   self.socket.local_addr()?.ip(), self.socket.local_addr()?.port(),
-                   session.a_leg.from_tag)
+            format!(
+                "sip:{}@{}:{};tag={}",
+                session.cdr.ani,
+                self.socket.local_addr()?.ip(),
+                self.socket.local_addr()?.port(),
+                session.a_leg.from_tag
+            )
         } else {
-            format!("sip:{}@{}:{};tag={}", session.cdr.dnis,
-                   self.socket.local_addr()?.ip(), self.socket.local_addr()?.port(),
-                   target_leg.from_tag)
+            format!(
+                "sip:{}@{}:{};tag={}",
+                session.cdr.dnis,
+                self.socket.local_addr()?.ip(),
+                self.socket.local_addr()?.port(),
+                target_leg.from_tag
+            )
         };
-        
+
         let to = if to_b_leg {
-            format!("sip:{}@{}:{}{}", session.cdr.dnis,
-                   target_leg.remote_addr.ip(), target_leg.remote_addr.port(),
-                   target_leg.to_tag.as_ref().map(|t| format!(";tag={}", t)).unwrap_or_default())
+            format!(
+                "sip:{}@{}:{}{}",
+                session.cdr.dnis,
+                target_leg.remote_addr.ip(),
+                target_leg.remote_addr.port(),
+                target_leg
+                    .to_tag
+                    .as_ref()
+                    .map(|t| format!(";tag={}", t))
+                    .unwrap_or_default()
+            )
         } else {
             let a_leg_to_tag = session.a_leg.to_tag.as_deref().unwrap_or("missing");
-            format!("sip:{}@{}:{};tag={}", session.cdr.ani,
-                   target_leg.remote_addr.ip(), target_leg.remote_addr.port(),
-                   a_leg_to_tag)
+            format!(
+                "sip:{}@{}:{};tag={}",
+                session.cdr.ani,
+                target_leg.remote_addr.ip(),
+                target_leg.remote_addr.port(),
+                a_leg_to_tag
+            )
         };
-        
+
         Ok(format!(
             "ACK {} SIP/2.0\r\nVia: {}\r\nFrom: {}\r\nTo: {}\r\nCall-ID: {}\r\nCSeq: {} ACK\r\nContent-Length: 0\r\n\r\n",
             request_uri, via, from, to, target_leg.call_id, target_leg.last_cseq
@@ -2192,53 +2457,82 @@ impl Class4B2BUA {
         );
         self.send_sip_message(addr, &response).await
     }
-    
+
     /// Create BYE message for call leg termination
-    async fn create_bye_message(
-        &self,
-        session: &CallSession,
-        to_b_leg: bool,
-    ) -> Result<String> {
+    async fn create_bye_message(&self, session: &CallSession, to_b_leg: bool) -> Result<String> {
         let target_leg = if to_b_leg {
-            session.b_leg.as_ref().ok_or_else(|| anyhow!("No B-leg available for BYE message"))?
+            session
+                .b_leg
+                .as_ref()
+                .ok_or_else(|| anyhow!("No B-leg available for BYE message"))?
         } else {
             &session.a_leg
         };
-        
+
         let request_uri = if to_b_leg {
-            format!("sip:{}@{}:{}", session.cdr.dnis, 
-                   target_leg.remote_addr.ip(), target_leg.remote_addr.port())
+            format!(
+                "sip:{}@{}:{}",
+                session.cdr.dnis,
+                target_leg.remote_addr.ip(),
+                target_leg.remote_addr.port()
+            )
         } else {
-            format!("sip:{}@{}:{}", session.cdr.ani,
-                   target_leg.remote_addr.ip(), target_leg.remote_addr.port())
+            format!(
+                "sip:{}@{}:{}",
+                session.cdr.ani,
+                target_leg.remote_addr.ip(),
+                target_leg.remote_addr.port()
+            )
         };
-        
-        let via = format!("SIP/2.0/UDP {}:{};branch=z9hG4bK{}", 
-                         self.socket.local_addr()?.ip(), 
-                         self.socket.local_addr()?.port(),
-                         target_leg.from_tag);
-        
+
+        let via = format!(
+            "SIP/2.0/UDP {}:{};branch=z9hG4bK{}",
+            self.socket.local_addr()?.ip(),
+            self.socket.local_addr()?.port(),
+            target_leg.from_tag
+        );
+
         let from = if to_b_leg {
-            format!("sip:{}@{}:{};tag={}", session.cdr.ani,
-                   self.socket.local_addr()?.ip(), self.socket.local_addr()?.port(),
-                   session.a_leg.from_tag)
+            format!(
+                "sip:{}@{}:{};tag={}",
+                session.cdr.ani,
+                self.socket.local_addr()?.ip(),
+                self.socket.local_addr()?.port(),
+                session.a_leg.from_tag
+            )
         } else {
-            format!("sip:{}@{}:{};tag={}", session.cdr.dnis,
-                   self.socket.local_addr()?.ip(), self.socket.local_addr()?.port(),
-                   target_leg.from_tag)
+            format!(
+                "sip:{}@{}:{};tag={}",
+                session.cdr.dnis,
+                self.socket.local_addr()?.ip(),
+                self.socket.local_addr()?.port(),
+                target_leg.from_tag
+            )
         };
-        
+
         let to = if to_b_leg {
-            format!("sip:{}@{}:{}{}", session.cdr.dnis,
-                   target_leg.remote_addr.ip(), target_leg.remote_addr.port(),
-                   target_leg.to_tag.as_ref().map(|t| format!(";tag={}", t)).unwrap_or_default())
+            format!(
+                "sip:{}@{}:{}{}",
+                session.cdr.dnis,
+                target_leg.remote_addr.ip(),
+                target_leg.remote_addr.port(),
+                target_leg
+                    .to_tag
+                    .as_ref()
+                    .map(|t| format!(";tag={}", t))
+                    .unwrap_or_default()
+            )
         } else {
             let a_leg_to_tag = session.a_leg.to_tag.as_deref().unwrap_or("missing");
-            format!("sip:{}@{}:{};tag={}", session.cdr.ani,
-                   target_leg.remote_addr.ip(), target_leg.remote_addr.port(),
-                   a_leg_to_tag)
+            format!(
+                "sip:{}@{}:{};tag={}",
+                session.cdr.ani,
+                target_leg.remote_addr.ip(),
+                target_leg.remote_addr.port(),
+                a_leg_to_tag
+            )
         };
-        
+
         Ok(format!(
             "BYE {} SIP/2.0\r\nVia: {}\r\nFrom: {}\r\nTo: {}\r\nCall-ID: {}\r\nCSeq: {} BYE\r\nContent-Length: 0\r\n\r\n",
             request_uri, via, from, to, target_leg.call_id, target_leg.last_cseq + 1
@@ -2246,14 +2540,21 @@ impl Class4B2BUA {
     }
 
     /// Check trunk-level ANI-II blocking configuration
-    async fn check_trunk_ani_ii_blocking(&self, trunk_id: u32, ani_ii_code: u8) -> crate::ani_ii::blocking::BlockingResult {
+    async fn check_trunk_ani_ii_blocking(
+        &self,
+        trunk_id: u32,
+        ani_ii_code: u8,
+    ) -> crate::ani_ii::blocking::BlockingResult {
         // Find trunk configuration
         if let Some(trunk) = self.trunk_configs.iter().find(|t| t.trunk_id == trunk_id) {
             if let Some(ref blocking_config) = trunk.ani_ii_blocking {
-                return crate::ani_ii::blocking::check_ani_ii_blocking(blocking_config, ani_ii_code);
+                return crate::ani_ii::blocking::check_ani_ii_blocking(
+                    blocking_config,
+                    ani_ii_code,
+                );
             }
         }
-        
+
         // No blocking configuration found - allow call
         crate::ani_ii::blocking::BlockingResult {
             blocked: false,
@@ -2261,21 +2562,24 @@ impl Class4B2BUA {
             response_code: None,
         }
     }
-    
+
     /// Check DID-level ANI-II blocking configuration (overrides trunk-level)
     async fn check_did_ani_ii_blocking(
-        &self, 
-        customer_info: &CustomerInfo, 
-        did_number: &str, 
-        ani_ii_code: u8
+        &self,
+        customer_info: &CustomerInfo,
+        did_number: &str,
+        ani_ii_code: u8,
     ) -> crate::ani_ii::blocking::BlockingResult {
         // Look for DID-specific blocking configuration
         for did_block in &customer_info.did_ani_ii_blocks {
             if did_block.did_number == did_number {
-                return crate::ani_ii::blocking::check_ani_ii_blocking(&did_block.blocking_config, ani_ii_code);
+                return crate::ani_ii::blocking::check_ani_ii_blocking(
+                    &did_block.blocking_config,
+                    ani_ii_code,
+                );
             }
         }
-        
+
         // No DID-specific configuration found - use trunk-level config if available
         // Note: We would need the trunk ID here to check trunk config, but for now
         // we'll just allow the call since DID-level check is an override
@@ -2285,7 +2589,7 @@ impl Class4B2BUA {
             response_code: None,
         }
     }
-    
+
     /// Create CDR for blocked call attempts for security auditing
     fn create_blocked_call_cdr(
         &self,
@@ -2306,7 +2610,7 @@ impl Class4B2BUA {
             answer_time: None,
             end_time: Some(now), // Blocked immediately
             duration_seconds: Some(0),
-            
+
             // Ingress trunk information
             ingress_trunk_id,
             ingress_trunk_name: "BLOCKED".to_string(),
@@ -2314,7 +2618,7 @@ impl Class4B2BUA {
             ingress_rate_per_minute: 0.0,
             ingress_cost: 0.0,
             ingress_revenue: None,
-            
+
             // No egress for blocked calls
             egress_trunk_id: None,
             egress_trunk_name: None,
@@ -2322,13 +2626,13 @@ impl Class4B2BUA {
             egress_rate_per_minute: 0.0,
             egress_cost: 0.0,
             egress_revenue: None,
-            
+
             // Net calculations (all zero for blocked calls)
             total_cost: 0.0,
             total_revenue: 0.0,
             net_margin: 0.0,
             profit_margin_percent: 0.0,
-            
+
             // Technical details
             codec_negotiated: None,
             transcoding_used: false,
@@ -2336,12 +2640,12 @@ impl Class4B2BUA {
             termination_reason: Some(format!("ANI-II Blocking: {}", block_reason)),
             route_attempts: 0,
             final_route: None,
-            
+
             // ANI-II specific fields
             ani_ii_ingress: ani_ii_code,
             ani_ii_egress: None,
             ani_ii_source: Some("BLOCKED".to_string()),
-            
+
             // Toll-free and surcharge fields
             is_toll_free: crate::ani_ii::toll_free::is_toll_free(called_number),
             payphone_surcharge_amount: None, // No surcharge for blocked calls
@@ -2356,22 +2660,28 @@ impl Class4B2BUA {
 
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(cleanup_interval);
-            info!("Started session cleanup task with interval: {:?}, timeout: {:?}", 
-                 cleanup_interval, call_timeout);
-            
+            info!(
+                "Started session cleanup task with interval: {:?}, timeout: {:?}",
+                cleanup_interval, call_timeout
+            );
+
             loop {
                 interval.tick().await;
-                
+
                 let cleanup_start = std::time::Instant::now();
                 let cleaned_count = session_manager.cleanup_expired_sessions(call_timeout).await;
                 let cleanup_duration = cleanup_start.elapsed();
-                
+
                 if cleaned_count > 0 {
-                    info!("Session cleanup completed: {} sessions cleaned in {:?}", 
-                         cleaned_count, cleanup_duration);
+                    info!(
+                        "Session cleanup completed: {} sessions cleaned in {:?}",
+                        cleaned_count, cleanup_duration
+                    );
                 } else {
-                    debug!("Session cleanup completed: no expired sessions found (took {:?})", 
-                          cleanup_duration);
+                    debug!(
+                        "Session cleanup completed: no expired sessions found (took {:?})",
+                        cleanup_duration
+                    );
                 }
             }
         });
@@ -2481,7 +2791,7 @@ impl SessionManager {
             warn!("Cleaning up expired session: {}", session_id);
             self.remove_session(&session_id).await;
         }
-        
+
         cleanup_count
     }
 
@@ -2583,33 +2893,36 @@ impl CodecTranslator {
         }
 
         // No compatible codecs and no transcoding available
-        Err(anyhow!("No compatible codecs found between A-leg {:?} and B-leg {:?}", 
-                   negotiation.a_leg_codecs, negotiation.b_leg_codecs))
+        Err(anyhow!(
+            "No compatible codecs found between A-leg {:?} and B-leg {:?}",
+            negotiation.a_leg_codecs,
+            negotiation.b_leg_codecs
+        ))
     }
 
     fn extract_codecs_from_sdp(&self, message: &SipMessage) -> Vec<String> {
         // Extract codecs from SDP body in B-leg response
         let mut codecs = Vec::new();
-        
+
         // Look for Content-Type and SDP body
         if let Some(content_type) = message.headers.get("Content-Type") {
             if content_type.contains("application/sdp") {
                 // Parse SDP body for media formats (m= lines and a=rtpmap lines)
                 // This is simplified - production would use proper SDP parser
-                
+
                 // Common B-leg codec patterns based on carrier capabilities
                 codecs.extend(vec![
-                    "PCMU".to_string(),  // G.711 μ-law (most common)
-                    "G729".to_string(),  // G.729 (bandwidth efficient)
+                    "PCMU".to_string(), // G.711 μ-law (most common)
+                    "G729".to_string(), // G.729 (bandwidth efficient)
                 ]);
             }
         }
-        
+
         // Fallback for carriers that support limited codecs
         if codecs.is_empty() {
             codecs = vec!["PCMU".to_string()]; // Most carriers support G.711
         }
-        
+
         debug!("Extracted B-leg codecs: {:?}", codecs);
         codecs
     }
