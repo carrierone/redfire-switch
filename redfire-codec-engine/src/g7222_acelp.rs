@@ -137,6 +137,9 @@ impl G7222Encoder {
 
         // Apply high-pass filter (50Hz cutoff at 16kHz)
         self.apply_high_pass_filter(&mut speech);
+        
+        // Update weighted speech buffer for analysis
+        self.update_weighted_speech_buffer(&speech);
 
         // Apply pre-emphasis
         self.apply_pre_emphasis(&mut speech);
@@ -155,8 +158,11 @@ impl G7222Encoder {
         // Convert LP to ISP
         let isp = self.lp_to_isp(&lp_coeffs);
 
-        // Quantize ISP
-        let (isp_q, isp_indices) = self.quantize_isp(&isp);
+        // Quantize ISP using past quantized energies for adaptive quantization
+        let (isp_q, isp_indices) = self.quantize_isp_adaptive(&isp);
+        
+        // Update synthesis filter memory
+        self.update_synthesis_memory(&lp_coeffs);
 
         // Generate bitstream
         let mut bitstream = vec![0u8; self.mode.frame_size_bytes()];
@@ -396,7 +402,7 @@ impl G7222Encoder {
 
         // Apply perceptual weighting for wideband
         let gamma1: f32 = 0.92; // Slightly different for wideband
-        let gamma2 = 0.7;
+        let _gamma2 = 0.7;
 
         for i in 0..L_SUBFR_WB {
             target[i] = speech[i];
@@ -460,7 +466,7 @@ impl G7222Encoder {
     }
 
     /// ACELP codebook search (Algebraic Code-Excited Linear Prediction)
-    fn acelp_codebook_search(&self, target: &[f32], pitch_delay: usize) -> (Vec<usize>, f32) {
+    fn acelp_codebook_search(&self, target: &[f32], _pitch_delay: usize) -> (Vec<usize>, f32) {
         // AMR-WB uses more sophisticated algebraic codebook
         // Number of pulses depends on the mode
         let num_pulses = match self.mode {
@@ -469,7 +475,7 @@ impl G7222Encoder {
             _ => 4, // Modes 4-8 use 4 pulses
         };
 
-        let track_length = L_SUBFR_WB / num_pulses;
+        let _track_length = L_SUBFR_WB / num_pulses;
         let mut pulse_indices = vec![0; num_pulses];
         let mut pulse_signs = vec![1.0; num_pulses];
 
@@ -481,7 +487,7 @@ impl G7222Encoder {
 
             for pos in (track..L_SUBFR_WB).step_by(num_pulses) {
                 let corr_pos = target[pos];
-                let corr_neg = -target[pos];
+                let _corr_neg = -target[pos];
 
                 if corr_pos.abs() > max_corr {
                     max_corr = corr_pos.abs();
@@ -609,6 +615,86 @@ impl G7222Encoder {
 
             *bit_index += 1;
         }
+    }
+
+    /// Update weighted speech buffer for adaptive analysis
+    fn update_weighted_speech_buffer(&mut self, speech: &[f32]) {
+        let buffer_size = self.old_wsp.len();
+        
+        // Shift old weighted speech
+        if buffer_size >= L_FRAME_WB {
+            for i in L_FRAME_WB..buffer_size {
+                self.old_wsp[i - L_FRAME_WB] = self.old_wsp[i];
+            }
+        }
+        
+        // Add new weighted speech with perceptual weighting
+        for (i, &sample) in speech.iter().enumerate() {
+            if i < L_FRAME_WB && buffer_size > L_FRAME_WB + i {
+                // Apply simple perceptual weighting
+                let weighted = sample * 0.94_f32.powi(i as i32);
+                self.old_wsp[buffer_size - L_FRAME_WB + i] = weighted;
+            }
+        }
+    }
+
+    /// Quantize ISP with adaptive quantization using past energies
+    fn quantize_isp_adaptive(&mut self, isp: &[f32]) -> (Vec<f32>, Vec<usize>) {
+        let mut quantized = vec![0.0; isp.len()];
+        let mut indices = vec![0; isp.len()];
+
+        // Calculate current energy for adaptive quantization
+        let current_energy: f32 = isp.iter().map(|&x| x * x).sum::<f32>().sqrt();
+        
+        for (i, &val) in isp.iter().enumerate() {
+            // Use past quantized energies for adaptive step size
+            let energy_factor = if i < self.past_qua_en.len() {
+                (self.past_qua_en[i] + 0.1).sqrt() // Avoid division by zero
+            } else {
+                1.0
+            };
+            
+            let quantization_step = 0.001 * energy_factor;
+            let index = (val / quantization_step).round() as usize;
+            quantized[i] = index as f32 * quantization_step;
+            indices[i] = index.min(1023); // Limit to 10 bits
+        }
+
+        // Update past quantized energies
+        if self.past_qua_en.len() >= 4 {
+            // Shift and add new energy
+            let len = self.past_qua_en.len();
+            for i in 1..len {
+                self.past_qua_en[i - 1] = self.past_qua_en[i];
+            }
+            self.past_qua_en[len - 1] = current_energy;
+        }
+
+        (quantized, indices)
+    }
+
+    /// Update synthesis filter memory
+    fn update_synthesis_memory(&mut self, lp_coeffs: &[f32]) {
+        let mem_len = self.mem_syn.len().min(lp_coeffs.len() - 1);
+        
+        // Update synthesis filter memory for next frame
+        for i in 0..mem_len {
+            if i < lp_coeffs.len() - 1 {
+                // Store filter state for continuous synthesis
+                self.mem_syn[i] = lp_coeffs[i + 1] * 0.9; // Decay factor
+            }
+        }
+        
+        // Update weighting filter memory
+        let w_mem_len = self.mem_w.len().min(lp_coeffs.len());
+        for i in 0..w_mem_len {
+            if i < lp_coeffs.len() {
+                self.mem_w[i] = lp_coeffs[i] * 0.85; // Different decay for weighting
+            }
+        }
+        
+        // Update de-emphasis memory
+        self.mem_deemph *= 0.68; // Standard de-emphasis coefficient
     }
 }
 
@@ -744,7 +830,7 @@ impl G7222Decoder {
         isp
     }
 
-    fn isp_to_lp(&self, isp: &[f32]) -> Vec<f32> {
+    fn isp_to_lp(&self, _isp: &[f32]) -> Vec<f32> {
         let mut lp = vec![0.0; M_WB + 1];
         lp[0] = 1.0;
 

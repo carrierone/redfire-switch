@@ -312,10 +312,10 @@ impl G729AnnexGpuProcessor {
         };
 
         #[cfg(not(feature = "cuda"))]
-        let cuda_device: Option<Arc<()>> = None;
+        let _cuda_device: Option<Arc<()>> = None;
 
         #[cfg(not(feature = "rocm"))]
-        let rocm_device: Option<Arc<()>> = None;
+        let _rocm_device: Option<Arc<()>> = None;
 
         let mut processor = Self {
             config,
@@ -868,7 +868,7 @@ impl G729AnnexGpuProcessor {
     }
 
     /// GPU-accelerated comfort noise generation
-    async fn gpu_generate_comfort_noise(&self, cng_state: &mut CngState) -> Result<Vec<f32>> {
+    async fn gpu_generate_comfort_noise(&self, _cng_state: &mut CngState) -> Result<Vec<f32>> {
         match self.config.gpu_config.backend {
             #[cfg(feature = "cuda")]
             GpuBackend::Cuda => self.cuda_generate_comfort_noise(cng_state).await,

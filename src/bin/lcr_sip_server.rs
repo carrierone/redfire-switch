@@ -246,7 +246,7 @@ impl LcrSipServer {
 
     async fn forward_invite_to_egress(
         &self,
-        original_invite: &str,
+        _original_invite: &str,
         route: &EgressRoute,
         call_id: &str,
         from_tag: &str,
@@ -271,7 +271,7 @@ impl LcrSipServer {
             .await?;
 
         // Update call session
-        if let Some(mut session) = self.calls.write().await.get_mut(call_id) {
+        if let Some(session) = self.calls.write().await.get_mut(call_id) {
             session.to_tag = Some(to_tag);
             session.state = CallState::Connected;
             session.last_activity = Instant::now();
@@ -280,7 +280,7 @@ impl LcrSipServer {
         Ok(())
     }
 
-    async fn handle_ack(&self, message: &str, from_addr: SocketAddr) -> Result<()> {
+    async fn handle_ack(&self, message: &str, _from_addr: SocketAddr) -> Result<()> {
         let call_id = self.extract_call_id(message)?;
         debug!("📝 ACK received for call {}", call_id);
 

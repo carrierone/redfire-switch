@@ -811,7 +811,7 @@ pub mod utils {
     use super::*;
 
     /// Extract call information from SIP message
-    pub fn extract_call_info(message: &SipMessage) -> CallInfo {
+    pub fn extract_call_info(_message: &SipMessage) -> CallInfo {
         let call_info = CallInfo {
             call_id: "unknown".to_string(),
             ani: None,

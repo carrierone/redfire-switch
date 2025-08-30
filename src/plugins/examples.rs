@@ -4,9 +4,9 @@
 //! and patterns for B2BUA plugin development.
 
 use super::{B2BUAPlugin, PluginCapability, PluginConfig, PluginContext, PluginMetadata};
-use crate::events::{TelecomEvent, EventBus};
-use crate::services::signaling::{CallSession, PluginResponse, SipMessage};
-use anyhow::{Context, Result};
+use crate::events::TelecomEvent;
+use crate::services::signaling::{PluginResponse, SipMessage};
+use anyhow::Result;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};

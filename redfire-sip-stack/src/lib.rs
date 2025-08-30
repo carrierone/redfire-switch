@@ -8,6 +8,12 @@
  * (at your option) any later version.
  *
  * Sponsored by Carrier One Inc (https://www.carrierone.com)
+
+// Allow common warnings for library code  
+#![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_imports)]
+#![allow(unreachable_code)]
  */
 
 //! # Redfire SIP Stack

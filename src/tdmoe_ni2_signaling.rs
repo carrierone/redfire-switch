@@ -1073,7 +1073,7 @@ impl TdmoeNi2Signaling {
             return Err(anyhow!("Only Network side can send CALL PROCEEDING"));
         }
 
-        if let Some(mut call_context) = self.active_calls.write().await.get_mut(channel_id) {
+        if let Some(call_context) = self.active_calls.write().await.get_mut(channel_id) {
             if call_context.state != Ni2CallState::CallPresent {
                 return Err(anyhow!(
                     "Invalid state for CALL PROCEEDING: {:?}",
@@ -1107,7 +1107,7 @@ impl TdmoeNi2Signaling {
             return Err(anyhow!("Only Network side can send ALERTING"));
         }
 
-        if let Some(mut call_context) = self.active_calls.write().await.get_mut(channel_id) {
+        if let Some(call_context) = self.active_calls.write().await.get_mut(channel_id) {
             if call_context.state != Ni2CallState::IncomingCallProceeding {
                 return Err(anyhow!(
                     "Invalid state for ALERTING: {:?}",
@@ -1141,7 +1141,7 @@ impl TdmoeNi2Signaling {
             return Err(anyhow!("Only Network side can send CONNECT"));
         }
 
-        if let Some(mut call_context) = self.active_calls.write().await.get_mut(channel_id) {
+        if let Some(call_context) = self.active_calls.write().await.get_mut(channel_id) {
             if call_context.state != Ni2CallState::CallDelivered {
                 return Err(anyhow!(
                     "Invalid state for CONNECT: {:?}",
@@ -1171,7 +1171,7 @@ impl TdmoeNi2Signaling {
 
     /// Send DISCONNECT (either side can disconnect)
     pub async fn send_disconnect(&self, channel_id: &str, cause: u8) -> Result<()> {
-        if let Some(mut call_context) = self.active_calls.write().await.get_mut(channel_id) {
+        if let Some(call_context) = self.active_calls.write().await.get_mut(channel_id) {
             if call_context.state == Ni2CallState::Null {
                 return Err(anyhow!("Call already in null state"));
             }

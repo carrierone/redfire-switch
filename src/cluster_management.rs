@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
-use tokio::sync::RwLock;
+use tokio::sync::{broadcast, RwLock};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
@@ -150,6 +150,7 @@ pub struct ClusterManager {
     sequence_counter: Arc<RwLock<u64>>,
     last_heartbeat_sent: Arc<RwLock<SystemTime>>,
     cluster_metrics: Arc<RwLock<ClusterMetrics>>,
+    shutdown_sender: broadcast::Sender<()>,
 }
 
 /// Cluster-wide metrics and statistics
@@ -229,6 +230,8 @@ impl ClusterManager {
             None
         };
 
+        let (shutdown_sender, _) = broadcast::channel(1);
+
         Ok(Self {
             config,
             local_node,
@@ -250,6 +253,7 @@ impl ClusterManager {
                 last_failover: None,
                 split_brain_events: 0,
             })),
+            shutdown_sender,
         })
     }
 
@@ -406,29 +410,40 @@ impl ClusterManager {
         let config = self.config.clone();
         let local_node = self.local_node.clone();
         let last_heartbeat_sent = Arc::clone(&self.last_heartbeat_sent);
+        let mut shutdown_rx = self.shutdown_sender.subscribe();
 
         tokio::spawn(async move {
             let mut interval =
                 tokio::time::interval(Duration::from_secs(config.heartbeat_interval_seconds));
 
             loop {
-                interval.tick().await;
+                tokio::select! {
+                    _ = interval.tick() => {
+                        let heartbeat = ClusterMessage::Heartbeat {
+                            node: local_node.clone(),
+                            timestamp: SystemTime::now(),
+                        };
 
-                let heartbeat = ClusterMessage::Heartbeat {
-                    node: local_node.clone(),
-                    timestamp: SystemTime::now(),
-                };
-
-                if let Ok(serialized) = serde_json::to_vec(&heartbeat) {
-                    // Broadcast heartbeat to cluster
-                    let broadcast_addr: std::net::SocketAddr =
-                        "255.255.255.255:7946".parse().unwrap();
-                    if let Err(e) = socket.send_to(&serialized, broadcast_addr).await {
-                        error!("Failed to send heartbeat: {}", e);
-                    } else {
-                        let mut last_sent = last_heartbeat_sent.write().await;
-                        *last_sent = SystemTime::now();
-                        debug!("💓 Heartbeat sent from {}", local_node.node_name);
+                        if let Ok(serialized) = serde_json::to_vec(&heartbeat) {
+                            // Broadcast heartbeat to cluster - use proper error handling instead of unwrap
+                            if let Ok(broadcast_addr) = "255.255.255.255:7946".parse::<std::net::SocketAddr>() {
+                                if let Err(e) = socket.send_to(&serialized, broadcast_addr).await {
+                                    error!("Failed to send heartbeat: {}", e);
+                                } else {
+                                    let mut last_sent = last_heartbeat_sent.write().await;
+                                    *last_sent = SystemTime::now();
+                                    debug!("💓 Heartbeat sent from {}", local_node.node_name);
+                                }
+                            } else {
+                                error!("Failed to parse broadcast address");
+                            }
+                        } else {
+                            error!("Failed to serialize heartbeat message");
+                        }
+                    }
+                    _ = shutdown_rx.recv() => {
+                        info!("Heartbeat system shutting down gracefully");
+                        break;
                     }
                 }
             }
@@ -688,6 +703,19 @@ impl ClusterManager {
             }
         }
 
+        Ok(())
+    }
+
+    /// Gracefully shutdown the cluster manager and all background tasks
+    pub async fn shutdown(&self) -> Result<()> {
+        info!("🏢 Initiating graceful shutdown of ClusterManager");
+        
+        // Send shutdown signal to all background tasks
+        if let Err(e) = self.shutdown_sender.send(()) {
+            warn!("Failed to send cluster shutdown signal: {}", e);
+        }
+        
+        info!("🏢 ClusterManager shutdown completed");
         Ok(())
     }
 }

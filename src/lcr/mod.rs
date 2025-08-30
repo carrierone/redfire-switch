@@ -29,7 +29,6 @@ pub mod types;
 
 use anyhow::Result;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 
 use crate::lcr::cache::LcrCache;
 use crate::lcr::database::DatabasePool;

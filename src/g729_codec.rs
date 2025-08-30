@@ -5,7 +5,6 @@
  */
 
 use anyhow::{anyhow, Result};
-use std::collections::VecDeque;
 
 /// G.729 frame size constants
 pub const G729_FRAME_SIZE: usize = 80; // 80 samples per 10ms frame at 8kHz
@@ -540,7 +539,7 @@ impl G729Codec {
         lp_coeffs: &[f32; 11],
     ) -> Result<[f32; G729_FRAME_SIZE]> {
         let mut speech = [0.0f32; G729_FRAME_SIZE];
-        let mut memory = [0.0f32; 10];
+        let memory = [0.0f32; 10];
 
         for i in 0..G729_FRAME_SIZE {
             speech[i] = excitation[i];

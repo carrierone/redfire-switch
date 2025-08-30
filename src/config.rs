@@ -428,10 +428,8 @@ impl Config {
         let content = std::fs::read_to_string(path)?;
         let config: Config = serde_json::from_str(&content)?;
         
-        // Validate cluster bind configuration to prevent BGP anycast conflicts
-        if let Err(e) = config.cluster_bind.validate() {
-            return Err(anyhow::anyhow!("Cluster bind configuration validation failed: {}", e));
-        }
+        // Comprehensive configuration validation
+        config.validate()?;
         
         Ok(config)
     }
@@ -442,6 +440,195 @@ impl Config {
         Ok(())
     }
     
+    /// Comprehensive configuration validation with bounds checking
+    pub fn validate(&self) -> anyhow::Result<()> {
+        // Validate SIP profiles
+        self.validate_sip_profiles()?;
+        
+        // Validate monitoring configuration
+        self.validate_monitoring_config()?;
+        
+        // Validate TLS configurations
+        self.validate_tls_configs()?;
+        
+        // Validate anycast safety
+        self.validate_anycast_safety()
+            .map_err(|e| anyhow::anyhow!("Anycast safety validation failed: {}", e))?;
+        
+        // Validate cluster binding
+        self.cluster_bind.validate()
+            .map_err(|e| anyhow::anyhow!("Cluster bind validation failed: {}", e))?;
+        
+        Ok(())
+    }
+
+    /// Validate SIP profiles with comprehensive bounds checking
+    fn validate_sip_profiles(&self) -> anyhow::Result<()> {
+        if self.sip_profiles.is_empty() {
+            return Err(anyhow::anyhow!("At least one SIP profile must be configured"));
+        }
+
+        for (i, profile) in self.sip_profiles.iter().enumerate() {
+            // Validate profile name
+            if profile.name.is_empty() {
+                return Err(anyhow::anyhow!("SIP profile {} has empty name", i));
+            }
+            
+            if profile.name.len() > 64 {
+                return Err(anyhow::anyhow!("SIP profile '{}' name too long (max 64 characters)", profile.name));
+            }
+
+            // Validate port ranges
+            if profile.port == 0 {
+                return Err(anyhow::anyhow!("SIP profile '{}' has invalid port 0", profile.name));
+            }
+            
+            if let Some(ipv6_port) = profile.ipv6_port {
+                if ipv6_port == 0 {
+                    return Err(anyhow::anyhow!("SIP profile '{}' has invalid IPv6 port 0", profile.name));
+                }
+            }
+
+            // Validate dual-stack configuration
+            if profile.dual_stack {
+                if profile.bind_ipv6.is_none() {
+                    return Err(anyhow::anyhow!(
+                        "SIP profile '{}' has dual_stack enabled but no bind_ipv6 address", 
+                        profile.name
+                    ));
+                }
+            }
+
+            // Validate allowed IPs are not empty
+            if profile.allowed_ips.is_empty() {
+                return Err(anyhow::anyhow!(
+                    "SIP profile '{}' must have at least one allowed IP", 
+                    profile.name
+                ));
+            }
+
+            // Validate TLS configuration if protocol requires it
+            match profile.protocol {
+                Protocol::Tls | Protocol::Dtls => {
+                    if profile.tls_config.is_none() {
+                        return Err(anyhow::anyhow!(
+                            "SIP profile '{}' uses {:?} protocol but has no TLS configuration", 
+                            profile.name, profile.protocol
+                        ));
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // Check for duplicate profile names
+        let mut names = std::collections::HashSet::new();
+        for profile in &self.sip_profiles {
+            if !names.insert(&profile.name) {
+                return Err(anyhow::anyhow!("Duplicate SIP profile name: '{}'", profile.name));
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Validate monitoring configuration
+    fn validate_monitoring_config(&self) -> anyhow::Result<()> {
+        for (i, endpoint) in self.monitoring.endpoints.iter().enumerate() {
+            // Validate endpoint name
+            if endpoint.name.is_empty() {
+                return Err(anyhow::anyhow!("Monitoring endpoint {} has empty name", i));
+            }
+
+            // Validate timeout and ping interval bounds
+            if endpoint.timeout_seconds == 0 || endpoint.timeout_seconds > 300 {
+                return Err(anyhow::anyhow!(
+                    "Monitoring endpoint '{}' timeout must be between 1-300 seconds, got {}", 
+                    endpoint.name, endpoint.timeout_seconds
+                ));
+            }
+
+            if endpoint.ping_interval_seconds == 0 || endpoint.ping_interval_seconds > 3600 {
+                return Err(anyhow::anyhow!(
+                    "Monitoring endpoint '{}' ping interval must be between 1-3600 seconds, got {}", 
+                    endpoint.name, endpoint.ping_interval_seconds
+                ));
+            }
+
+            // Timeout should be less than ping interval
+            if endpoint.timeout_seconds >= endpoint.ping_interval_seconds {
+                return Err(anyhow::anyhow!(
+                    "Monitoring endpoint '{}' timeout ({}) must be less than ping interval ({})", 
+                    endpoint.name, endpoint.timeout_seconds, endpoint.ping_interval_seconds
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Validate TLS configurations
+    fn validate_tls_configs(&self) -> anyhow::Result<()> {
+        // Check SIP profile TLS configs
+        for profile in &self.sip_profiles {
+            if let Some(tls) = &profile.tls_config {
+                self.validate_tls_config(tls, &format!("SIP profile '{}'", profile.name))?;
+            }
+        }
+
+        // Check monitoring endpoint TLS configs
+        for endpoint in &self.monitoring.endpoints {
+            if let Some(tls) = &endpoint.tls_config {
+                self.validate_tls_config(tls, &format!("Monitoring endpoint '{}'", endpoint.name))?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Validate individual TLS configuration
+    fn validate_tls_config(&self, tls: &TlsConfig, context: &str) -> anyhow::Result<()> {
+        // Validate certificate file paths
+        if tls.cert_file.is_empty() {
+            return Err(anyhow::anyhow!("{} has empty cert_file path", context));
+        }
+
+        if tls.key_file.is_empty() {
+            return Err(anyhow::anyhow!("{} has empty key_file path", context));
+        }
+
+        // Validate TLS version format
+        let valid_versions = ["1.0", "1.1", "1.2", "1.3"];
+        if !valid_versions.contains(&tls.min_tls_version.as_str()) {
+            return Err(anyhow::anyhow!(
+                "{} has invalid min_tls_version '{}', must be one of: {:?}", 
+                context, tls.min_tls_version, valid_versions
+            ));
+        }
+
+        if !valid_versions.contains(&tls.max_tls_version.as_str()) {
+            return Err(anyhow::anyhow!(
+                "{} has invalid max_tls_version '{}', must be one of: {:?}", 
+                context, tls.max_tls_version, valid_versions
+            ));
+        }
+
+        // Check min <= max
+        let min_version = tls.min_tls_version.replace(".", "").parse::<u32>()
+            .map_err(|_| anyhow::anyhow!("{} has invalid min_tls_version format", context))?;
+        let max_version = tls.max_tls_version.replace(".", "").parse::<u32>()
+            .map_err(|_| anyhow::anyhow!("{} has invalid max_tls_version format", context))?;
+
+        if min_version > max_version {
+            return Err(anyhow::anyhow!(
+                "{} min_tls_version ({}) must be <= max_tls_version ({})", 
+                context, tls.min_tls_version, tls.max_tls_version
+            ));
+        }
+
+        Ok(())
+    }
+
     /// Validate that the configuration prevents anycast conflicts
     pub fn validate_anycast_safety(&self) -> Result<(), String> {
         // Check SIP profiles don't bind to anycast IPs if clustering is enabled

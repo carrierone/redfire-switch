@@ -8,8 +8,7 @@ use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock};
-use tracing::{debug, error, info, warn};
+use tokio::sync::RwLock;
 
 #[cfg(feature = "cuda")]
 use cudarc::driver::{CudaDevice, LaunchAsync, LaunchConfig};
@@ -19,8 +18,8 @@ use cudarc::nvrtc::Ptx;
 #[cfg(feature = "rocm")]
 use hip_rs::{HipDevice, HipMemory, HipStream};
 
-use crate::g729_codec::{G729Codec, G729_ENCODED_SIZE, G729_FRAME_SIZE, G729_SAMPLE_RATE};
-use crate::gpu_codec_accel::{GpuBackend, GpuBuffer, GpuCodecConfig};
+use crate::g729_codec::{G729Codec, G729_FRAME_SIZE};
+use crate::gpu_codec_accel::GpuCodecConfig;
 
 /// G.729 Annex A configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -979,9 +978,9 @@ impl G729AnnexGpuProcessor {
         let active_sessions = sessions.len();
 
         let mut total_frames = 0;
-        let mut speech_frames = 0;
-        let mut silence_frames = 0;
-        let mut sid_frames = 0;
+        let speech_frames = 0;
+        let silence_frames = 0;
+        let sid_frames = 0;
 
         for state in sessions.values() {
             total_frames += state.frame_count;

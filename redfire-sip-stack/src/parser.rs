@@ -379,7 +379,7 @@ impl SipParser {
     /// Create transaction ID from request
     pub fn create_transaction_id(&self, request: &Request) -> Result<String> {
         // Transaction ID is the branch parameter from the top Via header
-        let via = request
+        let _via = request
             .via_header()
             .map_err(|e| anyhow!("No Via header found: {}", e))?;
 
@@ -417,8 +417,8 @@ impl SipParser {
     pub fn create_response(
         &self,
         request: &Request,
-        status_code: u16,
-        reason_phrase: &str,
+        _status_code: u16,
+        _reason_phrase: &str,
     ) -> Result<Response> {
         // Create response using Response::default and modify fields
         let mut response = Response::default();

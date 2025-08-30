@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
 
 #[cfg(feature = "cuda")]
 use cudarc::driver::{CudaDevice, LaunchAsync, LaunchConfig};
@@ -18,7 +17,7 @@ use cudarc::nvrtc::Ptx;
 #[cfg(feature = "rocm")]
 use hip_rs::{HipDevice, HipMemory, HipStream};
 
-use crate::codec::{AudioCodec, AudioFrame, CodecConfig};
+use crate::codec::{AudioCodec, AudioFrame};
 
 /// GPU acceleration backend types
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

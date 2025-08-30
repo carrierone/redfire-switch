@@ -4,7 +4,7 @@
 use anyhow::Result;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 use crate::class4_b2bua::{Class4B2BUA, Class4Config};
 use crate::database_connections::EnhancedDatabasePool;
@@ -141,6 +141,7 @@ impl Class4SwitchBuilder {
                 origination_engine,
                 termination_service,
                 route_advancement,
+                vec![], // TODO: Add trunk rate configurations
             )
             .await?,
         );

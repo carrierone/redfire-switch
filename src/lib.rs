@@ -1,5 +1,11 @@
 // redfire-switch library modules - CLEANED UP
 
+// Allow common warnings for library code that may be used later
+#![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_imports)]
+#![allow(unreachable_code)]
+
 // Re-export codec engine and SIP stack libraries
 pub use redfire_codec_engine as codec_engine;
 pub use redfire_sip_stack as sip_stack;
@@ -106,3 +112,12 @@ pub mod plugins;
 
 // Security framework
 pub mod security;
+
+// ANI-II (Automatic Number Identification Information Indicator) handling
+pub mod ani_ii;
+
+// RFC-compliant SIP and SIP-I implementation
+pub mod sip_rfc_compliance;
+
+// RFC-compliant ANI-II implementation
+pub mod ani_ii_rfc_compliant;

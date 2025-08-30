@@ -1,6 +1,5 @@
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
-use std::sync::Arc;
 
 // Mock implementations for testing without the full codebase
 use redfire_switch::lcr::types::*;
@@ -224,7 +223,7 @@ fn test_billing_increments() {
 
 // Helper functions for testing
 
-fn create_test_rate(code: &str, rate: Decimal, description: &str) -> NanpaRate {
+fn create_test_rate(code: &str, rate: Decimal, _description: &str) -> NanpaRate {
     NanpaRate {
         id: 1,
         deck_id: 1,

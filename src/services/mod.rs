@@ -71,9 +71,9 @@ impl ServiceRegistry {
         }
 
         // Create dependencies (these would normally be injected)
-        let lcr_engine = Arc::new(crate::lcr::LCREngine::new());
-        let origination_routes = Arc::new(RwLock::new(crate::origination_routing::OriginationRoutes::new()));
-        let termination_routes = Arc::new(RwLock::new(crate::termination_routing::TerminationRoutes::new()));
+        let lcr_engine = Arc::new(crate::lcr::LcrEngine::new("sqlite::memory:").await.unwrap());
+        let origination_routes = Arc::new(tokio::sync::Mutex::new(crate::origination_routing::OriginationRoutingEngine::new(crate::origination_routing::OriginationConfig::default())));
+        let termination_routes = Arc::new(tokio::sync::Mutex::new(crate::termination_routing::TerminationRoutingService::new(lcr_engine.clone())));
 
         let service = Arc::new(RoutingService::new(
             RoutingConfig::default(),

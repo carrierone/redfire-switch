@@ -631,9 +631,9 @@ impl MLThreatDetector {
         pattern_match: Option<&(AttackPattern, f64)>,
         behavioral_score: f64,
     ) -> Result<ThreatAssessment> {
-        let mut threat_level = ThreatLabel::Benign;
+        let threat_level;
         let mut confidence: f64 = 0.0;
-        let mut recommendation = RecommendedAction::Allow;
+        let recommendation;
 
         // Weight the different components
         let anomaly_weight = 0.3;

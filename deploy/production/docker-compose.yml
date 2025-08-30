@@ -1,0 +1,187 @@
+version: '3.8'
+
+services:
+  redfire-switch:
+    image: redfire-switch:latest
+    build:
+      context: ../../
+      dockerfile: Dockerfile.prod
+    container_name: redfire-switch-main
+    restart: unless-stopped
+    ports:
+      - "5060:5060/udp"
+      - "5061:5061/tcp"
+      - "8080:8080"  # Management API
+      - "8081:8081"  # Monitoring
+      - "20000-30000:20000-30000/udp"  # RTP range
+    volumes:
+      - ./config:/etc/redfire:ro
+      - ./ssl:/etc/redfire/ssl:ro
+      - ./logs:/var/log/redfire
+      - redfire-data:/var/lib/redfire
+    environment:
+      - RUST_LOG=info
+      - REDFIRE_CONFIG_PATH=/etc/redfire/production.json
+      - REDFIRE_CLUSTER_MODE=true
+    networks:
+      - redfire-network
+    depends_on:
+      - postgres
+      - prometheus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2.0'
+        reservations:
+          memory: 1G
+          cpus: '1.0'
+
+  redfire-switch-replica:
+    image: redfire-switch:latest
+    container_name: redfire-switch-replica
+    restart: unless-stopped
+    ports:
+      - "5062:5060/udp"
+      - "5063:5061/tcp"
+      - "8082:8080"  # Management API
+      - "8083:8081"  # Monitoring
+      - "30001-35000:20000-25000/udp"  # RTP range
+    volumes:
+      - ./config:/etc/redfire:ro
+      - ./ssl:/etc/redfire/ssl:ro
+      - ./logs:/var/log/redfire
+      - redfire-data:/var/lib/redfire
+    environment:
+      - RUST_LOG=info
+      - REDFIRE_CONFIG_PATH=/etc/redfire/production-replica.json
+      - REDFIRE_CLUSTER_MODE=true
+      - REDFIRE_CLUSTER_ROLE=replica
+    networks:
+      - redfire-network
+    depends_on:
+      - postgres
+      - redfire-switch
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2.0'
+        reservations:
+          memory: 1G
+          cpus: '1.0'
+
+  postgres:
+    image: postgres:15
+    container_name: redfire-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=redfire
+      - POSTGRES_USER=redfire
+      - POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - redfire-network
+    ports:
+      - "5432:5432"
+    secrets:
+      - postgres_password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U redfire -d redfire"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: redfire-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - redfire-network
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: redfire-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD_FILE=/run/secrets/grafana_password
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+    networks:
+      - redfire-network
+    secrets:
+      - grafana_password
+    depends_on:
+      - prometheus
+
+  nginx:
+    image: nginx:alpine
+    container_name: redfire-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx/html:/usr/share/nginx/html:ro
+    networks:
+      - redfire-network
+    depends_on:
+      - redfire-switch
+      - grafana
+
+networks:
+  redfire-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  redfire-data:
+    driver: local
+  postgres-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password.txt
+  grafana_password:
+    file: ./secrets/grafana_password.txt

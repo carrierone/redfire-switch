@@ -3,7 +3,7 @@
  * Bridges the redfire-sip-stack and redfire-codec-engine libraries
  */
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -13,7 +13,7 @@ use tracing::{debug, error, info, warn};
 // Import SIP stack components
 use redfire_sip_stack::{
     AuthResult, SipAuthenticator, SipCallContext, SipCoreConfig, SipCoreEngine, SipMessage,
-    SipMethod, SipParser, SipStateConfig, SipStateManager, SipStatusCode, SipTransport,
+    SipMethod, SipParser, SipStateConfig, SipStateManager, SipTransport,
     SipTransportManager, TransportConfig,
 };
 
@@ -23,7 +23,6 @@ use redfire_codec_engine::{
 };
 
 // Import our local codec types for AudioFrame and TranscodedFrame
-use crate::codec::{AudioFrame, TranscodedFrame};
 
 // Import RTP proxy for media handling
 use crate::rtp_proxy_impl::{MediaSession, RtpProxyConfig, RtpProxyService};

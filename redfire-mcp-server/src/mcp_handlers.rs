@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info};
 use warp::{Filter, Reply};
 
 use crate::codec_tools::CodecTools;

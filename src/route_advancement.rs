@@ -11,8 +11,7 @@ use tracing::{debug, info, warn};
 
 use crate::lcr::types::{CallRoute, RouteRequest};
 use crate::termination_routing::{
-    FailedAttempt, RouteAdvanceDecision, SipResponseCode, TerminationRoutingRequest,
-    TerminationRoutingResponse, TerminationRoutingService,
+    FailedAttempt, RouteAdvanceDecision, SipResponseCode, TerminationRoutingRequest, TerminationRoutingService,
 };
 
 /// Route advancement manager for B2BUA operations
@@ -220,12 +219,25 @@ impl RouteAdvancementEngine {
         routing_state.current_attempt += 1;
         routing_state.last_attempt_at = Some(Utc::now());
 
+        // Extract failed trunk IDs to exclude from next routing attempt
+        let failed_trunk_ids: Vec<i32> = routing_state
+            .failed_attempts
+            .iter()
+            .map(|attempt| attempt.trunk_id)
+            .collect();
+        
+        debug!("Excluding previously failed trunk IDs: {:?}", failed_trunk_ids);
+
         // Create new termination request with failed attempts history
+        let route_request = routing_state.original_request.clone();
+        // Add excluded trunk IDs to route request (this would require extending RouteRequest)
+        // For now, we'll filter in the response handling
+        
         let termination_request = TerminationRoutingRequest {
             call_id: call_id.to_string(),
             ani: routing_state.ani.clone(),
             dnis: routing_state.dnis.clone(),
-            route_request: routing_state.original_request.clone(),
+            route_request,
             attempt_number: routing_state.current_attempt,
             previous_responses: routing_state.failed_attempts.clone(),
             max_attempts: self.max_route_attempts,
@@ -237,21 +249,39 @@ impl RouteAdvancementEngine {
             let mut service = self.termination_service.lock().await;
             service.route_termination(termination_request).await?
         };
+        
+        // Filter out previously failed routes from the response
+        let filtered_response = if let Some(selected_route) = &routing_response.selected_route {
+            if failed_trunk_ids.contains(&selected_route.egress_trunk.id) {
+                // This route was already tried and failed, skip it
+                info!("Skipping previously failed trunk {} for call {}", 
+                     selected_route.egress_trunk.name, call_id);
+                return self.complete_call_routing(
+                    call_id,
+                    last_response_code,
+                    "No more untried routes available",
+                );
+            } else {
+                routing_response
+            }
+        } else {
+            routing_response
+        };
+        
+        let routing_response = filtered_response;
 
         if routing_response.success {
             // Update routing state with new route
             routing_state.current_route = routing_response.selected_route.clone();
             routing_state.remaining_routes = routing_response.remaining_routes;
 
+            let selected_route = routing_response.selected_route.as_ref().unwrap();
+            let route_name = selected_route.egress_trunk.name.clone();
             info!(
-                "Advanced to next route for call {}: {} (attempt {})",
+                "Advanced to next route for call {}: {} (trunk_id: {}, attempt {})",
                 call_id,
-                routing_response
-                    .selected_route
-                    .as_ref()
-                    .unwrap()
-                    .egress_trunk
-                    .name,
+                selected_route.egress_trunk.name,
+                selected_route.egress_trunk.id,
                 routing_state.current_attempt
             );
 
@@ -262,7 +292,7 @@ impl RouteAdvancementEngine {
                 total_attempts: routing_state.current_attempt,
                 routing_complete: false,
                 final_response_code: None,
-                reason: "Advanced to next available route".to_string(),
+                reason: format!("Advanced to next available route: {}", route_name),
             })
         } else {
             // No more routes available
@@ -416,7 +446,7 @@ mod tests {
     #[ignore] // TODO: Fix compilation issues with TerminationRoutingService interior mutability
     async fn test_route_advancement_logic() {
         let lcr_engine = Arc::new(crate::lcr::LcrEngine::new("test://").await.unwrap());
-        let termination_service = Arc::new(TerminationRoutingService::new(lcr_engine));
+        let termination_service = Arc::new(Mutex::new(TerminationRoutingService::new(lcr_engine)));
         let engine = RouteAdvancementEngine::new(termination_service, 3);
 
         // Test various response codes
@@ -444,9 +474,9 @@ mod tests {
     #[tokio::test]
     #[ignore] // TODO: Fix compilation issues with TerminationRoutingService interior mutability
     async fn test_call_routing_lifecycle() {
-        let termination_service = Arc::new(TerminationRoutingService::new(Arc::new(
+        let termination_service = Arc::new(Mutex::new(TerminationRoutingService::new(Arc::new(
             crate::lcr::LcrEngine::new("test://").await.unwrap(),
-        )));
+        ))));
         let mut engine = RouteAdvancementEngine::new(termination_service, 3);
 
         let call_id = "test-call-123".to_string();

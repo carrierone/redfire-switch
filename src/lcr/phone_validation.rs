@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
-use tracing::{debug, warn};
+use tracing::debug;
 
 /// Phone number validation configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]

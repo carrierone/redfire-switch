@@ -3,8 +3,8 @@
 //! This module handles the loading of plugins from various sources including
 //! built-in plugins and external plugin files.
 
-use super::{B2BUAPlugin, PluginCapability, PluginConfig, PluginMetadata, examples::*};
-use anyhow::{Context, Result};
+use super::{B2BUAPlugin, PluginConfig, PluginMetadata, examples::*};
+use anyhow::Result;
 use std::path::Path;
 use tracing::{debug, info, warn};
 
@@ -111,7 +111,7 @@ impl PluginLoader {
     }
 
     /// Create a plugin configuration template
-    pub fn create_plugin_config_template(&self, plugin_name: &str) -> Result<PluginConfig> {
+    pub async fn create_plugin_config_template(&self, plugin_name: &str) -> Result<PluginConfig> {
         let plugin = self.load_builtin(plugin_name, &PluginConfig::default())
             .await?;
         

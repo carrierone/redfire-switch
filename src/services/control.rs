@@ -11,8 +11,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::fs;
-use tokio::sync::{mpsc, RwLock};
-use tracing::{debug, error, info, warn};
+use tokio::sync::{broadcast, mpsc, RwLock};
+use tracing::{debug, info, warn};
 
 /// Configuration for the Control Service
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -202,6 +202,8 @@ pub struct ControlService {
     start_time: chrono::DateTime<chrono::Utc>,
     /// Message processing channel
     request_sender: mpsc::UnboundedSender<ControlServiceMessage>,
+    /// Shutdown signal for graceful termination
+    shutdown_sender: broadcast::Sender<()>,
 }
 
 impl ControlService {
@@ -212,6 +214,19 @@ impl ControlService {
         let metrics = Arc::new(RwLock::new(Self::default_metrics()));
         let start_time = Utc::now();
         let (request_sender, request_receiver) = mpsc::unbounded_channel();
+        let (shutdown_sender, _) = broadcast::channel(1);
+
+        // Start background control processor
+        let processor = ControlProcessor {
+            config: config.clone(),
+            event_bus: event_bus.clone(),
+            system_config: system_config.clone(),
+            service_health: service_health.clone(),
+            metrics: metrics.clone(),
+            start_time,
+            request_receiver,
+            shutdown_sender: shutdown_sender.clone(),
+        };
 
         let service = Self {
             config: config.clone(),
@@ -221,17 +236,7 @@ impl ControlService {
             metrics: metrics.clone(),
             start_time,
             request_sender,
-        };
-
-        // Start background control processor
-        let processor = ControlProcessor {
-            config,
-            event_bus,
-            system_config,
-            service_health,
-            metrics,
-            start_time,
-            request_receiver,
+            shutdown_sender,
         };
 
         tokio::spawn(async move {
@@ -361,6 +366,7 @@ struct ControlProcessor {
     metrics: Arc<RwLock<SystemMetrics>>,
     start_time: chrono::DateTime<chrono::Utc>,
     request_receiver: mpsc::UnboundedReceiver<ControlServiceMessage>,
+    shutdown_sender: broadcast::Sender<()>,
 }
 
 impl ControlProcessor {
@@ -657,26 +663,33 @@ impl ControlProcessor {
         let service_health = self.service_health.clone();
         let event_bus = self.event_bus.clone();
         let interval_seconds = self.config.health_check_interval_seconds;
+        let mut shutdown_rx = self.shutdown_sender.subscribe();
         
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(interval_seconds));
             
             loop {
-                interval.tick().await;
-                
-                // Perform health checks on all registered services
-                let health_map = service_health.read().await;
-                
-                for (service_name, health) in health_map.iter() {
-                    // Check if health status is stale
-                    let age = (Utc::now() - health.last_check).num_seconds();
-                    if age > interval_seconds as i64 * 2 {
-                        warn!("Health status for service {} is stale ({} seconds old)", 
-                              service_name, age);
+                tokio::select! {
+                    _ = interval.tick() => {
+                        // Perform health checks on all registered services
+                        let health_map = service_health.read().await;
+                        
+                        for (service_name, health) in health_map.iter() {
+                            // Check if health status is stale
+                            let age = (Utc::now() - health.last_check).num_seconds();
+                            if age > interval_seconds as i64 * 2 {
+                                warn!("Health status for service {} is stale ({} seconds old)", 
+                                      service_name, age);
+                            }
+                        }
+                        
+                        debug!("Health check completed for {} services", health_map.len());
+                    }
+                    _ = shutdown_rx.recv() => {
+                        info!("Health check task shutting down gracefully");
+                        break;
                     }
                 }
-                
-                debug!("Health check completed for {} services", health_map.len());
             }
         });
     }
@@ -716,6 +729,19 @@ impl ControlProcessor {
             
             info!("Configuration hot reload monitoring started for {:?}", config_dir);
         });
+    }
+
+    /// Gracefully shutdown the control service and all background tasks
+    pub async fn shutdown(&self) -> Result<()> {
+        info!("Initiating graceful shutdown of ControlService");
+        
+        // Send shutdown signal to all background tasks
+        if let Err(e) = self.shutdown_sender.send(()) {
+            warn!("Failed to send shutdown signal: {}", e);
+        }
+        
+        info!("ControlService shutdown completed");
+        Ok(())
     }
 }
 

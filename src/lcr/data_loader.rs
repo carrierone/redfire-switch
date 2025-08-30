@@ -1,7 +1,6 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use chrono::NaiveDate;
 use sqlx::{PgPool, Row};
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;

@@ -13,7 +13,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::net::UdpSocket;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::RwLock;
 use tokio::time::timeout;
 use tracing::{debug, error, info, instrument, warn};
 
@@ -531,7 +531,7 @@ impl RtpProxyService {
         config: &RtpProxyConfig,
     ) -> Result<()> {
         // Parse RTP packet
-        let mut rtp_packet = RtpPacket::parse(packet_data)?;
+        let rtp_packet = RtpPacket::parse(packet_data)?;
 
         // Get session
         let mut session = sessions

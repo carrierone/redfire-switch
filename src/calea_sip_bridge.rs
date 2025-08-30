@@ -5,7 +5,6 @@
  */
 
 use crate::compliance_framework::{CallEvent, CallEventType, ComplianceFramework};
-use anyhow::Result;
 use chrono::Utc;
 use redfire_sip_stack::core::{ComplianceNotifier, SipCallContext};
 use std::collections::HashMap;

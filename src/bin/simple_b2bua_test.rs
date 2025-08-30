@@ -113,7 +113,7 @@ impl SimpleB2BUA {
         Ok(())
     }
 
-    async fn forward_message(&self, message: &str, from: SocketAddr) -> Result<()> {
+    async fn forward_message(&self, message: &str, _from: SocketAddr) -> Result<()> {
         // Extract Call-ID for session tracking
         let call_id = self.extract_call_id(message)?;
 
@@ -150,7 +150,7 @@ impl SimpleB2BUA {
     }
 
     // FIXED: Enhanced SIP message validation
-    fn validate_sip_message(&self, message: &str, from: SocketAddr) -> Result<()> {
+    fn validate_sip_message(&self, message: &str, _from: SocketAddr) -> Result<()> {
         // Check for empty message
         if message.is_empty() {
             return Err(anyhow!("Empty message"));

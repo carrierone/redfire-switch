@@ -3,10 +3,10 @@
 //! This service encapsulates least cost routing logic and integrates
 //! with the event-driven architecture for real-time routing decisions.
 
-use crate::events::{EventBus, EventType, RouteInfo, TelecomEvent};
-use crate::lcr::LCREngine;
-use crate::origination_routing::OriginationRoutes;
-use crate::termination_routing::{TerminationRoutes, RoutingDecision};
+use crate::events::{EventBus, RouteInfo, TelecomEvent};
+use crate::lcr::LcrEngine;
+use crate::origination_routing::OriginationRoutingEngine;
+use crate::termination_routing::TerminationRoutingService;
 use anyhow::{Context, Result};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 /// Configuration for the Routing Service
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -82,11 +82,11 @@ pub struct RoutingService {
     /// Service configuration
     config: RoutingConfig,
     /// LCR engine for cost optimization
-    lcr_engine: Arc<LCREngine>,
-    /// Origination routing table
-    origination_routes: Arc<RwLock<OriginationRoutes>>,
-    /// Termination routing table
-    termination_routes: Arc<RwLock<TerminationRoutes>>,
+    lcr_engine: Arc<LcrEngine>,
+    /// Origination routing engine
+    origination_routes: Arc<tokio::sync::Mutex<OriginationRoutingEngine>>,
+    /// Termination routing service
+    termination_routes: Arc<tokio::sync::Mutex<TerminationRoutingService>>,
     /// Event bus for publishing routing events
     event_bus: Arc<EventBus>,
     /// Route cache for performance
@@ -99,9 +99,9 @@ impl RoutingService {
     /// Create a new routing service
     pub fn new(
         config: RoutingConfig,
-        lcr_engine: Arc<LCREngine>,
-        origination_routes: Arc<RwLock<OriginationRoutes>>,
-        termination_routes: Arc<RwLock<TerminationRoutes>>,
+        lcr_engine: Arc<LcrEngine>,
+        origination_routes: Arc<tokio::sync::Mutex<OriginationRoutingEngine>>,
+        termination_routes: Arc<tokio::sync::Mutex<TerminationRoutingService>>,
         event_bus: Arc<EventBus>,
     ) -> Self {
         let route_cache = Arc::new(RwLock::new(HashMap::new()));
@@ -186,9 +186,9 @@ impl RoutingService {
 /// Background processor for routing requests
 struct RoutingProcessor {
     config: RoutingConfig,
-    lcr_engine: Arc<LCREngine>,
-    origination_routes: Arc<RwLock<OriginationRoutes>>,
-    termination_routes: Arc<RwLock<TerminationRoutes>>,
+    lcr_engine: Arc<LcrEngine>,
+    origination_routes: Arc<tokio::sync::Mutex<OriginationRoutingEngine>>,
+    termination_routes: Arc<tokio::sync::Mutex<TerminationRoutingService>>,
     event_bus: Arc<EventBus>,
     route_cache: Arc<RwLock<HashMap<String, CachedRoute>>>,
     request_receiver: mpsc::UnboundedReceiver<(RouteRequest, tokio::sync::oneshot::Sender<Result<RouteResponse>>)>,
@@ -308,23 +308,59 @@ impl RoutingProcessor {
         let mut routes = Vec::new();
 
         // Get routes from termination routing table
-        let termination_routes = self.termination_routes.read().await;
-        if let Ok(termination_result) = termination_routes.route_call(
-            &request.calling_number,
-            &request.called_number,
-            request.customer_id,
-        ) {
-            // Convert termination routes to RouteInfo
+        let mut termination_routes = self.termination_routes.lock().await;
+        let termination_request = crate::termination_routing::TerminationRoutingRequest {
+            call_id: request.call_id.clone(),
+            ani: request.calling_number.clone(),
+            dnis: request.called_number.clone(),
+            route_request: crate::lcr::types::RouteRequest {
+                ani: request.calling_number.clone(),
+                dnis: request.called_number.clone(),
+                ingress_trunk_id: request.trunk_id.unwrap_or(0),
+                client_deck_id: request.customer_id,
+                route_type: crate::lcr::types::RouteType::NANPA,
+                require_profit_protection: false,
+                min_profit_margin: None,
+                effective_time: None,
+                phone_validation: None,
+                routing_plan_id: None,
+            },
+            attempt_number: 1,
+            previous_responses: vec![],
+            max_attempts: 3,
+            timestamp: chrono::Utc::now(),
+        };
+        if let Ok(termination_result) = termination_routes.route_termination(termination_request).await {
+            // Convert termination routes to RouteInfo  
             // This is a simplified conversion - in practice you'd have more detailed mapping
-            for (i, route) in termination_result.selected_routes.iter().enumerate() {
+            if let Some(route) = &termination_result.selected_route {
+                routes.push(RouteInfo {
+                    route_id: format!("term_selected_{}", request.call_id),
+                    trunk_id: route.egress_trunk.id,
+                    trunk_name: route.egress_trunk.name.clone(),
+                    gateway_ip: route.egress_trunk.host.parse().unwrap_or(IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+                    gateway_port: route.egress_trunk.port,
+                    priority: route.priority,
+                    cost: {
+                        // Direct conversion from Decimal to f64 avoiding string conversion
+                        route.cost_per_minute.try_into().unwrap_or(0.0)
+                    },
+                });
+            }
+            
+            // Add remaining routes as alternatives
+            for (i, route) in termination_result.remaining_routes.iter().enumerate() {
                 routes.push(RouteInfo {
                     route_id: format!("term_{}_{}", request.call_id, i),
-                    trunk_id: route.trunk_id.unwrap_or(0),
-                    trunk_name: route.trunk_name.clone(),
-                    gateway_ip: "127.0.0.1".parse().map_err(|_| anyhow::anyhow!("Invalid default gateway IP"))?,
-                    gateway_port: 5060,
+                    trunk_id: route.egress_trunk.id,
+                    trunk_name: route.egress_trunk.name.clone(),
+                    gateway_ip: route.egress_trunk.host.parse().unwrap_or(IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+                    gateway_port: route.egress_trunk.port,
                     priority: route.priority,
-                    cost: route.rate,
+                    cost: {
+                        // Direct conversion from Decimal to f64 avoiding string conversion
+                        route.cost_per_minute.try_into().unwrap_or(0.0)
+                    },
                 });
             }
         }
@@ -421,9 +457,9 @@ mod tests {
     #[tokio::test]
     async fn test_routing_service_creation() {
         let config = RoutingConfig::default();
-        let lcr_engine = Arc::new(LCREngine::new());
-        let origination_routes = Arc::new(RwLock::new(OriginationRoutes::new()));
-        let termination_routes = Arc::new(RwLock::new(TerminationRoutes::new()));
+        let lcr_engine = Arc::new(LcrEngine::new("test://").await.unwrap());
+        let origination_routes = Arc::new(RwLock::new(OriginationRoutingEngine::new(Default::default())));
+        let termination_routes = Arc::new(RwLock::new(TerminationRoutingService::new(lcr_engine.clone())));
         let event_bus = Arc::new(EventBus::new());
 
         let _service = RoutingService::new(
@@ -438,9 +474,9 @@ mod tests {
     #[tokio::test]
     async fn test_routing_request() {
         let config = RoutingConfig::default();
-        let lcr_engine = Arc::new(LCREngine::new());
-        let origination_routes = Arc::new(RwLock::new(OriginationRoutes::new()));
-        let termination_routes = Arc::new(RwLock::new(TerminationRoutes::new()));
+        let lcr_engine = Arc::new(LcrEngine::new("test://").await.unwrap());
+        let origination_routes = Arc::new(RwLock::new(OriginationRoutingEngine::new(Default::default())));
+        let termination_routes = Arc::new(RwLock::new(TerminationRoutingService::new(lcr_engine.clone())));
         let event_bus = Arc::new(EventBus::new());
 
         let service = RoutingService::new(

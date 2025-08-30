@@ -241,7 +241,7 @@ impl OptimizedG729Codec {
         }
 
         // Find roots using simplified method
-        let mut lsp_idx = 0;
+        let lsp_idx = 0;
 
         // Find LSP frequencies (simplified approach)
         for i in 0..M {
@@ -337,8 +337,7 @@ impl OptimizedG729Codec {
     /// Fixed codebook search using algebraic structure
     fn fixed_codebook_search(&self, target: &[f32; L_SUBFR]) -> Result<(u16, u8)> {
         let mut best_index = 0u16;
-        let mut best_gain = 0.0f32;
-        let mut max_correlation = 0.0f32;
+        let best_gain;
 
         // Simplified algebraic codebook search
         // G.729 uses structured search with 4 pulses in specific tracks

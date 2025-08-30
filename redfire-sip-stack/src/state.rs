@@ -440,7 +440,7 @@ impl SipStateManager {
     /// Extract transaction ID from request
     fn extract_transaction_id_from_request(&self, request: &Request) -> Result<String> {
         // Get branch parameter from top Via header
-        let via = request
+        let _via = request
             .via_header()
             .map_err(|e| anyhow!("No Via header in request: {}", e))?;
 
@@ -454,7 +454,7 @@ impl SipStateManager {
     /// Extract transaction ID from response
     fn extract_transaction_id_from_response(&self, response: &Response) -> Result<String> {
         // Get branch parameter from top Via header
-        let via = response
+        let _via = response
             .via_header()
             .map_err(|e| anyhow!("No Via header in response: {}", e))?;
 

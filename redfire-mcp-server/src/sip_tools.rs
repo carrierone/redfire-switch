@@ -9,7 +9,6 @@ use redfire_sip_stack::utils;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use tracing::{debug, info};
-use uuid::Uuid;
 
 pub struct SipTools {
     // Simple SIP tools without complex parsing

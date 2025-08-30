@@ -12,7 +12,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use tokio::net::UdpSocket;
 use tokio::sync::{mpsc, RwLock};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 /// Configuration for the Media Service
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -495,6 +495,8 @@ impl MediaProcessor {
             termination_cause: "normal".to_string(),
             cost: None,
             customer_id: None,
+            ani_ii_digit: None, // ANI-II not available in media layer
+            payphone_surcharge: None, // Surcharge not applicable in media layer
         };
 
         let event = TelecomEvent::CallTerminated(crate::events::CallTerminatedEvent {

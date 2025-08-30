@@ -1,0 +1,134 @@
+# Multi-stage production Docker build for Redfire Switch
+FROM rust:1.75 as builder
+
+WORKDIR /usr/src/app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    cmake \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy manifests
+COPY Cargo.toml Cargo.lock ./
+COPY redfire-codec-engine/Cargo.toml ./redfire-codec-engine/
+COPY redfire-sip-stack/Cargo.toml ./redfire-sip-stack/
+COPY redfire-sip-stack-minimal/Cargo.toml ./redfire-sip-stack-minimal/
+COPY redfire-mcp-server/Cargo.toml ./redfire-mcp-server/
+
+# Create dummy source files to build dependencies
+RUN mkdir -p src/bin \
+    && echo 'fn main() {}' > src/main.rs \
+    && mkdir -p redfire-codec-engine/src \
+    && echo 'fn main() {}' > redfire-codec-engine/src/lib.rs \
+    && mkdir -p redfire-sip-stack/src \
+    && echo 'fn main() {}' > redfire-sip-stack/src/lib.rs \
+    && mkdir -p redfire-sip-stack-minimal/src \
+    && echo 'fn main() {}' > redfire-sip-stack-minimal/src/lib.rs \
+    && mkdir -p redfire-mcp-server/src \
+    && echo 'fn main() {}' > redfire-mcp-server/src/main.rs
+
+# Build dependencies only
+RUN cargo build --release --workspace
+
+# Remove dummy files and copy real source
+RUN rm -rf src/ redfire-codec-engine/src/ redfire-sip-stack/src/ redfire-sip-stack-minimal/src/ redfire-mcp-server/src/
+
+# Copy source code
+COPY src/ ./src/
+COPY redfire-codec-engine/src/ ./redfire-codec-engine/src/
+COPY redfire-sip-stack/src/ ./redfire-sip-stack/src/
+COPY redfire-sip-stack-minimal/src/ ./redfire-sip-stack-minimal/src/
+COPY redfire-mcp-server/src/ ./redfire-mcp-server/src/
+
+# Build the application
+RUN cargo build --release --workspace
+
+# Production stage
+FROM debian:bookworm-slim
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libssl3 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create application user
+RUN groupadd -r redfire && useradd -r -g redfire redfire
+
+# Create directories
+RUN mkdir -p /var/log/redfire /var/lib/redfire /etc/redfire \
+    && chown -R redfire:redfire /var/log/redfire /var/lib/redfire
+
+# Copy binaries from builder stage
+COPY --from=builder /usr/src/app/target/release/redfire-switch /usr/local/bin/
+COPY --from=builder /usr/src/app/target/release/redfire-mcp /usr/local/bin/
+COPY --from=builder /usr/src/app/target/release/comprehensive-demo /usr/local/bin/
+COPY --from=builder /usr/src/app/target/release/enterprise-demo /usr/local/bin/
+COPY --from=builder /usr/src/app/target/release/lcr_cli /usr/local/bin/
+
+# Copy configuration templates
+COPY config-production-example.json /etc/redfire/production.json.template
+
+# Set permissions
+RUN chown -R redfire:redfire /etc/redfire \
+    && chmod +x /usr/local/bin/redfire-switch \
+    && chmod +x /usr/local/bin/redfire-mcp
+
+# Health check script
+COPY <<EOF /usr/local/bin/health-check.sh
+#!/bin/bash
+set -e
+
+# Check if main process is running
+if ! pgrep -f "redfire-switch" > /dev/null; then
+    echo "Redfire Switch process not running"
+    exit 1
+fi
+
+# Check health endpoint
+if ! curl -f http://localhost:8081/health >/dev/null 2>&1; then
+    echo "Health endpoint not responding"
+    exit 1
+fi
+
+echo "Health check passed"
+exit 0
+EOF
+
+RUN chmod +x /usr/local/bin/health-check.sh
+
+# Switch to non-root user
+USER redfire
+
+# Create startup script
+COPY <<EOF /usr/local/bin/start-redfire.sh
+#!/bin/bash
+set -e
+
+echo "Starting Redfire Switch..."
+
+# Initialize configuration if not exists
+if [ ! -f "/etc/redfire/production.json" ]; then
+    echo "Initializing configuration from template..."
+    cp /etc/redfire/production.json.template /etc/redfire/production.json
+fi
+
+# Start the main application
+exec /usr/local/bin/redfire-switch --config /etc/redfire/production.json
+EOF
+
+RUN chmod +x /usr/local/bin/start-redfire.sh
+
+# Expose ports
+EXPOSE 5060/udp 5061/tcp 8080/tcp 8081/tcp 20000-30000/udp
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD /usr/local/bin/health-check.sh
+
+# Default command
+CMD ["/usr/local/bin/start-redfire.sh"]

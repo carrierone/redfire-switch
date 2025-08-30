@@ -6,9 +6,9 @@
 use anyhow::{anyhow, Result};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use serde::{Deserialize, Serialize};
-use std::io::{Cursor, Write};
+use std::io::Cursor;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tracing::{debug, warn};
+use tracing::warn;
 
 /// RTP packet structure (RFC 3550)
 #[derive(Debug, Clone, PartialEq)]

@@ -12,7 +12,7 @@
 use std::collections::HashMap;
 use winnow::{
     ascii::{digit1, space0},
-    combinator::{alt, delimited, opt, preceded, repeat, separated, terminated},
+    combinator::{alt, delimited, opt, preceded, repeat, terminated},
     token::{literal, none_of, take_while},
     PResult, Parser,
 };

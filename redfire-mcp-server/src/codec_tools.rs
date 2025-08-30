@@ -5,11 +5,11 @@
 
 use anyhow::Result;
 use base64::{engine::general_purpose, Engine as _};
-use redfire_codec_engine::{AudioCodec, AudioFrame, CodecConfig, CodecService, TranscodedFrame};
+use redfire_codec_engine::{AudioCodec, AudioFrame, CodecService};
 use serde_json::{json, Value};
 use std::sync::Arc;
 use std::time::Instant;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 pub struct CodecTools {
@@ -152,7 +152,7 @@ impl CodecTools {
     pub async fn get_codec_info(&self, args: Value) -> Result<Value> {
         let specific_codec = args["codec"].as_str();
 
-        let mut codecs = json!({
+        let codecs = json!({
             "G711_ULAW": {
                 "name": "G.711 μ-law",
                 "sample_rate": 8000,

@@ -3,14 +3,14 @@
 //! This module provides sophisticated threat detection capabilities including
 //! behavioral analysis, anomaly detection, and threat intelligence integration.
 
-use super::{SecurityContext, SecurityError};
+use super::SecurityContext;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, info, warn, error};
+use tracing::{debug, info};
 
 /// Threat detection engine configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -244,8 +244,8 @@ impl ThreatDetectionEngine {
         profile.total_calls += 1;
         profile.last_activity = chrono::Utc::now();
         
-        // Update time patterns
-        let hour = profile.last_activity.hour() as u8;
+        // Update time patterns - using format to extract hour
+        let hour = profile.last_activity.format("%H").to_string().parse::<u8>().unwrap_or(0);
         *profile.time_patterns.entry(hour).or_insert(0) += 1;
         
         // Update calls per hour (simplified rolling average)

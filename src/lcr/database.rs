@@ -1,5 +1,5 @@
 use anyhow::Result;
-use chrono::{DateTime, NaiveTime, Utc};
+use chrono::NaiveTime;
 use rust_decimal::Decimal;
 use sqlx::{postgres::PgPoolOptions, PgPool, Row};
 use std::net::IpAddr;

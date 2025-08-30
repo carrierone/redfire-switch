@@ -1,14 +1,14 @@
 //! Origination Routing Engine
 //! Handles incoming call routing decisions based on ANI (caller) information
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::IpAddr;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
-use crate::lcr::types::{EgressTrunk, RouteType};
+use crate::lcr::types::RouteType;
 use crate::security_utils::validate_phone_number;
 
 /// Origination routing request

@@ -17,12 +17,10 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::etsi_li::{
-    EtsiLiController, Hi2EventType, Hi2Record, Hi3ContentRecord, InterceptType, LiControllerConfig,
-    LiWarrant, TargetIdentifierType,
+    EtsiLiController, Hi2EventType, Hi2Record, Hi3ContentRecord, LiControllerConfig, TargetIdentifierType,
 };
 use crate::j_std_025::{
-    CallResult, CdrEngineConfig, CdrType, ChargingInfo, JStd025Cdr, JStd025CdrEngine, QoSMetrics,
-    ServiceType,
+    CallResult, CdrEngineConfig, CdrType, JStd025Cdr, JStd025CdrEngine, QoSMetrics,
 };
 
 /// Compliance Framework Configuration

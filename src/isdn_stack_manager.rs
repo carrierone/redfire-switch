@@ -26,9 +26,9 @@ use crate::pri_timers::{
     clear_call_action, send_message_action, PriTimerAction, PriTimerExpiredEvent, PriTimerManager,
     PriTimerType,
 };
-use crate::q921_lapd::{LapdEvent, LapdStatistics, Q921LapdManager};
+use crate::q921_lapd::{LapdEvent, Q921LapdManager};
 use crate::q931_messages::{
-    CauseValue, IsdnConfig, IsdnSideType, IsdnVariant, Q931Message, Q931MessageType,
+    CauseValue, IsdnSideType, IsdnVariant, Q931Message, Q931MessageType,
 };
 // use crate::isdn_cli::{IsdnStackStatus, CircuitStatus, HealthStatus, LapdStatusInfo, Q931StatusInfo, TimerStatusInfo, CesopsnStatusInfo};
 
@@ -339,7 +339,7 @@ impl IsdnStackManager {
             .await?;
 
         // Create D-channel sender for LAPD
-        let (d_channel_sender, mut d_channel_receiver) = mpsc::unbounded_channel();
+        let (d_channel_sender, d_channel_receiver) = mpsc::unbounded_channel();
 
         // Create LAPD manager
         let lapd_manager = Arc::new(Q921LapdManager::new(

@@ -346,7 +346,7 @@ impl SignalingService {
             message.headers.values().map(|v| v.len()).sum::<usize>();
         
         if message_size > 65536 { // 64KB limit
-            return Err(SecurityError::RequestTooLarge(message_size).into());
+            return Err(SecurityError::RequestTooLarge(format!("{} bytes", message_size)).into());
         }
         
         // Validate SIP method
@@ -716,6 +716,8 @@ impl SignalingProcessor {
             termination_cause: reason.to_string(),
             cost: Some(session.route_info.cost),
             customer_id: None, // TODO: Get from request
+            ani_ii_digit: None, // TODO: Extract from SIP headers
+            payphone_surcharge: None, // TODO: Calculate from ANI-II
         };
 
         let event = TelecomEvent::CallTerminated(crate::events::CallTerminatedEvent {
@@ -777,6 +779,8 @@ impl SignalingProcessor {
                     termination_cause: "timeout".to_string(),
                     cost: Some(session.route_info.cost),
                     customer_id: None,
+                    ani_ii_digit: None, // TODO: Extract from SIP headers
+                    payphone_surcharge: None, // TODO: Calculate from ANI-II
                 };
 
                 let event = TelecomEvent::CallTerminated(crate::events::CallTerminatedEvent {

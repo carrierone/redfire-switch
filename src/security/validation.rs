@@ -67,7 +67,7 @@ impl SipMessageValidator {
         // Check message size
         if message.len() > self.max_message_size {
             error!("SIP message too large: {} bytes", message.len());
-            return Err(SecurityError::RequestTooLarge(message.len()));
+            return Err(SecurityError::RequestTooLarge(format!("{} bytes", message.len())));
         }
         
         // Convert to string safely
@@ -183,7 +183,7 @@ impl SipMessageValidator {
     fn validate_message_body(&self, body: &str) -> Result<(), SecurityError> {
         // Check body size
         if body.len() > 65536 {
-            return Err(SecurityError::RequestTooLarge(body.len()));
+            return Err(SecurityError::RequestTooLarge(format!("{} bytes", body.len())));
         }
         
         // Basic SDP validation if body appears to be SDP

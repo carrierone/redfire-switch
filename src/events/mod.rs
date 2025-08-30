@@ -3,15 +3,13 @@
 //! This module provides a comprehensive event system that enables loose coupling
 //! between microservices and supports real-time monitoring and analytics.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::Arc;
-use tokio::sync::{broadcast, RwLock};
-use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 pub mod bus;
@@ -190,6 +188,10 @@ pub struct CallDetailRecord {
     pub termination_cause: String,
     pub cost: Option<f64>,
     pub customer_id: Option<i32>,
+    
+    // ANI-II information for billing and classification
+    pub ani_ii_digit: Option<u8>,
+    pub payphone_surcharge: Option<f64>,
 }
 
 /// Health status enumeration
@@ -202,7 +204,7 @@ pub enum HealthStatus {
 }
 
 /// Event type enumeration for filtering
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EventType {
     CallInitiated,
     CallRouted, 
@@ -270,7 +272,7 @@ pub struct EventStats {
 }
 
 /// Event filter for selective subscription
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventFilter {
     pub event_types: Vec<EventType>,
     pub call_id_pattern: Option<String>,

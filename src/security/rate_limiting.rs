@@ -91,7 +91,7 @@ impl RateLimiter {
         
         if !bucket.try_consume(self.config.max_requests_per_minute) {
             warn!("Rate limit exceeded for IP: {}", ip);
-            return Err(SecurityError::RateLimitExceeded);
+            return Err(SecurityError::RateLimitExceeded(format!("Rate limit exceeded for IP: {}", ip)));
         }
         
         debug!("Rate limit check passed for IP: {}", ip);
@@ -105,7 +105,7 @@ impl RateLimiter {
         if let Some(&count) = connections.get(&ip) {
             if count >= self.config.max_connections_per_ip {
                 warn!("Connection limit exceeded for IP: {} ({})", ip, count);
-                return Err(SecurityError::RateLimitExceeded);
+                return Err(SecurityError::RateLimitExceeded(format!("Connection limit exceeded for IP: {} ({})", ip, count)));
             }
         }
         
@@ -127,14 +127,21 @@ impl RateLimiter {
     pub async fn unregister_connection(&self, ip: IpAddr) {
         let mut connections = self.global_connections.write().await;
         
-        if let Some(count) = connections.get_mut(&ip) {
+        // Fix borrowing issue by getting count first, then removing if needed
+        let should_remove = if let Some(count) = connections.get_mut(&ip) {
             if *count > 0 {
                 *count -= 1;
-                if *count == 0 {
-                    connections.remove(&ip);
-                }
                 debug!("Unregistered connection for IP: {} (remaining: {})", ip, *count);
+                *count == 0
+            } else {
+                false
             }
+        } else {
+            false
+        };
+        
+        if should_remove {
+            connections.remove(&ip);
         }
     }
     
@@ -260,7 +267,7 @@ impl DosProtection {
             if let Some(&blocked_time) = blocked.get(&ip) {
                 if blocked_time.elapsed() < self.block_duration {
                     error!("Blocked IP attempted connection: {}", ip);
-                    return Err(SecurityError::AccessDenied);
+                    return Err(SecurityError::AccessDenied("IP is blacklisted".to_string()));
                 }
             }
         }
@@ -268,10 +275,10 @@ impl DosProtection {
         // Create connection tracker (this also checks rate limits)
         match ConnectionTracker::new(self.rate_limiter.clone(), ip).await {
             Ok(tracker) => Ok(tracker),
-            Err(SecurityError::RateLimitExceeded) => {
+            Err(SecurityError::RateLimitExceeded(msg)) => {
                 // Temporarily block aggressive IPs
                 self.temporarily_block_ip(ip).await;
-                Err(SecurityError::RateLimitExceeded)
+                Err(SecurityError::RateLimitExceeded(msg))
             }
             Err(e) => Err(e),
         }
@@ -344,7 +351,7 @@ mod tests {
         assert!(limiter.check_rate_limit(ip).await.is_ok());
         
         // Third request should be rate limited
-        assert!(matches!(limiter.check_rate_limit(ip).await, Err(SecurityError::RateLimitExceeded)));
+        assert!(matches!(limiter.check_rate_limit(ip).await, Err(SecurityError::RateLimitExceeded(_))));
     }
     
     #[tokio::test]
@@ -363,6 +370,6 @@ mod tests {
         
         // Third connection should fail
         assert!(matches!(ConnectionTracker::new(limiter.clone(), ip).await, 
-                        Err(SecurityError::RateLimitExceeded)));
+                        Err(SecurityError::RateLimitExceeded(_))));
     }
 }

@@ -394,7 +394,9 @@ pub fn initialize_audit_logging() -> Result<()> {
 }
 
 /// Get global audit logger
+#[allow(clippy::missing_safety_doc)]
 pub fn get_audit_logger() -> Option<Arc<SecurityAuditLogger>> {
+    #[allow(static_mut_refs)]
     unsafe { AUDIT_LOGGER.clone() }
 }
 

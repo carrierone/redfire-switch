@@ -57,6 +57,7 @@ pub trait ComplianceNotifier {
 
 /// CALEA compliance event types
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 enum ComplianceEventType {
     CallAttempt {
         source_ip: std::net::IpAddr,
@@ -74,6 +75,7 @@ enum ComplianceEventType {
 
 /// Extra compliance data
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct ComplianceExtraData {
     pub method: Option<String>,
     pub response_code: Option<u16>,
@@ -355,6 +357,7 @@ impl SipCoreEngine {
     }
 
     /// Notify compliance framework of call events
+    #[allow(dead_code)]
     fn notify_compliance(
         &self,
         event_type: ComplianceEventType,

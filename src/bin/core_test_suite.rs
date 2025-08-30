@@ -4,7 +4,6 @@
  */
 
 use anyhow::Result;
-use std::net::SocketAddr;
 use std::time::{Duration, Instant};
 use tokio::net::UdpSocket;
 use tokio::time::timeout;
@@ -517,7 +516,7 @@ impl CoreTestSuite {
         let socket1 = UdpSocket::bind("127.0.0.1:0").await?;
         let socket2 = UdpSocket::bind("127.0.0.1:0").await?;
 
-        let addr1 = socket1.local_addr()?;
+        let _addr1 = socket1.local_addr()?;
         let addr2 = socket2.local_addr()?;
 
         let test_message = "TEST MESSAGE";

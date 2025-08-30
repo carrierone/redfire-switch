@@ -1,8 +1,8 @@
 //! Event bus implementation for distributed event handling
 
 use super::{EventFilter, EventHandler, EventStats, EventType, HandlerRegistration, TelecomEvent};
-use anyhow::{Context, Result};
-use chrono::{DateTime, Utc};
+use anyhow::Result;
+use chrono::Utc;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
@@ -151,7 +151,7 @@ impl EventBus {
 
         let start_time = Instant::now();
         let mut handled_count = 0;
-        let mut error_count = 0;
+        let error_count = 0;
 
         for (handler_name, registration) in handlers.iter() {
             // Check if handler is interested in this event type
@@ -210,7 +210,7 @@ impl EventBus {
 
     /// Subscribe to events with optional filtering
     pub fn subscribe(&self, filter: Option<EventFilter>) -> broadcast::Receiver<Arc<TelecomEvent>> {
-        let mut receiver = self.sender.subscribe();
+        let receiver = self.sender.subscribe();
         
         // If no filter, return receiver as-is
         if filter.is_none() {

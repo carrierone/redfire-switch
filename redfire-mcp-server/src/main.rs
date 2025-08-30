@@ -51,7 +51,7 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     // Initialize logging
-    let log_level = if args.debug { "debug" } else { "info" };
+    let _log_level = if args.debug { "debug" } else { "info" };
     tracing_subscriber::fmt()
         .with_max_level(if args.debug {
             tracing::Level::DEBUG

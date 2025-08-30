@@ -5,7 +5,6 @@
 
 use anyhow::Result;
 use colored::*;
-use std::net::{IpAddr, Ipv4Addr};
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing::{info, warn};
@@ -431,7 +430,7 @@ async fn demo_network_optimization(engine: &AIAnalyticsEngine) -> Result<()> {
     Ok(())
 }
 
-async fn demo_realtime_analytics(engine: &AIAnalyticsEngine) -> Result<()> {
+async fn demo_realtime_analytics(_engine: &AIAnalyticsEngine) -> Result<()> {
     info!("📊 Demonstrating real-time analytics capabilities...");
 
     println!("  📈 Collecting real-time analytics data...");

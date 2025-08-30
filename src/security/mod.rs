@@ -20,7 +20,46 @@ pub use blacklist::*;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use tracing::{error, warn, info};
+use std::{error::Error as StdError, fmt};
+use tracing::{warn, info};
+
+/// Security-related error types
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SecurityError {
+    ValidationFailed(String),
+    RateLimitExceeded(String),
+    ThreatDetected(String),
+    BlacklistViolation(String),
+    ConfigurationError(String),
+    AuthenticationFailed(String),
+    AuthenticationRequired(String),
+    AccessDenied(String),
+    InvalidInput(String),
+    RequestTooLarge(String),
+    Timeout(String),
+    TlsRequired(String),
+}
+
+impl fmt::Display for SecurityError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            SecurityError::ValidationFailed(msg) => write!(f, "Validation failed: {}", msg),
+            SecurityError::RateLimitExceeded(msg) => write!(f, "Rate limit exceeded: {}", msg),
+            SecurityError::ThreatDetected(msg) => write!(f, "Threat detected: {}", msg),
+            SecurityError::BlacklistViolation(msg) => write!(f, "Blacklist violation: {}", msg),
+            SecurityError::ConfigurationError(msg) => write!(f, "Configuration error: {}", msg),
+            SecurityError::AuthenticationFailed(msg) => write!(f, "Authentication failed: {}", msg),
+            SecurityError::AuthenticationRequired(msg) => write!(f, "Authentication required: {}", msg),
+            SecurityError::AccessDenied(msg) => write!(f, "Access denied: {}", msg),
+            SecurityError::InvalidInput(msg) => write!(f, "Invalid input: {}", msg),
+            SecurityError::RequestTooLarge(msg) => write!(f, "Request too large: {}", msg),
+            SecurityError::Timeout(msg) => write!(f, "Security timeout: {}", msg),
+            SecurityError::TlsRequired(msg) => write!(f, "TLS required: {}", msg),
+        }
+    }
+}
+
+impl StdError for SecurityError {}
 
 /// Comprehensive security configuration with global and per-trunk settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -168,24 +207,7 @@ impl SecurityContext {
     }
 }
 
-/// Security error types
-#[derive(Debug, thiserror::Error)]
-pub enum SecurityError {
-    #[error("Authentication required")]
-    AuthenticationRequired,
-    #[error("Access denied")]
-    AccessDenied,
-    #[error("Rate limit exceeded")]
-    RateLimitExceeded,
-    #[error("Invalid input: {0}")]
-    InvalidInput(String),
-    #[error("Request too large: {0} bytes")]
-    RequestTooLarge(usize),
-    #[error("Timeout occurred")]
-    Timeout,
-    #[error("TLS required")]
-    TlsRequired,
-}
+// SecurityError is already defined above - removing duplicate
 
 /// Initialize security subsystem
 pub fn initialize_security(config: &SecurityConfig) -> Result<()> {

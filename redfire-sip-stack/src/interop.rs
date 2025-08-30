@@ -766,7 +766,7 @@ impl SipInteropManager {
     }
 
     /// Convert headers to compact form
-    fn convert_to_compact_headers(&self, request: &mut Request) -> Result<()> {
+    fn convert_to_compact_headers(&self, _request: &mut Request) -> Result<()> {
         // SIP compact header mappings per RFC 3261
         // Via -> v, From -> f, To -> t, Call-ID -> i, CSeq -> (no compact form)
         // Contact -> m, Content-Type -> c, Content-Length -> l
@@ -780,49 +780,49 @@ impl SipInteropManager {
     }
 
     /// Convert response headers to compact form
-    fn convert_response_to_compact_headers(&self, response: &mut Response) -> Result<()> {
+    fn convert_response_to_compact_headers(&self, _response: &mut Response) -> Result<()> {
         debug!("Converting response to compact headers");
         // Implementation would convert response headers to compact form
         Ok(())
     }
 
     /// Ensure IPv4 is used in headers
-    fn ensure_ipv4_headers(&self, request: &mut Request) -> Result<()> {
+    fn ensure_ipv4_headers(&self, _request: &mut Request) -> Result<()> {
         debug!("Ensuring IPv4 usage in SIP headers");
         // Implementation would modify Via and Contact headers to use IPv4
         Ok(())
     }
 
     /// Add symmetric RTP headers
-    fn add_symmetric_rtp_headers(&self, request: &mut Request) -> Result<()> {
+    fn add_symmetric_rtp_headers(&self, _request: &mut Request) -> Result<()> {
         debug!("Adding symmetric RTP indicators");
         // Implementation would add headers to indicate symmetric RTP support
         Ok(())
     }
 
     /// Fix Via header issues
-    fn fix_via_header_issues(&self, request: &mut Request) -> Result<()> {
+    fn fix_via_header_issues(&self, _request: &mut Request) -> Result<()> {
         debug!("Fixing Via header parsing issues");
         // Implementation would fix common Via header problems
         Ok(())
     }
 
     /// Fix Content-Length issues
-    fn fix_content_length(&self, response: &mut Response) -> Result<()> {
+    fn fix_content_length(&self, _response: &mut Response) -> Result<()> {
         debug!("Fixing Content-Length header");
         // Implementation would correct Content-Length to match body
         Ok(())
     }
 
     /// Fix request Content-Length
-    fn fix_request_content_length(&self, request: &mut Request) -> Result<()> {
+    fn fix_request_content_length(&self, _request: &mut Request) -> Result<()> {
         debug!("Fixing request Content-Length header");
         // Implementation would correct Content-Length to match body
         Ok(())
     }
 
     /// Normalize Contact header
-    fn normalize_contact_header(&self, request: &mut Request) -> Result<()> {
+    fn normalize_contact_header(&self, _request: &mut Request) -> Result<()> {
         debug!("Normalizing Contact header");
         // Implementation would fix Contact header format issues
         Ok(())

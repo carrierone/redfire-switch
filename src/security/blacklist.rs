@@ -3,14 +3,13 @@
 //! This module provides IP blacklisting, reputation scoring, and dynamic
 //! threat response capabilities with per-trunk configuration support.
 
-use super::{SecurityContext, SecurityError};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::IpAddr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, info, warn, error};
+use tracing::{debug, info, warn};
 
 /// IP blacklist configuration with per-trunk overrides
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -308,18 +307,22 @@ impl BlacklistManager {
         debug!("Updated reputation for {}: score={:.3}, success_rate={:.3}, interactions={}", 
                ip, entry.score, entry.success_rate, entry.interaction_count);
         
-        // Check for auto-blacklisting
-        if self.config.enable_dynamic_reputation {
-            if entry.score < self.config.auto_blacklist_threshold && entry.interaction_count >= 10 {
-                drop(reputation); // Release lock before calling add_to_blacklist
-                self.add_to_blacklist(
-                    ip,
-                    format!("Auto-blacklisted due to low reputation: {:.3}", entry.score),
-                    "reputation_system".to_string(),
-                    Some(self.config.default_blacklist_duration),
-                    "medium".to_string(),
-                ).await?;
-            }
+        // Check for auto-blacklisting - fix borrowing issue by extracting values first
+        let should_blacklist = self.config.enable_dynamic_reputation && 
+                               entry.score < self.config.auto_blacklist_threshold && 
+                               entry.interaction_count >= 10;
+        let blacklist_score = entry.score;
+        
+        drop(reputation); // Release lock before calling add_to_blacklist
+        
+        if should_blacklist {
+            self.add_to_blacklist(
+                ip,
+                format!("Auto-blacklisted due to low reputation: {:.3}", blacklist_score),
+                "reputation_system".to_string(),
+                Some(self.config.default_blacklist_duration),
+                "medium".to_string(),
+            ).await?;
         }
         
         Ok(())

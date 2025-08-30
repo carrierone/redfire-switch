@@ -322,7 +322,7 @@ impl G729Encoder {
 
         // Apply perceptual weighting filter
         let gamma1: f32 = 0.94;
-        let gamma2: f32 = 0.6;
+        let _gamma2: f32 = 0.6;
 
         for i in 0..L_SUBFR {
             target[i] = speech[i];
@@ -376,7 +376,7 @@ impl G729Encoder {
     }
 
     /// Fixed codebook search (algebraic structure)
-    fn fixed_codebook_search(&self, target: &[f32], pitch_delay: usize) -> (usize, f32) {
+    fn fixed_codebook_search(&self, target: &[f32], _pitch_delay: usize) -> (usize, f32) {
         // G.729 uses 17-bit algebraic codebook
         // 4 pulses in specific tracks
         let tracks = [
@@ -388,7 +388,7 @@ impl G729Encoder {
 
         let mut best_index = 0;
         let mut best_gain = 0.0;
-        let max_criterion = -1e10;
+        let _max_criterion = -1e10;
 
         // Simplified search: find best pulse position in each track
         let mut pulse_positions = vec![0; 4];
@@ -664,7 +664,7 @@ impl G729Decoder {
         value
     }
 
-    fn decode_lsp(&self, idx1: usize, idx2: usize, idx3: usize, idx4: usize) -> Vec<f32> {
+    fn decode_lsp(&self, _idx1: usize, _idx2: usize, _idx3: usize, _idx4: usize) -> Vec<f32> {
         // Simplified LSP decoding
         let mut lsp = vec![0.0; M];
 
@@ -676,7 +676,7 @@ impl G729Decoder {
         lsp
     }
 
-    fn lsp_to_lp(&self, lsp: &[f32]) -> Vec<f32> {
+    fn lsp_to_lp(&self, _lsp: &[f32]) -> Vec<f32> {
         let mut lp = vec![0.0; M + 1];
         lp[0] = 1.0;
 

@@ -21,10 +21,10 @@ use tracing::{debug, info};
 use crate::dtmf_processor::{
     DtmfDetectorConfig, DtmfEvent, DtmfGeneratorConfig, DtmfProcessor, DtmfSource,
 };
-use crate::rfc2833_events::{Rfc2833Event, Rfc2833EventId, Rfc2833Processor};
-use crate::sigtran_dtmf::{SigtranDtmfMessage, SigtranDtmfProcessor};
-use crate::sip_info_dtmf::{SipInfoDtmfMessage, SipInfoDtmfProcessor};
-use crate::tdmoe_ni2_signaling::{Ni2Event, Ni2Message, TdmoeNi2Signaling};
+use crate::rfc2833_events::Rfc2833Processor;
+use crate::sigtran_dtmf::SigtranDtmfProcessor;
+use crate::sip_info_dtmf::SipInfoDtmfProcessor;
+use crate::tdmoe_ni2_signaling::{Ni2Message, TdmoeNi2Signaling};
 
 /// TDMoE channel configuration for DTMF processing
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -611,9 +611,6 @@ impl TdmoeDtmfIntegration {
                                 break;
                             }
                         }
-                    }
-                    _ => {
-                        // Handle other DTMF events as needed
                     }
                 }
             }

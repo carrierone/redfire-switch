@@ -1,0 +1,27 @@
+=== Configuration Security Analysis ===
+Date: Sat Aug 30 05:03:07 AM CDT 2025
+
+1. Default Credentials Check:
+✓ No obvious default credentials detected
+
+2. Insecure Protocol Check:
+✓ No obvious insecure protocols in config
+
+3. Debug Mode Check:
+config-dev.example.json:  "log_level": "debug",
+config-dev.json:      "debug_mode": true,
+WARNING: Debug mode may be enabled
+
+4. IP Binding Security:
+config-bgp-anycast-example.json:      "bind_ip": "0.0.0.0",
+config-bgp-anycast-example.json:        "bind_addr": "0.0.0.0:7946",
+config-bgp-anycast-example.json:    "metrics_bind": "0.0.0.0:9090"
+config-dev.example.json:  "bind_address": "0.0.0.0",
+config-dev.json:      "bind_ip": "0.0.0.0",
+config-dev.json:      "allowed_ips": ["0.0.0.0/0"],
+config-dev.json:    "bind_address": "0.0.0.0:8080",
+config.json:      "bind_ip": "0.0.0.0",
+config-new.json:      "bind_ip": "0.0.0.0",
+config-test.json:      "bind_ip": "0.0.0.0",
+config-test.json:      "allowed_ips": ["0.0.0.0/0"],
+INFO: Services binding to all interfaces (0.0.0.0) - review if appropriate

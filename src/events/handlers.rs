@@ -271,7 +271,7 @@ pub struct FraudMonitorHandler {
 }
 
 #[derive(Debug, Clone)]
-struct CallPattern {
+pub struct CallPattern {
     calling_number: String,
     call_count: u32,
     unique_destinations: std::collections::HashSet<String>,

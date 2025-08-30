@@ -62,7 +62,9 @@ impl SecureConfigLoader {
         let content = fs::read_to_string(path)?;
         
         let config = if path.extension().and_then(|s| s.to_str()) == Some("toml") {
-            toml::from_str(&content)?
+            // toml crate not available, fall back to JSON
+            warn!("TOML format requested but toml crate not available, using JSON parser");
+            serde_json::from_str(&content)?
         } else {
             serde_json::from_str(&content)?
         };
@@ -387,7 +389,7 @@ impl AppConfig {
         let config_path = env::var("CONFIG_FILE").ok();
         let config_path = config_path.as_ref().map(|p| Path::new(p));
         
-        let mut config: AppConfig = loader.load_config(config_path)?;
+        let config: AppConfig = loader.load_config(config_path)?;
         
         // Validate configuration
         config.validate()?;
