@@ -68,6 +68,9 @@ pub mod ml_threat_detection;
 pub mod operational_dashboard;
 pub mod secure_sipi_b2bua;
 
+// Interactive CLI
+pub mod cli;
+
 // DTMF and signaling modules
 pub mod dtmf_processor;
 pub mod rfc2833_events;
