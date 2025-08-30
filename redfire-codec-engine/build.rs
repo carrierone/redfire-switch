@@ -137,7 +137,8 @@ fn find_cuda_installation() -> Option<PathBuf> {
     // Try to find nvcc in PATH
     if let Ok(output) = Command::new("which").arg("nvcc").output() {
         if output.status.success() {
-            let nvcc_path = String::from_utf8_lossy(&output.stdout).trim();
+            let nvcc_path_str = String::from_utf8_lossy(&output.stdout);
+            let nvcc_path = nvcc_path_str.trim();
             if let Some(parent) = PathBuf::from(nvcc_path).parent() {
                 if let Some(cuda_root) = parent.parent() {
                     return Some(cuda_root.to_path_buf());
