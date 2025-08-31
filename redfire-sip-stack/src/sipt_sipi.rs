@@ -213,7 +213,7 @@ impl fmt::Display for IsupMessageType {
             IsupMessageType::PRI => "Pre-release Information",
             IsupMessageType::SDN => "Subsequent Directory Number",
         };
-        write!(f, "{}", name)
+        write!(f, "{name}")
     }
 }
 
@@ -900,7 +900,7 @@ impl SipTSipIService {
             return Err(anyhow!("No boundary found in Content-Type"));
         };
 
-        let boundary_marker = format!("--{}", boundary);
+        let boundary_marker = format!("--{boundary}");
         let parts: Vec<&str> = body.split(&boundary_marker).collect();
 
         let mut isup_data = None;
@@ -931,7 +931,7 @@ impl SipTSipIService {
 
             if content_type.to_lowercase().contains("application/isup") {
                 // Parse hex-encoded ISUP data
-                match hex::decode(&content.replace(&[' ', '\n', '\r'][..], "")) {
+                match hex::decode(content.replace(&[' ', '\n', '\r'][..], "")) {
                     Ok(data) => isup_data = Some(data),
                     Err(e) => warn!("Failed to decode ISUP hex data: {}", e),
                 }
@@ -1125,12 +1125,7 @@ pub mod utils {
 
     /// Generate next available CIC
     pub fn get_next_cic(config: &SipTSipIConfig, used_cics: &[u16]) -> Option<u16> {
-        for cic in config.cic_range_start..=config.cic_range_end {
-            if !used_cics.contains(&cic) {
-                return Some(cic);
-            }
-        }
-        None
+        (config.cic_range_start..=config.cic_range_end).find(|&cic| !used_cics.contains(&cic))
     }
 
     /// Validate ISUP message structure

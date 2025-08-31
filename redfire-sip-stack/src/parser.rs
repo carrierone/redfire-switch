@@ -160,6 +160,7 @@ pub enum TransactionState {
 
 /// SIP transaction timers per RFC 3261
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct TransactionTimers {
     /// Timer A (INVITE retransmission)
     pub timer_a: Option<chrono::DateTime<chrono::Utc>>,
@@ -183,22 +184,6 @@ pub struct TransactionTimers {
     pub timer_k: Option<chrono::DateTime<chrono::Utc>>,
 }
 
-impl Default for TransactionTimers {
-    fn default() -> Self {
-        Self {
-            timer_a: None,
-            timer_b: None,
-            timer_d: None,
-            timer_e: None,
-            timer_f: None,
-            timer_g: None,
-            timer_h: None,
-            timer_i: None,
-            timer_j: None,
-            timer_k: None,
-        }
-    }
-}
 
 /// SIP message parser implementing RFC 3261
 pub struct SipParser {
@@ -395,7 +380,7 @@ impl SipParser {
 
     /// Create dialog ID from request/response
     pub fn create_dialog_id(&self, call_id: &str, from_tag: &str, to_tag: &str) -> String {
-        format!("{}:{}:{}", call_id, from_tag, to_tag)
+        format!("{call_id}:{from_tag}:{to_tag}")
     }
 
     /// Extract tag from From/To header
@@ -700,7 +685,7 @@ pub mod utils {
     pub fn is_provisional_response(message: &RsipMessage) -> bool {
         if let RsipMessage::Response(resp) = message {
             let status = resp.status_code().code();
-            status >= 100 && status < 200
+            (100..200).contains(&status)
         } else {
             false
         }
@@ -710,7 +695,7 @@ pub mod utils {
     pub fn is_success_response(message: &RsipMessage) -> bool {
         if let RsipMessage::Response(resp) = message {
             let status = resp.status_code().code();
-            status >= 200 && status < 300
+            (200..300).contains(&status)
         } else {
             false
         }

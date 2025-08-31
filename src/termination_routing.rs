@@ -12,6 +12,26 @@ use tracing::{debug, info, warn};
 use crate::lcr::types::{CallRoute, RouteRequest, RouteType};
 use crate::lcr::LcrEngine;
 
+/// Termination routing plan configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TerminationRoutingPlan {
+    pub name: String,
+    pub enabled: bool,
+    pub priority: u32,
+    pub routes: Vec<CallRoute>,
+}
+
+impl Default for TerminationRoutingPlan {
+    fn default() -> Self {
+        Self {
+            name: String::from("default"),
+            enabled: true,
+            priority: 100,
+            routes: Vec::new(),
+        }
+    }
+}
+
 /// NANPA jurisdiction types
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum NanpaJurisdiction {

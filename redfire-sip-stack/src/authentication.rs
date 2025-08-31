@@ -25,6 +25,12 @@ use tracing::{debug, info, warn};
 #[derive(Debug)]
 pub struct Fail2BanService;
 
+impl Default for Fail2BanService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Fail2BanService {
     pub fn new() -> Self {
         Self
@@ -267,20 +273,20 @@ impl DigestCredentials {
         };
 
         let ha2 = match algorithm {
-            DigestAlgorithm::MD5 => format!("{:x}", md5::compute(format!("INVITE:{}", uri))),
+            DigestAlgorithm::MD5 => format!("{:x}", md5::compute(format!("INVITE:{uri}"))),
             DigestAlgorithm::SHA256 => format!(
                 "{:x}",
-                sha2::Sha256::digest(format!("INVITE:{}", uri).as_bytes())
+                sha2::Sha256::digest(format!("INVITE:{uri}").as_bytes())
             ),
         };
 
         let response = match algorithm {
             DigestAlgorithm::MD5 => {
-                format!("{:x}", md5::compute(format!("{}:{}:{}", ha1, nonce, ha2)))
+                format!("{:x}", md5::compute(format!("{ha1}:{nonce}:{ha2}")))
             }
             DigestAlgorithm::SHA256 => format!(
                 "{:x}",
-                sha2::Sha256::digest(format!("{}:{}:{}", ha1, nonce, ha2).as_bytes())
+                sha2::Sha256::digest(format!("{ha1}:{nonce}:{ha2}").as_bytes())
             ),
         };
 
@@ -374,7 +380,7 @@ impl SipAuthenticator {
 
         // Extract authentication information from SIP message
         let (method, request_uri) = match message {
-            rsip::SipMessage::Request(req) => (req.method.clone(), req.uri.clone()),
+            rsip::SipMessage::Request(req) => (req.method, req.uri.clone()),
             _ => return Err(anyhow!("Authentication only applies to requests")),
         };
 
@@ -456,7 +462,7 @@ impl SipAuthenticator {
                     );
 
                     // Record rate limit failure
-                    let reason = format!("Rate limit exceeded: {} CPS", rate_limit);
+                    let reason = format!("Rate limit exceeded: {rate_limit} CPS");
                     self.record_sip_failure(
                         source_ip,
                         FailureType::SipInvite,
@@ -526,7 +532,7 @@ impl SipAuthenticator {
         if credentials.verify_digest(username, realm, nonce, uri, response, algorithm) {
             info!("Digest authentication successful for user {}", username);
             return Ok(AuthResult::Authorized {
-                trunk_id: format!("digest_{}", username),
+                trunk_id: format!("digest_{username}"),
                 customer_id: credentials.customer_id.clone(),
                 tech_prefix: None,
                 rate_limit: None,
@@ -664,8 +670,7 @@ impl SipAuthenticator {
         };
 
         let www_authenticate = format!(
-            "Digest realm=\"{}\", nonce=\"{}\", algorithm=\"{}\", qop=\"auth\"",
-            realm, nonce, algorithm_str
+            "Digest realm=\"{realm}\", nonce=\"{nonce}\", algorithm=\"{algorithm_str}\", qop=\"auth\""
         );
 
         let mut response = rsip::Response::default(); // TODO: Set status to Unauthorized

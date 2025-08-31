@@ -192,9 +192,9 @@ fn generate_version_info() {
     let version_info = format!(
         r#"
 // Auto-generated version information
-pub const BUILD_VERSION: &str = "{}";
-pub const BUILD_GIT_HASH: &str = "{}";
-pub const BUILD_TIME: &str = "{}";
+pub const BUILD_VERSION: &str = "{version}";
+pub const BUILD_GIT_HASH: &str = "{git_hash}";
+pub const BUILD_TIME: &str = "{build_time}";
 pub const BUILD_FEATURES: &[&str] = &[
     #[cfg(feature = "cuda")]
     "cuda",
@@ -203,8 +203,7 @@ pub const BUILD_FEATURES: &[&str] = &[
     #[cfg(feature = "gpu")]
     "gpu",
 ];
-"#,
-        version, git_hash, build_time
+"#
     );
 
     std::fs::write(&dest_path, version_info).expect("Failed to write version info");
@@ -214,7 +213,7 @@ pub const BUILD_FEATURES: &[&str] = &[
 
 fn get_git_hash() -> Option<String> {
     let output = Command::new("git")
-        .args(&["rev-parse", "--short", "HEAD"])
+        .args(["rev-parse", "--short", "HEAD"])
         .output()
         .ok()?;
 

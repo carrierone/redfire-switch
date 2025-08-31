@@ -30,21 +30,21 @@ fn build_g729_assembly() {
     let mut object_files = Vec::new();
 
     for asm_file in &asm_files {
-        let src_path = format!("{}/{}", asm_src_dir, asm_file);
+        let src_path = format!("{asm_src_dir}/{asm_file}");
         let obj_name = format!("{}.o", asm_file.trim_end_matches(".s"));
-        let obj_path = format!("{}/{}", out_dir, obj_name);
+        let obj_path = format!("{out_dir}/{obj_name}");
 
-        println!("cargo:rerun-if-changed={}", src_path);
+        println!("cargo:rerun-if-changed={src_path}");
 
         // Check if source file exists
         if !Path::new(&src_path).exists() {
-            println!("cargo:warning=Assembly source file not found: {}", src_path);
+            println!("cargo:warning=Assembly source file not found: {src_path}");
             continue;
         }
 
         // Assemble using GNU assembler (gas)
         let output = Command::new("as")
-            .args(&[
+            .args([
                 "--64", // 64-bit mode
                 "-o", &obj_path, // Output object file
                 &src_path, // Input assembly file
@@ -60,18 +60,17 @@ fn build_g729_assembly() {
                         String::from_utf8_lossy(&result.stderr)
                     );
                 }
-                println!("Successfully assembled: {} -> {}", src_path, obj_path);
+                println!("Successfully assembled: {src_path} -> {obj_path}");
                 object_files.push(obj_path);
             }
             Err(e) => {
                 println!(
-                    "cargo:warning=Failed to run assembler for {}: {}. Trying fallback.",
-                    src_path, e
+                    "cargo:warning=Failed to run assembler for {src_path}: {e}. Trying fallback."
                 );
 
                 // Try using clang as fallback assembler
                 let clang_output = Command::new("clang")
-                    .args(&[
+                    .args([
                         "-c", // Compile only
                         "-x",
                         "assembler", // Treat as assembly
@@ -92,15 +91,13 @@ fn build_g729_assembly() {
                             continue;
                         }
                         println!(
-                            "Successfully assembled with clang: {} -> {}",
-                            src_path, obj_path
+                            "Successfully assembled with clang: {src_path} -> {obj_path}"
                         );
                         object_files.push(obj_path);
                     }
                     Err(clang_e) => {
                         println!(
-                            "cargo:warning=Both 'as' and 'clang' failed for {}: as={}, clang={}",
-                            src_path, e, clang_e
+                            "cargo:warning=Both 'as' and 'clang' failed for {src_path}: as={e}, clang={clang_e}"
                         );
                         continue;
                     }
@@ -111,10 +108,10 @@ fn build_g729_assembly() {
 
     // Create static library from object files if we have any
     if !object_files.is_empty() {
-        let lib_path = format!("{}/libg729_asm.a", out_dir);
+        let lib_path = format!("{out_dir}/libg729_asm.a");
 
         let mut ar_cmd = Command::new("ar");
-        ar_cmd.args(&["crus", &lib_path]);
+        ar_cmd.args(["crus", &lib_path]);
         ar_cmd.args(&object_files);
 
         let ar_output = ar_cmd.output();
@@ -126,17 +123,17 @@ fn build_g729_assembly() {
                         String::from_utf8_lossy(&result.stderr)
                     );
                 }
-                println!("Successfully created static library: {}", lib_path);
+                println!("Successfully created static library: {lib_path}");
 
                 // Tell Cargo to link the static library
-                println!("cargo:rustc-link-search=native={}", out_dir);
+                println!("cargo:rustc-link-search=native={out_dir}");
                 println!("cargo:rustc-link-lib=static=g729_asm");
 
                 // Enable assembly feature if we successfully built
                 println!("cargo:rustc-cfg=feature=\"g729_asm\"");
             }
             Err(e) => {
-                println!("cargo:warning=Failed to create static library: {}", e);
+                println!("cargo:warning=Failed to create static library: {e}");
             }
         }
     } else {

@@ -55,6 +55,12 @@ pub struct G729Encoder {
     sid_update_counter: i32,
 }
 
+impl Default for G729Encoder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl G729Encoder {
     pub fn new() -> Self {
         Self {
@@ -195,7 +201,7 @@ impl G729Encoder {
         }
 
         // Compute autocorrelation
-        let mut r = vec![0.0; M + 1];
+        let mut r = [0.0; M + 1];
         for k in 0..=M {
             for i in 0..L_WINDOW - k {
                 r[k] += windowed[i] * windowed[i + k];
@@ -204,8 +210,8 @@ impl G729Encoder {
 
         // Lag windowing
         let lag_window = [
-            1.00000000, 0.99879038, 0.99518473, 0.98921439, 0.98092961, 0.97039264, 0.95767454,
-            0.94285714, 0.92603099, 0.90729493, 0.88675135,
+            1.00000000, 0.998_790_4, 0.995_184_7, 0.98921439, 0.980_929_6, 0.97039264, 0.95767454,
+            0.94285714, 0.926_031, 0.907_294_9, 0.88675135,
         ];
         for i in 1..=M {
             r[i] *= lag_window[i];
@@ -214,7 +220,7 @@ impl G729Encoder {
         // Levinson-Durbin recursion
         let mut a = vec![0.0; M + 1];
         a[0] = 1.0;
-        let mut k = vec![0.0; M];
+        let mut k = [0.0; M];
         let mut err = r[0];
 
         for i in 1..=M {
@@ -228,7 +234,7 @@ impl G729Encoder {
 
             for j in 1..i / 2 + 1 {
                 let temp = a[j] + k[i - 1] * a[i - j];
-                a[i - j] = a[i - j] + k[i - 1] * a[j];
+                a[i - j] += k[i - 1] * a[j];
                 a[j] = temp;
             }
 
@@ -391,8 +397,8 @@ impl G729Encoder {
         let _max_criterion = -1e10;
 
         // Simplified search: find best pulse position in each track
-        let mut pulse_positions = vec![0; 4];
-        let mut pulse_signs = vec![1.0; 4];
+        let mut pulse_positions = [0; 4];
+        let mut pulse_signs = [1.0; 4];
 
         for (track_idx, track) in tracks.iter().enumerate() {
             let mut track_max = 0.0;
@@ -560,6 +566,12 @@ pub struct G729Decoder {
     // CNG state
     cng_seed: u32,
     sid_gain: f32,
+}
+
+impl Default for G729Decoder {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl G729Decoder {

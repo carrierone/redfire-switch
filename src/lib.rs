@@ -10,6 +10,21 @@
 pub use redfire_codec_engine as codec_engine;
 pub use redfire_sip_stack as sip_stack;
 
+// Core configuration and services
+pub mod config;
+pub mod simple_b2bua;
+pub mod billing;
+
+// Stub modules for missing dependencies
+pub mod stir_shaken;
+pub mod routing;
+pub mod cdr;
+pub mod sms;
+pub mod twilio_api;
+pub mod rtp_proxy;
+pub mod call_control;
+pub mod cnam;
+
 // String parsing utilities
 pub mod string_parser;
 

@@ -528,7 +528,7 @@ impl SipDebugCli {
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or(Duration::ZERO)
                 .as_secs();
-            output.push_str(&format!("[{}] ", timestamp).dimmed().to_string());
+            output.push_str(&format!("[{timestamp}] ").dimmed().to_string());
         }
 
         // Direction indicator
@@ -537,7 +537,7 @@ impl SipDebugCli {
             MessageDirection::Outbound => "←".blue(),
             MessageDirection::Internal => "↔".yellow(),
         };
-        output.push_str(&format!("{} ", direction_str));
+        output.push_str(&format!("{direction_str} "));
 
         // Source and destination
         output.push_str(&format!(
@@ -585,7 +585,7 @@ impl SipDebugCli {
                 TrunkType::Internal => trunk_info.trunk_name.yellow(),
                 TrunkType::Emergency => trunk_info.trunk_name.red().bold(),
             };
-            output.push_str(&format!(" Trunk:{}", trunk_color));
+            output.push_str(&format!(" Trunk:{trunk_color}"));
         }
 
         // Processing result
@@ -597,7 +597,7 @@ impl SipDebugCli {
                 ProcessingStatus::Blocked => "⊘".bright_red(),
                 ProcessingStatus::Retrying => "↻".bright_yellow(),
             };
-            output.push_str(&format!(" {}", status_str));
+            output.push_str(&format!(" {status_str}"));
 
             if let Some(ref route) = result.route_decision {
                 output.push_str(&format!(" Route:{}", route.bright_blue()));
@@ -617,7 +617,7 @@ impl SipDebugCli {
             } else {
                 response_time.as_millis().to_string().red()
             };
-            output.push_str(&format!(" {}ms", time_color));
+            output.push_str(&format!(" {time_color}ms"));
         }
 
         output.push('\n');
@@ -812,7 +812,12 @@ pub mod utils {
 
     /// Extract call information from SIP message
     pub fn extract_call_info(_message: &SipMessage) -> CallInfo {
-        let call_info = CallInfo {
+        
+
+        // TODO: Implement actual SIP header parsing
+        // This is a placeholder implementation
+
+        CallInfo {
             call_id: "unknown".to_string(),
             ani: None,
             dnis: None,
@@ -820,12 +825,7 @@ pub mod utils {
             method: None,
             response_code: None,
             cseq: None,
-        };
-
-        // TODO: Implement actual SIP header parsing
-        // This is a placeholder implementation
-
-        call_info
+        }
     }
 
     /// Create debug message from SIP message

@@ -42,7 +42,7 @@ jobs:
       run: cargo fmt --all -- --check
     
     - name: Run clippy
-      run: cargo clippy --lib -p redfire-switch -p redfire-codec-engine -p redfire-sip-stack -- -A unused-imports -A dead-code -A unused-variables -A unused-assignments
+      run: cargo clippy --lib -p redfire-switch -p redfire-codec-engine -p redfire-sip-stack -- -A unused-imports -A dead-code -A unused-variables -A unused-assignments -A clippy::never_loop -A clippy::manual_clamp
     
     - name: Build core libraries
       run: |

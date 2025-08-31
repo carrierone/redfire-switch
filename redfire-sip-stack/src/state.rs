@@ -247,7 +247,7 @@ impl SipStateManager {
         // Check if this is a re-INVITE (dialog exists)
         if let Some(from_tag) = from_tag {
             if let Some(to_tag) = to_tag {
-                let dialog_id = format!("{}:{}:{}", call_id, from_tag, to_tag);
+                let dialog_id = format!("{call_id}:{from_tag}:{to_tag}");
                 if self.dialogs.contains_key(&dialog_id) {
                     return Ok(SipStateAction::ProcessReInvite {
                         transaction_id,
@@ -270,7 +270,7 @@ impl SipStateManager {
         to_tag: Option<String>,
     ) -> Result<SipStateAction> {
         if let (Some(from_tag), Some(to_tag)) = (from_tag, to_tag) {
-            let dialog_id = format!("{}:{}:{}", call_id, from_tag, to_tag);
+            let dialog_id = format!("{call_id}:{from_tag}:{to_tag}");
 
             if let Some(mut dialog) = self.dialogs.get_mut(&dialog_id) {
                 // Update dialog state to confirmed
@@ -314,7 +314,7 @@ impl SipStateManager {
 
         // Find and terminate dialog
         if let (Some(from_tag), Some(to_tag)) = (from_tag, to_tag) {
-            let dialog_id = format!("{}:{}:{}", call_id, from_tag, to_tag);
+            let dialog_id = format!("{call_id}:{from_tag}:{to_tag}");
 
             if let Some(mut dialog) = self.dialogs.get_mut(&dialog_id) {
                 dialog.state = DialogState::Terminated;
@@ -384,7 +384,7 @@ impl SipStateManager {
         // Create new transaction
         let transaction = SipTransaction {
             transaction_id: transaction_id.clone(),
-            method: request.method().clone(),
+            method: *request.method(),
             state: TransactionState::NonInvite(NonInviteTransactionState::Trying),
             request: request.clone(),
             responses: Vec::new(),
@@ -397,7 +397,7 @@ impl SipStateManager {
 
         Ok(SipStateAction::ProcessOtherRequest {
             transaction_id,
-            method: request.method().clone(),
+            method: *request.method(),
         })
     }
 
@@ -477,7 +477,7 @@ impl SipStateManager {
             TransactionState::Invite(invite_state) => {
                 match invite_state {
                     InviteTransactionState::Calling => {
-                        if status_code >= 100 && status_code < 200 {
+                        if (100..200).contains(&status_code) {
                             *invite_state = InviteTransactionState::Proceeding;
                         } else if status_code >= 200 {
                             *invite_state = InviteTransactionState::Completed;
@@ -641,12 +641,9 @@ impl TransactionTimerManager {
                     }
                 }
                 TransactionState::NonInvite(non_invite_state) => {
-                    match non_invite_state {
-                        NonInviteTransactionState::Trying => {
-                            // Timer E (non-INVITE retransmission)
-                            // Timer F (non-INVITE timeout)
-                        }
-                        _ => {}
+                    if non_invite_state == &NonInviteTransactionState::Trying {
+                        // Timer E (non-INVITE retransmission)
+                        // Timer F (non-INVITE timeout)
                     }
                 }
             }

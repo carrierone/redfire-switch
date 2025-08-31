@@ -461,11 +461,22 @@ impl OperationalDashboard {
                     uptime_seconds: uptime,
                     cpu_usage_percent: 25.5, // Simulated
                     memory_usage_mb: 512,    // Simulated
+                    memory_peak_mb: 768,     // Simulated peak memory
+                    disk_usage_percent: 45.0, // Simulated disk usage
                     network_rx_bytes: 1024 * 1024 * 100,
                     network_tx_bytes: 1024 * 1024 * 80,
                     active_connections: 150,
+                    peak_connections: 200,   // Simulated peak connections
                     messages_per_second: 367000.0,
+                    peak_messages_per_second: 400000.0, // Simulated peak messages
                     error_rate_percent: 0.1,
+                    response_time_ms_avg: 25.0,  // Simulated average response time
+                    response_time_ms_p95: 45.0,  // Simulated 95th percentile
+                    response_time_ms_p99: 100.0, // Simulated 99th percentile
+                    thread_count: 32,        // Simulated thread count
+                    gc_collections: 0,       // Simulated GC collections
+                    database_connections_active: 10,  // Simulated active DB connections
+                    database_connections_idle: 20,    // Simulated idle DB connections
                 };
 
                 {

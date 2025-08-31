@@ -613,33 +613,33 @@ impl SipMessageProcessor {
                         .create_challenge_response(request, algorithm)
                     {
                         Ok(challenge) => {
-                            return SipRequestResult::AuthChallenge {
+                            SipRequestResult::AuthChallenge {
                                 challenge_response: challenge,
                                 destination: message.source,
                                 transport: message.transport,
-                            };
+                            }
                         }
                         Err(e) => {
                             error!("Failed to create auth challenge: {}", e);
-                            return self.create_error_response(
+                            self.create_error_response(
                                 request,
                                 500,
                                 "Internal Server Error",
                                 message.source,
                                 message.transport,
-                            );
+                            )
                         }
                     }
                 }
                 AuthResult::Denied { reason } => {
                     warn!("Request denied from {}: {:?}", message.source, reason);
-                    return self.create_error_response(
+                    self.create_error_response(
                         request,
                         403,
                         "Forbidden",
                         message.source,
                         message.transport,
-                    );
+                    )
                 }
             }
         } else {

@@ -247,9 +247,9 @@ impl G7222Encoder {
     fn apply_pre_emphasis(&mut self, speech: &mut [f32]) {
         let gamma = 0.68;
         for i in (1..speech.len()).rev() {
-            speech[i] = speech[i] - gamma * speech[i - 1];
+            speech[i] -= gamma * speech[i - 1];
         }
-        speech[0] = speech[0] - gamma * self.preemph_mem;
+        speech[0] -= gamma * self.preemph_mem;
         self.preemph_mem = speech[speech.len() - 1];
     }
 
@@ -270,7 +270,7 @@ impl G7222Encoder {
         }
 
         // Compute autocorrelation (16th order for wideband)
-        let mut r = vec![0.0; M_WB + 1];
+        let mut r = [0.0; M_WB + 1];
         for k in 0..=M_WB {
             for i in 0..L_WINDOW_WB - k {
                 r[k] += windowed[i] * windowed[i + k];
@@ -283,7 +283,7 @@ impl G7222Encoder {
         // Lag windowing (wideband coefficients)
         let lag_window = [
             1.0000000, 0.9999951, 0.9999804, 0.9999559, 0.9999216, 0.9998774, 0.9998234, 0.9997596,
-            0.9996860, 0.9996025, 0.9995092, 0.9994061, 0.9992931, 0.9991703, 0.9990376, 0.9988951,
+            0.999_686, 0.9996025, 0.9995092, 0.9994061, 0.9992931, 0.9991703, 0.9990376, 0.9988951,
             0.9987428,
         ];
         for i in 1..=M_WB {
@@ -306,7 +306,7 @@ impl G7222Encoder {
 
             for j in 1..i / 2 + 1 {
                 let temp = a[j] + rc * a[i - j];
-                a[i - j] = a[i - j] + rc * a[j];
+                a[i - j] += rc * a[j];
                 a[j] = temp;
             }
 
@@ -607,11 +607,10 @@ impl G7222Encoder {
             let byte_index = *bit_index / 8;
             let bit_position = 7 - (*bit_index % 8);
 
-            if byte_index < bitstream.len() {
-                if bit == 1 {
+            if byte_index < bitstream.len()
+                && bit == 1 {
                     bitstream[byte_index] |= 1 << bit_position;
                 }
-            }
 
             *bit_index += 1;
         }
@@ -713,6 +712,12 @@ pub struct G7222Decoder {
     mode: AmrWbMode,
 }
 
+impl Default for G7222Decoder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl G7222Decoder {
     pub fn new() -> Self {
         Self {
@@ -767,7 +772,7 @@ impl G7222Decoder {
                 let mut sample = synth[i];
 
                 // De-emphasis
-                sample = sample + 0.68 * self.mem_deemph;
+                sample += 0.68 * self.mem_deemph;
                 self.mem_deemph = sample;
 
                 // High-pass post-filter

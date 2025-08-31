@@ -1010,10 +1010,10 @@ impl RfcComplianceChecker {
 
         // Status-specific validation
         let status_code = response.status_code().code();
-        if status_code >= 200 && status_code < 300 {
+        if (200..300).contains(&status_code) {
             // 2xx responses to INVITE should have Contact header
             if let Ok(cseq) = response.cseq_header() {
-                if cseq.method().map_or(false, |m| m == Method::Invite)
+                if (cseq.method() == Ok(Method::Invite))
                     && response.contact_header().is_err()
                 {
                     issues.push(ComplianceIssue::MissingHeader("Contact".to_string()));
@@ -1132,7 +1132,7 @@ pub mod utils {
     pub fn generate_user_agent(include_extensions: bool) -> String {
         let base = "Redfire-Switch/1.0";
         if include_extensions {
-            format!("{} (RFC3261,RFC3262,RFC4028,RFC8224)", base)
+            format!("{base} (RFC3261,RFC3262,RFC4028,RFC8224)")
         } else {
             base.to_string()
         }

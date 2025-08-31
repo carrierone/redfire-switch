@@ -170,6 +170,12 @@ pub struct SidFrame {
     pub reflection_coeffs: [u8; 4],
 }
 
+impl Default for G729AnnexState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl G729AnnexState {
     /// Create new G.729 Annex A/B state
     pub fn new() -> Self {
