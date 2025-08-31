@@ -49,6 +49,12 @@ pub struct G729Frame {
     pub fixed_gain: [u8; 2],
 }
 
+impl Default for G729Codec {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl G729Codec {
     /// Create new G.729 codec instance
     pub fn new() -> Self {
@@ -585,12 +591,12 @@ impl G729Codec {
         for subframe in 0..2 {
             // Pitch lag (8 bits)
             for i in 0..8 {
-                bits.push(((frame.pitch_lag[subframe] >> (7 - i)) & 1) as u8);
+                bits.push((frame.pitch_lag[subframe] >> (7 - i)) & 1);
             }
 
             // Pitch gain (5 bits)
             for i in 0..5 {
-                bits.push(((frame.pitch_gain[subframe] >> (4 - i)) & 1) as u8);
+                bits.push((frame.pitch_gain[subframe] >> (4 - i)) & 1);
             }
 
             // Fixed codebook index (13 bits)
@@ -600,11 +606,11 @@ impl G729Codec {
 
             // Fixed codebook signs (4 bits)
             for i in 0..4 {
-                bits.push(((frame.fixed_sign[subframe] >> (3 - i)) & 1) as u8);
+                bits.push((frame.fixed_sign[subframe] >> (3 - i)) & 1);
             }
 
             // Fixed codebook gain (1 bit, simplified)
-            bits.push((frame.fixed_gain[subframe] & 1) as u8);
+            bits.push(frame.fixed_gain[subframe] & 1);
         }
 
         // Pack bits into bytes

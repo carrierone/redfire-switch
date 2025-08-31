@@ -220,15 +220,19 @@ async fn test_system_integration_under_load() -> Result<()> {
 
     // Initialize all components
     let b2bua = Arc::new(SimpleB2BUA::new(config.clone()).await?);
-    let security_monitor = Arc::new(SecurityMonitor::new().await?);
+    let security_monitor = Arc::new(SecurityMonitor::new(SecurityMonitorConfig::default()));
     let analytics_config = AIAnalyticsConfig {
         enabled: true,
-        ml_models_path: "models/".to_string(),
-        real_time_analysis: true,
-        threat_detection_enabled: true,
-        performance_monitoring: true,
+        call_quality_prediction: true,
+        fraud_detection: true,
+        network_optimization: true,
+        realtime_analytics: true,
+        predictive_scaling: true,
+        anomaly_threshold: 0.1,
+        learning_rate: 0.01,
+        prediction_window_minutes: 15,
     };
-    let analytics = Arc::new(AIAnalyticsEngine::new(analytics_config).await?);
+    let analytics = Arc::new(AIAnalyticsEngine::new(analytics_config));
 
     // Spawn concurrent tasks to simulate load
     let mut handles = vec![];

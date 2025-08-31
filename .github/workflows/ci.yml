@@ -62,8 +62,7 @@ jobs:
         cargo test --verbose --lib
         cargo test --verbose -p redfire-codec-engine
         cargo test --verbose -p redfire-sip-stack
-        # Skip integration tests that have compilation issues
-        # cargo test --verbose comprehensive_integration_tests --no-run || echo "Integration tests compilation issues"
+        cargo test --verbose --test integration_tests
     
     - name: Test libraries independently
       run: |

@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::{info, warn, error, debug};
+use rust_decimal::Decimal;
 
 /// Billing service configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -888,4 +889,176 @@ mod tests {
         let result = service.check_call_authorization(request).await.unwrap();
         assert!(matches!(result, BillingCheckResult::EmergencyAllowed(_)));
     }
+
+    #[tokio::test]
+    async fn test_rating_engine() {
+        let engine = RatingEngine::new();
+        
+        // Add a rate table
+        let rate_table = RateTable {
+            destination_name: "US Local".to_string(),
+            prefix: "1".to_string(),
+            rate_per_minute: Decimal::from_str("0.01").unwrap(),
+            minimum_duration_seconds: 6,
+            billing_increment_seconds: 6,
+            setup_fee: Decimal::from_str("0.005").unwrap(),
+            effective_date: Utc::now(),
+            expiry_date: None,
+        };
+        engine.update_rate(rate_table);
+        
+        // Test pricing calculation
+        let pricing = engine.calculate_pricing("15551234567", 120).await.unwrap();
+        assert_eq!(pricing.matched_prefix, Some("1".to_string()));
+        assert_eq!(pricing.rate_per_minute, Decimal::from_str("0.01").unwrap());
+    }
 }
+
+/// Real-time rating engine for call pricing
+#[derive(Debug, Clone)]
+pub struct RatingEngine {
+    /// Rate tables indexed by destination prefix
+    rate_tables: Arc<DashMap<String, RateTable>>,
+    /// Default rates for unmatched prefixes
+    default_rates: Arc<RwLock<DefaultRates>>,
+}
+
+/// Rate table for specific destination patterns
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RateTable {
+    pub destination_name: String,
+    pub prefix: String,
+    pub rate_per_minute: Decimal,
+    pub minimum_duration_seconds: u32,
+    pub billing_increment_seconds: u32,
+    pub setup_fee: Decimal,
+    pub effective_date: DateTime<Utc>,
+    pub expiry_date: Option<DateTime<Utc>>,
+}
+
+/// Default rates for unmatched destinations
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DefaultRates {
+    pub domestic_rate_per_minute: Decimal,
+    pub international_rate_per_minute: Decimal,
+    pub premium_rate_per_minute: Decimal,
+    pub minimum_charge: Decimal,
+    pub setup_fee: Decimal,
+}
+
+impl Default for DefaultRates {
+    fn default() -> Self {
+        Self {
+            domestic_rate_per_minute: Decimal::from_str("0.01").unwrap(), // $0.01/min
+            international_rate_per_minute: Decimal::from_str("0.05").unwrap(), // $0.05/min
+            premium_rate_per_minute: Decimal::from_str("0.25").unwrap(), // $0.25/min
+            minimum_charge: Decimal::from_str("0.01").unwrap(), // $0.01 minimum
+            setup_fee: Decimal::from_str("0.005").unwrap(), // $0.005 setup
+        }
+    }
+}
+
+/// Call pricing result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CallPricing {
+    pub destination: String,
+    pub rate_per_minute: Decimal,
+    pub setup_fee: Decimal,
+    pub minimum_charge: Decimal,
+    pub billing_increment: u32,
+    pub estimated_cost: Decimal,
+    pub matched_prefix: Option<String>,
+}
+
+impl RatingEngine {
+    /// Create a new rating engine
+    pub fn new() -> Self {
+        Self {
+            rate_tables: Arc::new(DashMap::new()),
+            default_rates: Arc::new(RwLock::new(DefaultRates::default())),
+        }
+    }
+
+    /// Calculate pricing for a destination number
+    pub async fn calculate_pricing(&self, destination: &str, estimated_duration_seconds: u32) -> Result<CallPricing> {
+        // Find the longest matching prefix
+        let mut best_match: Option<RateTable> = None;
+        let mut longest_prefix = 0;
+
+        for entry in self.rate_tables.iter() {
+            let prefix = entry.key();
+            if destination.starts_with(prefix) && prefix.len() > longest_prefix {
+                longest_prefix = prefix.len();
+                best_match = Some(entry.value().clone());
+            }
+        }
+
+        if let Some(rate_table) = best_match {
+            // Use matched rate table
+            let duration_minutes = Decimal::from(estimated_duration_seconds) / Decimal::from(60);
+            let base_cost = rate_table.rate_per_minute * duration_minutes;
+            let total_cost = base_cost + rate_table.setup_fee;
+
+            Ok(CallPricing {
+                destination: rate_table.destination_name.clone(),
+                rate_per_minute: rate_table.rate_per_minute,
+                setup_fee: rate_table.setup_fee,
+                minimum_charge: Decimal::from_str("0.01").unwrap(),
+                billing_increment: rate_table.billing_increment_seconds,
+                estimated_cost: total_cost.max(Decimal::from_str("0.01").unwrap()),
+                matched_prefix: Some(rate_table.prefix.clone()),
+            })
+        } else {
+            // Use default rates
+            let default_rates = self.default_rates.read();
+            let rate = if destination.starts_with("1") {
+                default_rates.domestic_rate_per_minute
+            } else if destination.starts_with("900") || destination.starts_with("976") {
+                default_rates.premium_rate_per_minute
+            } else {
+                default_rates.international_rate_per_minute
+            };
+
+            let duration_minutes = Decimal::from(estimated_duration_seconds) / Decimal::from(60);
+            let base_cost = rate * duration_minutes;
+            let total_cost = base_cost + default_rates.setup_fee;
+
+            Ok(CallPricing {
+                destination: "Unknown Destination".to_string(),
+                rate_per_minute: rate,
+                setup_fee: default_rates.setup_fee,
+                minimum_charge: default_rates.minimum_charge,
+                billing_increment: 60, // 1 minute default
+                estimated_cost: total_cost.max(default_rates.minimum_charge),
+                matched_prefix: None,
+            })
+        }
+    }
+
+    /// Add or update a rate table entry
+    pub fn update_rate(&self, rate_table: RateTable) {
+        info!("Updated rate for prefix {}: ${}/min", 
+              rate_table.prefix, rate_table.rate_per_minute);
+        self.rate_tables.insert(rate_table.prefix.clone(), rate_table);
+    }
+
+    /// Remove a rate table entry
+    pub fn remove_rate(&self, prefix: &str) {
+        if self.rate_tables.remove(prefix).is_some() {
+            info!("Removed rate for prefix {}", prefix);
+        }
+    }
+
+    /// Get all configured rates
+    pub fn get_all_rates(&self) -> Vec<RateTable> {
+        self.rate_tables.iter().map(|entry| entry.value().clone()).collect()
+    }
+
+    /// Update default rates
+    pub fn update_default_rates(&self, rates: DefaultRates) {
+        *self.default_rates.write() = rates;
+        info!("Updated default rates");
+    }
+}
+
+use std::str::FromStr;
