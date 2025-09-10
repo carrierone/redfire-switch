@@ -1013,9 +1013,7 @@ impl RfcComplianceChecker {
         if (200..300).contains(&status_code) {
             // 2xx responses to INVITE should have Contact header
             if let Ok(cseq) = response.cseq_header() {
-                if (cseq.method() == Ok(Method::Invite))
-                    && response.contact_header().is_err()
-                {
+                if (cseq.method() == Ok(Method::Invite)) && response.contact_header().is_err() {
                     issues.push(ComplianceIssue::MissingHeader("Contact".to_string()));
                 }
             }

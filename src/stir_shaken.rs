@@ -1,8 +1,8 @@
 //! STIR/SHAKEN implementation stub
 
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use anyhow::Result;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StirShakenConfig {
@@ -27,9 +27,9 @@ impl Default for StirShakenConfig {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum AttestationLevel {
-    A,  // Full attestation
-    B,  // Partial attestation  
-    C,  // Gateway attestation
+    A, // Full attestation
+    B, // Partial attestation
+    C, // Gateway attestation
 }
 
 pub struct StirShakenService {

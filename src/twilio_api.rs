@@ -26,8 +26,6 @@ pub struct ConversationsConfig {
 
 impl Default for ConversationsConfig {
     fn default() -> Self {
-        Self {
-            enabled: false,
-        }
+        Self { enabled: false }
     }
 }

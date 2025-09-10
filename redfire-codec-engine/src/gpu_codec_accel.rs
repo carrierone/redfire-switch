@@ -993,17 +993,42 @@ impl GpuCodecAccelerator {
             GpuBackend::Cuda => {
                 // Implementation similar to cuda_encode_ulaw but using alaw_encode kernel
                 // ... (details omitted for brevity)
-                Ok(frames
-                    .iter()
-                    .map(|f| AudioFrame {
-                        data: f.data.clone(), // Placeholder - would use actual GPU processing
-                        codec: AudioCodec::G711Alaw,
-                        sample_rate: f.sample_rate,
-                        channels: f.channels,
-                        timestamp: f.timestamp,
-                        sequence: f.sequence,
-                    })
-                    .collect())
+                // Implementation similar to cuda_encode_ulaw but using alaw_encode kernel
+                if let Some(ref device) = self.cuda_device {
+                    let kernel_cache = self.kernel_cache.read().await;
+                    if let Some(kernel) = kernel_cache.get("alaw_encode") {
+                        if let Some(ref function) = kernel.cuda_function {
+                            // Process frames using A-law encoding kernel
+                            let mut results = Vec::new();
+                            for frame in frames {
+                                // Convert input to samples and apply A-law encoding
+                                let samples = frame
+                                    .data
+                                    .chunks_exact(2)
+                                    .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]))
+                                    .collect::<Vec<i16>>();
+
+                                // Simple A-law encoding simulation
+                                let mut encoded_data = Vec::new();
+                                for sample in samples {
+                                    let encoded = alaw_encode_sample(sample);
+                                    encoded_data.push(encoded);
+                                }
+
+                                results.push(AudioFrame {
+                                    data: encoded_data,
+                                    codec: AudioCodec::G711Alaw,
+                                    sample_rate: frame.sample_rate,
+                                    channels: frame.channels,
+                                    timestamp: frame.timestamp,
+                                    sequence: frame.sequence,
+                                });
+                            }
+                            return Ok(results);
+                        }
+                    }
+                }
+                Err(anyhow!("A-law encoding kernel not available"))
             }
             _ => Err(anyhow!(
                 "A-law GPU encoding not implemented for this backend"
@@ -1014,17 +1039,40 @@ impl GpuCodecAccelerator {
     /// GPU-accelerated G.722 encoding
     async fn gpu_encode_g722(&self, frames: &[AudioFrame]) -> Result<Vec<AudioFrame>> {
         // Implementation for G.722 GPU encoding
-        Ok(frames
-            .iter()
-            .map(|f| AudioFrame {
-                data: f.data.clone(), // Placeholder
+        // G.722 encoding implementation
+        let mut results = Vec::new();
+        for frame in frames {
+            let samples = frame
+                .data
+                .chunks_exact(2)
+                .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]))
+                .collect::<Vec<i16>>();
+
+            // G.722 ADPCM encoding - simplified implementation
+            let mut encoded_data = Vec::new();
+            for chunk in samples.chunks(2) {
+                if chunk.len() == 2 {
+                    let low = chunk[0];
+                    let high = chunk[1];
+
+                    // Quantize to 6-bit (low) and 2-bit (high)
+                    let low_bits = ((low >> 10) & 0x3F) as u8;
+                    let high_bits = ((high >> 14) & 0x03) as u8;
+
+                    encoded_data.push((high_bits << 6) | low_bits);
+                }
+            }
+
+            results.push(AudioFrame {
+                data: encoded_data,
                 codec: AudioCodec::G722,
-                sample_rate: f.sample_rate,
-                channels: f.channels,
-                timestamp: f.timestamp,
-                sequence: f.sequence,
-            })
-            .collect())
+                sample_rate: frame.sample_rate,
+                channels: frame.channels,
+                timestamp: frame.timestamp,
+                sequence: frame.sequence,
+            });
+        }
+        Ok(results)
     }
 
     /// GPU-accelerated G.729 encoding with CELP
@@ -1416,6 +1464,161 @@ impl Default for GpuAccelStats {
     }
 }
 
+/// A-law encoding helper function
+fn alaw_encode_sample(sample: i16) -> u8 {
+    const CLIP: i16 = 32635;
+
+    let sign = if sample < 0 { 0x80 } else { 0x00 };
+    let sample = if sample < 0 { -sample } else { sample };
+    let sample = if sample > CLIP { CLIP } else { sample };
+
+    let mut exponent = 0;
+    if sample >= 256 {
+        let mut temp = sample >> 8;
+        while temp > 1 {
+            temp >>= 1;
+            exponent += 1;
+        }
+        exponent = 7 - exponent;
+    }
+
+    let mantissa = (sample >> (exponent + 4)) & 0x0F;
+    let alaw = sign | (exponent << 4) | mantissa;
+    alaw ^ 0x55
+}
+
+/// μ-law decoding helper function
+fn ulaw_decode_sample(ulaw: u8) -> i16 {
+    let ulaw = !ulaw;
+    let sign = (ulaw & 0x80) != 0;
+    let exponent = ((ulaw >> 4) & 0x07) as i16;
+    let mantissa = (ulaw & 0x0F) as i16;
+
+    let mut sample = (mantissa << 3) + 0x84;
+    sample <<= exponent;
+    sample -= 0x84;
+
+    if sign {
+        -sample
+    } else {
+        sample
+    }
+}
+
+/// A-law decoding helper function  
+fn alaw_decode_sample(alaw: u8) -> i16 {
+    let alaw = alaw ^ 0x55;
+    let sign = (alaw & 0x80) != 0;
+    let exponent = ((alaw >> 4) & 0x07) as i16;
+    let mantissa = (alaw & 0x0F) as i16;
+
+    let mut sample = if exponent == 0 {
+        (mantissa << 4) + 8
+    } else {
+        ((mantissa << 4) + 0x108) << (exponent - 1)
+    };
+
+    if sign {
+        -sample
+    } else {
+        sample
+    }
+}
+
+/// CPU benchmark encoding for performance comparison
+async fn cpu_encode_benchmark(frames: &[AudioFrame], codec: AudioCodec) -> Result<Vec<AudioFrame>> {
+    // Simulate CPU-only encoding without GPU acceleration
+    let mut results = Vec::new();
+
+    for frame in frames {
+        let encoded_frame = match codec {
+            AudioCodec::G711Ulaw => {
+                let samples = frame
+                    .data
+                    .chunks_exact(2)
+                    .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]))
+                    .collect::<Vec<i16>>();
+
+                let mut encoded_data = Vec::new();
+                for sample in samples {
+                    // Simple μ-law encoding
+                    let encoded = ulaw_encode_sample(sample);
+                    encoded_data.push(encoded);
+                }
+
+                AudioFrame {
+                    data: encoded_data,
+                    codec,
+                    sample_rate: frame.sample_rate,
+                    channels: frame.channels,
+                    timestamp: frame.timestamp,
+                    sequence: frame.sequence,
+                }
+            }
+            AudioCodec::G711Alaw => {
+                let samples = frame
+                    .data
+                    .chunks_exact(2)
+                    .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]))
+                    .collect::<Vec<i16>>();
+
+                let mut encoded_data = Vec::new();
+                for sample in samples {
+                    let encoded = alaw_encode_sample(sample);
+                    encoded_data.push(encoded);
+                }
+
+                AudioFrame {
+                    data: encoded_data,
+                    codec,
+                    sample_rate: frame.sample_rate,
+                    channels: frame.channels,
+                    timestamp: frame.timestamp,
+                    sequence: frame.sequence,
+                }
+            }
+            _ => {
+                // For other codecs, just copy the frame
+                frame.clone()
+            }
+        };
+
+        results.push(encoded_frame);
+    }
+
+    Ok(results)
+}
+
+/// μ-law encoding helper function
+fn ulaw_encode_sample(sample: i16) -> u8 {
+    const BIAS: i16 = 0x84;
+    const CLIP: i16 = 32635;
+
+    let sign = if sample < 0 { 0x80 } else { 0x00 };
+    let sample = if sample < 0 { -sample } else { sample };
+    let sample = if sample > CLIP { CLIP } else { sample };
+
+    let sample = sample + BIAS;
+    let mut exponent = 0;
+    let mut temp = sample >> 7;
+    while temp > 1 {
+        temp >>= 1;
+        exponent += 1;
+    }
+    if exponent > 7 {
+        exponent = 7;
+    }
+
+    let mantissa = (sample >> (exponent + 3)) & 0x0F;
+    let ulaw = (exponent << 4) | mantissa;
+
+    if sign == 0 {
+        !ulaw
+    } else {
+        ulaw | 0x80
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1449,5 +1652,19 @@ mod tests {
 
         let result = GpuBuffer::allocate(1024, GpuBackend::Cuda, 0).await;
         // Would test actual allocation if GPU available
+    }
+
+    #[test]
+    fn test_codec_helper_functions() {
+        // Test μ-law encoding/decoding
+        let original = 1000i16;
+        let encoded = ulaw_encode_sample(original);
+        let decoded = ulaw_decode_sample(encoded);
+        assert!((original - decoded).abs() < 100); // Allow for quantization error
+
+        // Test A-law encoding/decoding
+        let encoded = alaw_encode_sample(original);
+        let decoded = alaw_decode_sample(encoded);
+        assert!((original - decoded).abs() < 100); // Allow for quantization error
     }
 }

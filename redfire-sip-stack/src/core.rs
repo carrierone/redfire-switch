@@ -612,13 +612,11 @@ impl SipMessageProcessor {
                         .await
                         .create_challenge_response(request, algorithm)
                     {
-                        Ok(challenge) => {
-                            SipRequestResult::AuthChallenge {
-                                challenge_response: challenge,
-                                destination: message.source,
-                                transport: message.transport,
-                            }
-                        }
+                        Ok(challenge) => SipRequestResult::AuthChallenge {
+                            challenge_response: challenge,
+                            destination: message.source,
+                            transport: message.transport,
+                        },
                         Err(e) => {
                             error!("Failed to create auth challenge: {}", e);
                             self.create_error_response(

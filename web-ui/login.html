@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RedFire Switch - Login</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="icon" type="image/x-icon" href="/static/img/favicon.ico">
+</head>
+<body class="login-page">
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <div class="logo-large">
+                    <span class="fire-icon-large">🔥</span>
+                    <h1>RedFire Switch</h1>
+                    <p>Web Administration Interface</p>
+                </div>
+            </div>
+
+            <form class="login-form" id="login-form">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" required 
+                           placeholder="Enter your username" autocomplete="username">
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required 
+                           placeholder="Enter your password" autocomplete="current-password">
+                </div>
+
+                <button type="submit" class="login-btn" id="login-btn">
+                    <span class="btn-text">Login</span>
+                    <span class="btn-spinner hidden">⏳</span>
+                </button>
+
+                <div class="login-error hidden" id="login-error">
+                    ❌ Login failed. Please check your credentials.
+                </div>
+            </form>
+
+            <div class="login-footer">
+                <p class="login-help">
+                    Default credentials: <strong>admin</strong> / <strong>admin123</strong>
+                </p>
+                <p class="version-info">
+                    RedFire Switch v0.1.0 - Web UI
+                </p>
+            </div>
+        </div>
+
+        <div class="connection-status" id="connection-status">
+            <div class="connection-indicator">
+                <span class="status-dot" id="status-dot"></span>
+                <span id="connection-text">Connecting to switch...</span>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+    <script src="/static/js/login.js"></script>
+</body>
+</html>

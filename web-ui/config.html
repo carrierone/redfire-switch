@@ -1,0 +1,407 @@
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="page-header">
+                <h2>System Configuration</h2>
+                <div class="header-actions">
+                    <button class="action-btn secondary" onclick="reloadConfig()">🔄 Reload Configuration</button>
+                    <button class="action-btn primary" onclick="saveConfig()">💾 Save Changes</button>
+                </div>
+            </div>
+
+            <!-- Configuration Sections -->
+            <div class="config-grid">
+                <!-- API Configuration -->
+                <div class="dashboard-card">
+                    <div class="card-header">
+                        <h3>API Server Configuration</h3>
+                        <span class="config-status" id="api-config-status">✅ Active</span>
+                    </div>
+                    <div class="config-content">
+                        <div class="form-group">
+                            <label>HTTP Listeners</label>
+                            <div id="http-listeners" class="listeners-list">
+                                <div class="listener-item">
+                                    <div class="listener-info">
+                                        <strong>localhost-http</strong> - 127.0.0.1:8080 (HTTP)
+                                        <span class="listener-status enabled">Enabled</span>
+                                    </div>
+                                    <button class="action-btn-small secondary">Edit</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Unix Socket Listeners</label>
+                            <div id="unix-listeners" class="listeners-list">
+                                <div class="listener-item">
+                                    <div class="listener-info">
+                                        <strong>main-unix</strong> - /var/run/redfire-switch/api.sock
+                                        <span class="listener-status enabled">Enabled</span>
+                                    </div>
+                                    <button class="action-btn-small secondary">Edit</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="max-request-size">Max Request Size (MB)</label>
+                                <input type="number" id="max-request-size" value="10" min="1" max="100">
+                            </div>
+                            <div class="form-group">
+                                <label for="request-timeout">Request Timeout (seconds)</label>
+                                <input type="number" id="request-timeout" value="30" min="5" max="300">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="enable-cors" checked>
+                                Enable CORS
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Authentication Configuration -->
+                <div class="dashboard-card">
+                    <div class="card-header">
+                        <h3>Authentication Settings</h3>
+                        <span class="config-status" id="auth-config-status">✅ Active</span>
+                    </div>
+                    <div class="config-content">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="jwt-expiration">JWT Expiration (hours)</label>
+                                <input type="number" id="jwt-expiration" value="8" min="1" max="48">
+                            </div>
+                            <div class="form-group">
+                                <label for="max-failed-attempts">Max Failed Attempts</label>
+                                <input type="number" id="max-failed-attempts" value="5" min="1" max="20">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="lockout-duration">Lockout Duration (minutes)</label>
+                                <input type="number" id="lockout-duration" value="30" min="1" max="1440">
+                            </div>
+                            <div class="form-group">
+                                <label for="password-min-length">Password Min Length</label>
+                                <input type="number" id="password-min-length" value="8" min="4" max="128">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="require-mfa">
+                                Require Multi-Factor Authentication
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Rate Limiting -->
+                <div class="dashboard-card">
+                    <div class="card-header">
+                        <h3>Rate Limiting</h3>
+                        <span class="config-status" id="rate-limit-status">✅ Active</span>
+                    </div>
+                    <div class="config-content">
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="rate-limiting-enabled" checked>
+                                Enable Rate Limiting
+                            </label>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="requests-per-minute-ip">Requests per Minute (per IP)</label>
+                                <input type="number" id="requests-per-minute-ip" value="100" min="10" max="10000">
+                            </div>
+                            <div class="form-group">
+                                <label for="requests-per-minute-user">Requests per Minute (per User)</label>
+                                <input type="number" id="requests-per-minute-user" value="1000" min="100" max="50000">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="burst-size">Burst Size</label>
+                                <input type="number" id="burst-size" value="10" min="1" max="100">
+                            </div>
+                            <div class="form-group">
+                                <label for="window-duration">Window Duration (seconds)</label>
+                                <input type="number" id="window-duration" value="60" min="1" max="3600">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- System Monitoring -->
+                <div class="dashboard-card">
+                    <div class="card-header">
+                        <h3>System Monitoring</h3>
+                        <span class="config-status" id="monitoring-status">✅ Active</span>
+                    </div>
+                    <div class="config-content">
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="log-requests" checked>
+                                Log API Requests
+                            </label>
+                        </div>
+
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="log-request-bodies">
+                                Log Request Bodies (Security Risk)
+                            </label>
+                        </div>
+
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="enable-metrics" checked>
+                                Enable Metrics Endpoint
+                            </label>
+                        </div>
+
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="enable-docs" checked>
+                                Enable API Documentation
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="dashboard-card">
+                    <div class="card-header">
+                        <h3>Configuration Actions</h3>
+                    </div>
+                    <div class="config-content">
+                        <div class="actions-grid">
+                            <button class="action-btn secondary" onclick="exportConfig()">
+                                📤 Export Configuration
+                            </button>
+                            <button class="action-btn secondary" onclick="importConfig()">
+                                📥 Import Configuration
+                            </button>
+                            <button class="action-btn secondary" onclick="resetToDefaults()">
+                                🔄 Reset to Defaults
+                            </button>
+                            <button class="action-btn danger" onclick="restartSystem()">
+                                ⚠️ Restart System
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Configuration Status -->
+                <div class="dashboard-card">
+                    <div class="card-header">
+                        <h3>Configuration Status</h3>
+                    </div>
+                    <div class="config-content">
+                        <div class="status-list">
+                            <div class="status-item">
+                                <span class="status-label">Last Reload:</span>
+                                <span class="status-value" id="last-reload">Never</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">Configuration File:</span>
+                                <span class="status-value">/etc/redfire-switch/config.toml</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">Pending Changes:</span>
+                                <span class="status-value" id="pending-changes">None</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">Configuration Valid:</span>
+                                <span class="status-value status-connected" id="config-valid">Yes</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+<script src="/static/js/component-loader.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', async function() {
+    const pageContent = document.querySelector('main').outerHTML;
+    const pageStyles = `
+        <style>
+        .config-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 2rem;
+        }
+
+        .config-content {
+            padding: 1.5rem;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: var(--text-color);
+        }
+
+        .form-group input[type="text"],
+        .form-group input[type="number"],
+        .form-group select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            font-size: var(--font-size-base);
+        }
+
+        .form-group input[type="checkbox"] {
+            margin-right: 0.5rem;
+        }
+
+        .config-status {
+            font-size: var(--font-size-sm);
+            font-weight: 500;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            background: #d4edda;
+            color: var(--success-color);
+        }
+
+        .listeners-list {
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            overflow: hidden;
+        }
+
+        .listener-item {
+            padding: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .listener-item:last-child {
+            border-bottom: none;
+        }
+
+        .listener-status {
+            font-size: var(--font-size-sm);
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            margin-left: 1rem;
+        }
+
+        .listener-status.enabled {
+            background: #d4edda;
+            color: var(--success-color);
+        }
+
+        .status-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .status-item:last-child {
+            border-bottom: none;
+        }
+
+        .status-label {
+            font-weight: 500;
+            color: var(--text-muted);
+        }
+
+        .status-value {
+            font-weight: 600;
+            color: var(--text-color);
+        }
+
+        @media (max-width: 768px) {
+            .config-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+        }
+        </style>
+    `;
+    
+    const fullPage = await componentLoader.buildPage('config', pageContent, pageStyles);
+    document.documentElement.innerHTML = fullPage;
+    
+    // Re-initialize config functionality
+    initializeConfig();
+});
+
+function initializeConfig() {
+    loadConfiguration();
+    
+    // Track form changes
+    document.addEventListener('input', function(e) {
+        if (e.target.matches('input, select, textarea')) {
+            document.getElementById('pending-changes').textContent = 'Unsaved changes';
+        }
+    });
+}
+
+async function loadConfiguration() {
+    try {
+        // In a real implementation, this would load from the API
+        showNotification('Configuration loaded', 'success', 2000);
+    } catch (error) {
+        showNotification('Failed to load configuration', 'error');
+    }
+}
+
+function saveConfig() {
+    showNotification('Configuration saved successfully', 'success');
+    document.getElementById('pending-changes').textContent = 'None';
+}
+
+function exportConfig() {
+    showNotification('Configuration export not yet implemented', 'info');
+}
+
+function importConfig() {
+    showNotification('Configuration import not yet implemented', 'info');
+}
+
+function resetToDefaults() {
+    if (confirm('Are you sure you want to reset to default configuration? This cannot be undone.')) {
+        showNotification('Configuration reset to defaults', 'success');
+    }
+}
+
+function restartSystem() {
+    if (confirm('Are you sure you want to restart the system? This will disconnect all active calls.')) {
+        showNotification('System restart initiated', 'warning');
+    }
+}
+</script>

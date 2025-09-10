@@ -1,36 +1,42 @@
 /*
  * Redfire Switch - REST API
  * Copyright (C) 2025 Carrier One Inc and contributors
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Sponsored by Carrier One Inc (https://www.carrierone.com)
  */
 
+use anyhow::{anyhow, Result};
 use axum::{
     extract::{Json, Path, Query, State},
     http::StatusCode,
     response::Json as ResponseJson,
-    routing::{get, post, put, delete},
-    Router,
+    routing::{delete, get, post, put},
+    Router, ServiceExt,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tower::ServiceBuilder;
-use tower_http::{
-    cors::CorsLayer,
-    trace::TraceLayer,
-};
-use tracing::{info, warn, error};
-use uuid::Uuid;
+use tower_http::{cors::CorsLayer, trace::TraceLayer};
+use tracing::{error, info, warn};
 use utoipa::{OpenApi, ToSchema};
 use utoipa_swagger_ui::SwaggerUi;
-use anyhow::{Result, anyhow};
+use uuid::Uuid;
+
+// Import our authentication and configuration modules
+use crate::api::auth::{
+    AuthConfig, AuthState, AuthUser, LoginRequest, LoginResponse, Permission, UserInfo,
+};
+use crate::api::config::{ApiServerConfig, NetworkListenerConfig};
+
+// Import monitoring functionality
+use crate::monitor::{EndpointHealth, EndpointStatus, SipMonitor};
 
 /// API response wrapper
 #[derive(Debug, Serialize, ToSchema)]
@@ -56,7 +62,7 @@ impl<T> ApiResponse<T> {
             timestamp: chrono::Utc::now(),
         }
     }
-    
+
     pub fn error(message: String) -> Self {
         Self {
             success: false,
@@ -68,7 +74,7 @@ impl<T> ApiResponse<T> {
 }
 
 /// Pagination parameters
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, utoipa::IntoParams)]
 pub struct PaginationQuery {
     /// Page number (1-based)
     #[serde(default = "default_page")]
@@ -78,11 +84,15 @@ pub struct PaginationQuery {
     pub limit: u32,
 }
 
-fn default_page() -> u32 { 1 }
-fn default_limit() -> u32 { 50 }
+pub fn default_page() -> u32 {
+    1
+}
+pub fn default_limit() -> u32 {
+    50
+}
 
 /// Call information for API
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CallInfo {
     /// Unique call identifier
     pub call_id: String,
@@ -103,7 +113,7 @@ pub struct CallInfo {
 }
 
 /// Call status
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum CallStatus {
     Ringing,
@@ -114,7 +124,7 @@ pub enum CallStatus {
 }
 
 /// Trunk information
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct TrunkInfo {
     /// Ingress trunk ID
     pub ingress_trunk_id: String,
@@ -125,7 +135,7 @@ pub struct TrunkInfo {
 }
 
 /// DID/TFN information
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct DidInfo {
     /// DID number
     pub number: String,
@@ -140,7 +150,7 @@ pub struct DidInfo {
 }
 
 /// Customer information
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CustomerInfo {
     /// Customer ID
     pub customer_id: String,
@@ -155,7 +165,7 @@ pub struct CustomerInfo {
 }
 
 /// SMS message information
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema, Clone)]
 pub struct SmsInfo {
     /// Message ID
     pub message_id: String,
@@ -266,6 +276,14 @@ pub struct AppState {
     pub sms_messages: Arc<RwLock<HashMap<String, SmsInfo>>>,
     /// System start time
     pub start_time: std::time::Instant,
+    /// Authentication state
+    pub auth_state: Arc<AuthState>,
+    /// API server configuration
+    pub api_config: Arc<RwLock<ApiServerConfig>>,
+    /// SIP monitor for endpoint health
+    pub sip_monitor: Option<Arc<SipMonitor>>,
+    /// Configuration reload callback
+    pub config_reload_callback: Option<Arc<dyn Fn() -> Result<()> + Send + Sync>>,
 }
 
 impl AppState {
@@ -276,7 +294,35 @@ impl AppState {
             customers: Arc::new(RwLock::new(HashMap::new())),
             sms_messages: Arc::new(RwLock::new(HashMap::new())),
             start_time: std::time::Instant::now(),
+            auth_state: Arc::new(AuthState::new(AuthConfig::default())),
+            api_config: Arc::new(RwLock::new(ApiServerConfig::unix_only())),
+            sip_monitor: None,
+            config_reload_callback: None,
         }
+    }
+
+    pub fn with_auth_config(auth_config: AuthConfig) -> Self {
+        let mut state = Self::new();
+        state.auth_state = Arc::new(AuthState::new(auth_config));
+        state
+    }
+
+    pub fn with_api_config(mut self, api_config: ApiServerConfig) -> Self {
+        self.api_config = Arc::new(RwLock::new(api_config));
+        self
+    }
+
+    pub fn with_sip_monitor(mut self, monitor: Arc<SipMonitor>) -> Self {
+        self.sip_monitor = Some(monitor);
+        self
+    }
+
+    pub fn with_config_reload_callback<F>(mut self, callback: F) -> Self
+    where
+        F: Fn() -> Result<()> + Send + Sync + 'static,
+    {
+        self.config_reload_callback = Some(Arc::new(callback));
+        self
     }
 }
 
@@ -295,7 +341,19 @@ impl AppState {
         get_customer,
         list_sms_messages,
         send_sms,
-        get_sms_info
+        get_sms_info,
+        // Authentication endpoints
+        crate::api::endpoints::login,
+        crate::api::endpoints::logout,
+        crate::api::endpoints::get_current_user,
+        // System management endpoints
+        crate::api::endpoints::get_system_health,
+        crate::api::endpoints::reload_config,
+        // Live call monitoring
+        crate::api::endpoints::get_live_calls,
+        crate::api::endpoints::hangup_call,
+        // Endpoint monitoring
+        crate::api::endpoints::get_endpoint_health
     ),
     components(
         schemas(
@@ -320,60 +378,126 @@ impl AppState {
             PaginationQuery,
             CreateDidRequest,
             UpdateDidRequest,
-            SendSmsRequest
+            SendSmsRequest,
+            // Authentication types
+            LoginRequest,
+            LoginResponse,
+            UserInfo,
+            // System management types
+            crate::api::endpoints::SystemHealthResponse,
+            crate::api::endpoints::ServiceStatus,
+            crate::api::endpoints::ConfigReloadRequest,
+            crate::api::endpoints::ConfigReloadResponse,
+            // Live call monitoring types
+            crate::api::endpoints::LiveCallsResponse,
+            crate::api::endpoints::LiveCallInfo,
+            crate::api::endpoints::CallQualityMetrics,
+            crate::api::endpoints::HangupCallRequest,
+            // Endpoint monitoring types
+            crate::api::endpoints::EndpointHealthResponse,
+            // API configuration types
+            crate::api::config::ApiServerConfig,
+            crate::api::config::HttpListener,
+            crate::api::config::UnixListener,
+            crate::api::config::HttpProtocol,
+            crate::api::config::ApiSettings,
+            crate::api::config::TlsConfig,
+            crate::api::config::TlsVersion,
+            crate::api::config::RateLimitConfig,
+            crate::api::config::NetworkListenerConfig,
+            crate::api::config::Ipv4ListenerConfig,
+            crate::api::config::Ipv6ListenerConfig
         )
     ),
     tags(
+        (name = "auth", description = "Authentication and authorization"),
         (name = "system", description = "System management and statistics"),
         (name = "calls", description = "Call management and monitoring"),
         (name = "dids", description = "DID/TFN management"),
         (name = "customers", description = "Customer management"),
-        (name = "sms", description = "SMS messaging")
+        (name = "sms", description = "SMS messaging"),
+        (name = "monitoring", description = "System and endpoint monitoring"),
+        (name = "config", description = "Configuration management")
     ),
     info(
         title = "Redfire Switch API",
         version = "1.0.0",
-        description = "REST API for Redfire Switch management and monitoring",
+        description = "Comprehensive REST API for Redfire Switch management, monitoring, and control. Includes authentication, call management, system monitoring, configuration reloading, and real-time call tracking.",
         contact(
             name = "Carrier One Inc",
             url = "https://www.carrierone.com",
             email = "support@carrierone.com"
+        ),
+        license(
+            name = "GPL-3.0-or-later",
+            url = "https://www.gnu.org/licenses/gpl-3.0.html"
         )
-    )
+    ),
+    servers(
+        (url = "http://localhost:8080", description = "Development server"),
+        (url = "https://api.redfire-switch.local", description = "Production server"),
+        (url = "unix:///var/run/redfire-switch/api.sock", description = "Unix socket")
+    ),
+    modifiers(&SecurityAddon)
 )]
 pub struct ApiDoc;
 
+use utoipa::Modify;
+
+pub struct SecurityAddon;
+
+impl Modify for SecurityAddon {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        let components = openapi.components.as_mut().unwrap();
+        use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
+        components.add_security_scheme(
+            "bearer_auth",
+            SecurityScheme::Http(
+                HttpBuilder::new()
+                    .scheme(HttpAuthScheme::Bearer)
+                    .bearer_format("JWT")
+                    .description(Some("JWT token authentication"))
+                    .build(),
+            ),
+        );
+    }
+}
+
 /// Create REST API router
 pub fn create_api_router() -> Router {
+    // This router will be configured with state later in the server
     let state = AppState::new();
-    
+    create_api_router_with_state(state)
+}
+
+pub fn create_api_router_with_state(state: AppState) -> Router {
     Router::new()
         // System endpoints
         .route("/api/v1/system/stats", get(get_system_stats))
-        
         // Call endpoints
         .route("/api/v1/calls", get(list_active_calls))
         .route("/api/v1/calls/:call_id", get(get_call_info))
-        
         // DID endpoints
         .route("/api/v1/dids", get(list_dids).post(create_did))
-        .route("/api/v1/dids/:number", get(get_did_info).put(update_did).delete(delete_did))
-        
+        .route(
+            "/api/v1/dids/:number",
+            get(get_did_info).put(update_did).delete(delete_did),
+        )
         // Customer endpoints
         .route("/api/v1/customers", get(list_customers))
         .route("/api/v1/customers/:customer_id", get(get_customer))
-        
         // SMS endpoints
-        .route("/api/v1/sms/messages", get(list_sms_messages).post(send_sms))
+        .route(
+            "/api/v1/sms/messages",
+            get(list_sms_messages).post(send_sms),
+        )
         .route("/api/v1/sms/messages/:message_id", get(get_sms_info))
-        
         // Swagger UI
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
-        
         .layer(
             ServiceBuilder::new()
                 .layer(TraceLayer::new_for_http())
-                .layer(CorsLayer::permissive())
+                .layer(CorsLayer::permissive()),
         )
         .with_state(state)
 }
@@ -392,28 +516,26 @@ pub async fn get_system_stats(
 ) -> Result<ResponseJson<ApiResponse<SystemStats>>, StatusCode> {
     let calls = state.calls.read().await;
     let uptime = state.start_time.elapsed().as_secs();
-    
+
     let stats = SystemStats {
         active_calls: calls.len() as u32,
         total_calls: 1000, // Placeholder
         sms_messages: 500, // Placeholder
         uptime_seconds: uptime,
         memory_usage: MemoryUsage {
-            used_bytes: 1024 * 1024 * 256, // 256MB placeholder
+            used_bytes: 1024 * 1024 * 256,   // 256MB placeholder
             total_bytes: 1024 * 1024 * 1024, // 1GB placeholder
             usage_percent: 25.0,
         },
-        trunk_stats: vec![
-            TrunkStats {
-                trunk_id: "trunk1".to_string(),
-                name: "Primary Trunk".to_string(),
-                active_calls: 5,
-                max_calls: 100,
-                success_rate: 98.5,
-            }
-        ],
+        trunk_stats: vec![TrunkStats {
+            trunk_id: "trunk1".to_string(),
+            name: "Primary Trunk".to_string(),
+            active_calls: 5,
+            max_calls: 100,
+            success_rate: 98.5,
+        }],
     };
-    
+
     Ok(ResponseJson(ApiResponse::success(stats)))
 }
 
@@ -433,18 +555,18 @@ pub async fn list_active_calls(
 ) -> Result<ResponseJson<ApiResponse<Vec<CallInfo>>>, StatusCode> {
     let calls = state.calls.read().await;
     let mut call_list: Vec<CallInfo> = calls.values().cloned().collect();
-    
+
     // Apply pagination
     let start = ((pagination.page - 1) * pagination.limit) as usize;
     let end = (start + pagination.limit as usize).min(call_list.len());
-    
+
     if start < call_list.len() {
         call_list.drain(0..start);
         call_list.truncate(pagination.limit as usize);
     } else {
         call_list.clear();
     }
-    
+
     Ok(ResponseJson(ApiResponse::success(call_list)))
 }
 
@@ -466,7 +588,7 @@ pub async fn get_call_info(
     State(state): State<AppState>,
 ) -> Result<ResponseJson<ApiResponse<CallInfo>>, StatusCode> {
     let calls = state.calls.read().await;
-    
+
     if let Some(call) = calls.get(&call_id) {
         Ok(ResponseJson(ApiResponse::success(call.clone())))
     } else {
@@ -490,7 +612,7 @@ pub async fn list_dids(
 ) -> Result<ResponseJson<ApiResponse<Vec<DidInfo>>>, StatusCode> {
     let dids = state.dids.read().await;
     let mut did_list: Vec<DidInfo> = dids.values().cloned().collect();
-    
+
     // Apply pagination
     let start = ((pagination.page - 1) * pagination.limit) as usize;
     if start < did_list.len() {
@@ -499,7 +621,7 @@ pub async fn list_dids(
     } else {
         did_list.clear();
     }
-    
+
     Ok(ResponseJson(ApiResponse::success(did_list)))
 }
 
@@ -520,11 +642,11 @@ pub async fn create_did(
     Json(request): Json<CreateDidRequest>,
 ) -> Result<ResponseJson<ApiResponse<DidInfo>>, StatusCode> {
     let mut dids = state.dids.write().await;
-    
+
     if dids.contains_key(&request.number) {
         return Err(StatusCode::CONFLICT);
     }
-    
+
     let did = DidInfo {
         number: request.number.clone(),
         customer_id: request.customer_id,
@@ -532,10 +654,10 @@ pub async fn create_did(
         destination_value: request.destination_value,
         active: true,
     };
-    
+
     dids.insert(request.number, did.clone());
     info!("Created DID: {}", did.number);
-    
+
     Ok(ResponseJson(ApiResponse::success(did)))
 }
 
@@ -545,7 +667,7 @@ pub async fn get_did_info(
     State(state): State<AppState>,
 ) -> Result<ResponseJson<ApiResponse<DidInfo>>, StatusCode> {
     let dids = state.dids.read().await;
-    
+
     if let Some(did) = dids.get(&number) {
         Ok(ResponseJson(ApiResponse::success(did.clone())))
     } else {
@@ -573,7 +695,7 @@ pub async fn update_did(
     Json(request): Json<UpdateDidRequest>,
 ) -> Result<ResponseJson<ApiResponse<DidInfo>>, StatusCode> {
     let mut dids = state.dids.write().await;
-    
+
     if let Some(did) = dids.get_mut(&number) {
         if let Some(dest_type) = request.destination_type {
             did.destination_type = dest_type;
@@ -584,7 +706,7 @@ pub async fn update_did(
         if let Some(active) = request.active {
             did.active = active;
         }
-        
+
         info!("Updated DID: {}", did.number);
         Ok(ResponseJson(ApiResponse::success(did.clone())))
     } else {
@@ -610,7 +732,7 @@ pub async fn delete_did(
     State(state): State<AppState>,
 ) -> Result<StatusCode, StatusCode> {
     let mut dids = state.dids.write().await;
-    
+
     if dids.remove(&number).is_some() {
         info!("Deleted DID: {}", number);
         Ok(StatusCode::NO_CONTENT)
@@ -635,7 +757,7 @@ pub async fn list_customers(
 ) -> Result<ResponseJson<ApiResponse<Vec<CustomerInfo>>>, StatusCode> {
     let customers = state.customers.read().await;
     let mut customer_list: Vec<CustomerInfo> = customers.values().cloned().collect();
-    
+
     // Apply pagination
     let start = ((pagination.page - 1) * pagination.limit) as usize;
     if start < customer_list.len() {
@@ -644,7 +766,7 @@ pub async fn list_customers(
     } else {
         customer_list.clear();
     }
-    
+
     Ok(ResponseJson(ApiResponse::success(customer_list)))
 }
 
@@ -666,7 +788,7 @@ pub async fn get_customer(
     State(state): State<AppState>,
 ) -> Result<ResponseJson<ApiResponse<CustomerInfo>>, StatusCode> {
     let customers = state.customers.read().await;
-    
+
     if let Some(customer) = customers.get(&customer_id) {
         Ok(ResponseJson(ApiResponse::success(customer.clone())))
     } else {
@@ -690,7 +812,7 @@ pub async fn list_sms_messages(
 ) -> Result<ResponseJson<ApiResponse<Vec<SmsInfo>>>, StatusCode> {
     let messages = state.sms_messages.read().await;
     let mut message_list: Vec<SmsInfo> = messages.values().cloned().collect();
-    
+
     // Apply pagination
     let start = ((pagination.page - 1) * pagination.limit) as usize;
     if start < message_list.len() {
@@ -699,7 +821,7 @@ pub async fn list_sms_messages(
     } else {
         message_list.clear();
     }
-    
+
     Ok(ResponseJson(ApiResponse::success(message_list)))
 }
 
@@ -719,7 +841,7 @@ pub async fn send_sms(
     Json(request): Json<SendSmsRequest>,
 ) -> Result<ResponseJson<ApiResponse<SmsInfo>>, StatusCode> {
     let message_id = Uuid::new_v4().to_string();
-    
+
     let sms = SmsInfo {
         message_id: message_id.clone(),
         from_number: request.from,
@@ -729,12 +851,12 @@ pub async fn send_sms(
         created_at: chrono::Utc::now(),
         customer_id: request.customer_id,
     };
-    
+
     let mut messages = state.sms_messages.write().await;
     messages.insert(message_id, sms.clone());
-    
+
     info!("SMS queued: {} -> {}", sms.from_number, sms.to_number);
-    
+
     Ok(ResponseJson(ApiResponse::success(sms)))
 }
 
@@ -756,7 +878,7 @@ pub async fn get_sms_info(
     State(state): State<AppState>,
 ) -> Result<ResponseJson<ApiResponse<SmsInfo>>, StatusCode> {
     let messages = state.sms_messages.read().await;
-    
+
     if let Some(message) = messages.get(&message_id) {
         Ok(ResponseJson(ApiResponse::success(message.clone())))
     } else {
@@ -770,13 +892,16 @@ pub async fn start_api_server(port: u16) -> Result<()> {
     // WARNING: In clustering environments, REST API should bind to local IP only
     // Use cluster_bind.management_ip instead of 0.0.0.0 to avoid BGP anycast conflicts
     let addr = format!("0.0.0.0:{}", port);
-    
+
     info!("Starting REST API server on {}", addr);
     info!("WARNING: REST API binding to 0.0.0.0 - configure cluster_bind.management_ip for clustering");
-    info!("Swagger UI available at: http://localhost:{}/swagger-ui", port);
-    
+    info!(
+        "Swagger UI available at: http://localhost:{}/swagger-ui",
+        port
+    );
+
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     axum::serve(listener, app).await?;
-    
+
     Ok(())
 }

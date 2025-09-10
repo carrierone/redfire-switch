@@ -279,7 +279,7 @@ impl SipEndpoint {
         };
 
         let mantissa = (sample >> (exponent + 4)) & 0xF;
-        (sign | (exponent << 4) | mantissa) ^ 0x55
+        ((sign | (exponent << 4) | mantissa) ^ 0x55) as u8
     }
 }
 

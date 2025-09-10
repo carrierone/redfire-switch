@@ -31,6 +31,7 @@ pub struct Class4B2BUA {
     cdr_generator: Arc<CDRGenerator>,
     codec_translator: Arc<CodecTranslator>,
     trunk_configs: Arc<Vec<TrunkRateConfig>>, // Add trunk configurations
+    customer_registry: Arc<CustomerRegistry>, // Customer DID assignments
 }
 
 /// Class 4 B2BUA Configuration
@@ -305,6 +306,145 @@ pub struct CustomerInfo {
     pub did_ani_ii_blocks: Vec<crate::ani_ii::blocking::DidAniIIBlocking>,
 }
 
+/// DID assignment mapping a range or pattern to a customer
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DidAssignment {
+    /// Pattern or range of DIDs (e.g., "555123****" or "5551230000-5551239999")
+    pub pattern: String,
+    /// Customer ID this DID range is assigned to
+    pub customer_id: String,
+    /// Customer name for easier identification
+    pub customer_name: String,
+    /// SIP endpoint where calls to these DIDs should be delivered
+    pub sip_endpoint: String,
+    /// Whether this assignment is currently active
+    pub active: bool,
+}
+
+/// Customer registry for DID-to-customer mapping
+#[derive(Debug, Clone)]
+pub struct CustomerRegistry {
+    /// DID assignments loaded from configuration
+    did_assignments: Vec<DidAssignment>,
+    /// Quick lookup cache for performance
+    customer_cache: HashMap<String, CustomerInfo>,
+}
+
+impl CustomerRegistry {
+    /// Create a new customer registry with sample data
+    pub fn new() -> Self {
+        let mut registry = Self {
+            did_assignments: Vec::new(),
+            customer_cache: HashMap::new(),
+        };
+
+        // Load some sample DID assignments (in production, load from config)
+        registry.load_sample_assignments();
+        registry
+    }
+
+    /// Load sample DID assignments for testing
+    fn load_sample_assignments(&mut self) {
+        let assignments = vec![
+            DidAssignment {
+                pattern: "5551234***".to_string(),
+                customer_id: "CUST001".to_string(),
+                customer_name: "Acme Corporation".to_string(),
+                sip_endpoint: "sip.acme.com:5060".to_string(),
+                active: true,
+            },
+            DidAssignment {
+                pattern: "5555678***".to_string(),
+                customer_id: "CUST002".to_string(),
+                customer_name: "TechCorp Solutions".to_string(),
+                sip_endpoint: "pbx.techcorp.net:5060".to_string(),
+                active: true,
+            },
+            DidAssignment {
+                pattern: "8001230000-8001239999".to_string(),
+                customer_id: "CUST003".to_string(),
+                customer_name: "Global Communications".to_string(),
+                sip_endpoint: "switch.global.com:5060".to_string(),
+                active: true,
+            },
+        ];
+
+        self.did_assignments = assignments;
+    }
+
+    /// Find customer for a specific DID
+    pub fn find_customer_for_did(&self, dnis: &str) -> Option<CustomerInfo> {
+        // Check cache first
+        if let Some(cached) = self.customer_cache.get(dnis) {
+            return Some(cached.clone());
+        }
+
+        // Search through DID assignments
+        for assignment in &self.did_assignments {
+            if !assignment.active {
+                continue;
+            }
+
+            if self.matches_pattern(dnis, &assignment.pattern) {
+                let customer_info = self.create_customer_info(assignment);
+                return Some(customer_info);
+            }
+        }
+
+        None
+    }
+
+    /// Check if a DID matches a pattern
+    fn matches_pattern(&self, dnis: &str, pattern: &str) -> bool {
+        // Handle wildcard patterns like "5551234***"
+        if pattern.contains('*') {
+            let prefix = pattern.replace('*', "");
+            return dnis.starts_with(&prefix);
+        }
+
+        // Handle range patterns like "8001230000-8001239999"
+        if pattern.contains('-') {
+            let parts: Vec<&str> = pattern.split('-').collect();
+            if parts.len() == 2 {
+                if let (Ok(start), Ok(end)) = (parts[0].parse::<u64>(), parts[1].parse::<u64>()) {
+                    if let Ok(did_num) = dnis.parse::<u64>() {
+                        return did_num >= start && did_num <= end;
+                    }
+                }
+            }
+        }
+
+        // Exact match
+        dnis == pattern
+    }
+
+    /// Create CustomerInfo from DID assignment
+    fn create_customer_info(&self, assignment: &DidAssignment) -> CustomerInfo {
+        CustomerInfo {
+            customer_id: assignment.customer_id.clone(),
+            customer_name: assignment.customer_name.clone(),
+            sip_endpoint: assignment
+                .sip_endpoint
+                .parse()
+                .unwrap_or_else(|_| "127.0.0.1:5060".parse().unwrap()),
+            did_ani_ii_blocks: vec![], // Default to no ANI-II blocking
+        }
+    }
+
+    /// Add a new DID assignment
+    pub fn add_assignment(&mut self, assignment: DidAssignment) {
+        self.did_assignments.push(assignment);
+        // Clear cache to force refresh
+        self.customer_cache.clear();
+    }
+
+    /// Load assignments from configuration
+    pub fn load_from_config(&mut self, assignments: Vec<DidAssignment>) {
+        self.did_assignments = assignments;
+        self.customer_cache.clear();
+    }
+}
+
 /// Implementation of cost calculation methods
 impl CallDetailRecord {
     /// Calculate costs based on trunk configurations
@@ -454,6 +594,7 @@ impl Class4B2BUA {
             cdr_generator,
             codec_translator,
             trunk_configs: Arc::new(trunk_configs), // Store trunk configurations
+            customer_registry: Arc::new(CustomerRegistry::new()), // Initialize customer registry
         };
 
         // Start background tasks
@@ -1902,25 +2043,8 @@ impl Class4B2BUA {
 
     /// Find customer information for a DID (origination traffic)
     async fn find_customer_for_dnis(&self, dnis: &str) -> Result<Option<CustomerInfo>> {
-        // TODO: Implement customer lookup based on DID assignment
-        // This would typically query a database of DID assignments
-
-        // For now, return a mock customer for any DID that matches our patterns
-        if self.trunk_configs.iter().any(|trunk| {
-            trunk
-                .our_number_blocks
-                .iter()
-                .any(|pattern| self.matches_number_pattern(dnis, pattern))
-        }) {
-            Ok(Some(CustomerInfo {
-                customer_id: "MOCK_CUSTOMER".to_string(),
-                sip_endpoint: "192.168.1.100:5060".parse()?,
-                customer_name: "Mock Customer Corp".to_string(),
-                did_ani_ii_blocks: vec![], // No ANI-II blocking by default
-            }))
-        } else {
-            Ok(None)
-        }
+        // Use the customer registry to find the customer for this DID
+        Ok(self.customer_registry.find_customer_for_did(dnis))
     }
 
     /// Create session for origination traffic

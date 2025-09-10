@@ -331,7 +331,7 @@ mod ani_ii_integration_tests {
         let ani_ii = RfcCompliantAniIIParser::parse_from_sip_message(&headers, None).unwrap();
         assert_eq!(ani_ii.raw_digit, 70);
         assert_eq!(ani_ii.code, AniIICode::PayStationNonNetworkCoin);
-        assert!(ani_ii.triggers_surcharge);
+        assert!(ani_ii.is_payphone);
         assert_eq!(ani_ii.calling_number, Some("+15551234567".to_string()));
     }
 
@@ -381,10 +381,8 @@ mod ani_ii_integration_tests {
             raw_digit: 70,
             source: "P-ISUP-OLI".to_string(),
             calling_number: Some("+15551234567".to_string()),
-            triggers_surcharge: true,
-            is_restricted: false,
-            screening: None,
-            presentation: None,
+            is_payphone: true,
+            restricted: false,
         };
 
         // Test toll-free call with payphone
@@ -414,10 +412,8 @@ mod ani_ii_integration_tests {
             raw_digit: 0,
             source: "From".to_string(),
             calling_number: Some("+15551234567".to_string()),
-            triggers_surcharge: false,
-            is_restricted: false,
-            screening: None,
-            presentation: None,
+            is_payphone: false,
+            restricted: false,
         };
 
         let (applies, amount, _) = RfcCompliantAniIIParser::calculate_surcharge(
@@ -440,10 +436,8 @@ mod ani_ii_integration_tests {
             raw_digit: 70,
             source: "P-ISUP-OLI".to_string(),
             calling_number: Some("+15551234567".to_string()),
-            triggers_surcharge: true,
-            is_restricted: false,
-            screening: None,
-            presentation: None,
+            is_payphone: true,
+            restricted: false,
         };
 
         let (applies, amount, _) = RfcCompliantAniIIParser::calculate_surcharge(
@@ -468,7 +462,7 @@ mod ani_ii_integration_tests {
                 let ani_ii =
                     RfcCompliantAniIIParser::parse_from_sip_message(&headers, None).unwrap();
                 assert!(
-                    ani_ii.is_restricted,
+                    ani_ii.restricted,
                     "ANI-II code {} should be marked as restricted",
                     code
                 );
@@ -491,7 +485,7 @@ mod ani_ii_integration_tests {
             )
             .unwrap();
         assert_eq!(ani_ii.raw_digit, 70);
-        assert!(ani_ii.triggers_surcharge);
+        assert!(ani_ii.is_payphone);
     }
 }
 

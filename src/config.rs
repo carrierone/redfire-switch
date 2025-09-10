@@ -1,21 +1,23 @@
+use crate::billing::BillingConfig;
+use crate::call_control::CallControlConfig;
+use crate::cdr::CdrConfig;
+use crate::cnam::CnamConfig;
+use crate::codec::CodecConfig;
+use crate::lcr::types::LrnDipConfig;
+use crate::routing::RoutingConfig;
+use crate::rtp_proxy::RtpProxyConfig;
+use crate::security::SecurityConfig;
+use crate::sipt_sipi::SipTSipIConfig;
+use crate::sms::SmsConfig;
+use crate::stir_shaken::StirShakenConfig;
+use crate::termination_routing::TerminationRoutingPlan;
+use crate::twilio_api::{ConversationsConfig, TwilioApiConfig};
 use serde::{Deserialize, Serialize};
 use std::net::{IpAddr, SocketAddr};
-use crate::stir_shaken::StirShakenConfig;
-use crate::routing::RoutingConfig;
-use crate::cdr::CdrConfig;
-use crate::sipt_sipi::SipTSipIConfig;
-use crate::termination_routing::TerminationRoutingPlan;
-use crate::sms::SmsConfig;
-use crate::twilio_api::{TwilioApiConfig, ConversationsConfig};
-use crate::security::SecurityConfig;
-use crate::billing::BillingConfig;
-use crate::rtp_proxy::RtpProxyConfig;
-use crate::codec::CodecConfig;
-use crate::call_control::CallControlConfig;
-use crate::cnam::CnamConfig;
-use crate::lcr::types::LrnDipConfig;
-#[cfg(feature = "bgp-anycast")]
-use crate::bgp_anycast::BgpAnycastConfig;
+// Removed feature gate to avoid compilation issues
+// TODO: Re-enable when bgp_anycast module is implemented
+// #[cfg(feature = "bgp-anycast")]
+// use crate::bgp_anycast::BgpAnycastConfig;
 
 /// Cluster binding configuration to avoid BGP anycast conflicts
 /// All non-SIP traffic must bind to specific local IPs, not anycast IPs
@@ -49,18 +51,26 @@ impl Default for ClusterBindConfig {
     fn default() -> Self {
         Self {
             enabled: true, // Enabled by default for safety
-            cluster_ip: "0.0.0.0".parse().expect("Default IP address should be valid"),
-            management_ip: "0.0.0.0".parse().expect("Default IP address should be valid"),
-            monitoring_ip: "0.0.0.0".parse().expect("Default IP address should be valid"), 
-            session_sync_ip: "0.0.0.0".parse().expect("Default IP address should be valid"),
+            cluster_ip: "0.0.0.0"
+                .parse()
+                .expect("Default IP address should be valid"),
+            management_ip: "0.0.0.0"
+                .parse()
+                .expect("Default IP address should be valid"),
+            monitoring_ip: "0.0.0.0"
+                .parse()
+                .expect("Default IP address should be valid"),
+            session_sync_ip: "0.0.0.0"
+                .parse()
+                .expect("Default IP address should be valid"),
             gossip_port: 7946,
             management_port: 8080,
             monitoring_port: 8081,
             session_sync_port: 8082,
             validate_no_anycast_bind: true,
-            prohibited_anycast_ips: vec![
-                "192.0.2.100".parse().expect("Example IP address should be valid"),
-            ],
+            prohibited_anycast_ips: vec!["192.0.2.100"
+                .parse()
+                .expect("Example IP address should be valid")],
         }
     }
 }
@@ -73,25 +83,36 @@ impl ClusterBindConfig {
         }
 
         // Check that required IPs are configured (not 0.0.0.0)
-        let unspecified_v4 = "0.0.0.0".parse::<IpAddr>()
+        let unspecified_v4 = "0.0.0.0"
+            .parse::<IpAddr>()
             .map_err(|e| format!("Failed to parse unspecified IPv4: {}", e))?;
-        let unspecified_v6 = "::".parse::<IpAddr>()
+        let unspecified_v6 = "::"
+            .parse::<IpAddr>()
             .map_err(|e| format!("Failed to parse unspecified IPv6: {}", e))?;
 
         if self.cluster_ip == unspecified_v4 || self.cluster_ip == unspecified_v6 {
-            return Err("cluster_ip must be explicitly configured (cannot be 0.0.0.0 or ::)".to_string());
+            return Err(
+                "cluster_ip must be explicitly configured (cannot be 0.0.0.0 or ::)".to_string(),
+            );
         }
 
         if self.management_ip == unspecified_v4 || self.management_ip == unspecified_v6 {
-            return Err("management_ip must be explicitly configured (cannot be 0.0.0.0 or ::)".to_string());
+            return Err(
+                "management_ip must be explicitly configured (cannot be 0.0.0.0 or ::)".to_string(),
+            );
         }
 
         if self.monitoring_ip == unspecified_v4 || self.monitoring_ip == unspecified_v6 {
-            return Err("monitoring_ip must be explicitly configured (cannot be 0.0.0.0 or ::)".to_string());
+            return Err(
+                "monitoring_ip must be explicitly configured (cannot be 0.0.0.0 or ::)".to_string(),
+            );
         }
 
         if self.session_sync_ip == unspecified_v4 || self.session_sync_ip == unspecified_v6 {
-            return Err("session_sync_ip must be explicitly configured (cannot be 0.0.0.0 or ::)".to_string());
+            return Err(
+                "session_sync_ip must be explicitly configured (cannot be 0.0.0.0 or ::)"
+                    .to_string(),
+            );
         }
 
         // Validate that no service IPs match prohibited anycast IPs
@@ -119,9 +140,15 @@ impl ClusterBindConfig {
     pub fn get_bind_address(&self, service_type: ClusterServiceType) -> SocketAddr {
         match service_type {
             ClusterServiceType::Gossip => SocketAddr::new(self.cluster_ip, self.gossip_port),
-            ClusterServiceType::Management => SocketAddr::new(self.management_ip, self.management_port),
-            ClusterServiceType::Monitoring => SocketAddr::new(self.monitoring_ip, self.monitoring_port),
-            ClusterServiceType::SessionSync => SocketAddr::new(self.session_sync_ip, self.session_sync_port),
+            ClusterServiceType::Management => {
+                SocketAddr::new(self.management_ip, self.management_port)
+            }
+            ClusterServiceType::Monitoring => {
+                SocketAddr::new(self.monitoring_ip, self.monitoring_port)
+            }
+            ClusterServiceType::SessionSync => {
+                SocketAddr::new(self.session_sync_ip, self.session_sync_port)
+            }
         }
     }
 
@@ -358,7 +385,9 @@ impl Default for Config {
                     bind_ip: "0.0.0.0".parse().expect("Invalid default bind IP 0.0.0.0"),
                     port: 5060,
                     protocol: Protocol::Udp,
-                    allowed_ips: vec!["127.0.0.1".parse().expect("Invalid default allowed IP 127.0.0.1")],
+                    allowed_ips: vec!["127.0.0.1"
+                        .parse()
+                        .expect("Invalid default allowed IP 127.0.0.1")],
                     dual_stack: false,
                     bind_ipv6: None,
                     ipv6_port: None,
@@ -369,7 +398,12 @@ impl Default for Config {
                     bind_ip: "0.0.0.0".parse().expect("Invalid default bind IP 0.0.0.0"),
                     port: 5060,
                     protocol: Protocol::Udp,
-                    allowed_ips: vec!["127.0.0.1".parse().expect("Invalid default allowed IP 127.0.0.1"), "::1".parse().expect("Invalid default allowed IPv6 ::1")],
+                    allowed_ips: vec![
+                        "127.0.0.1"
+                            .parse()
+                            .expect("Invalid default allowed IP 127.0.0.1"),
+                        "::1".parse().expect("Invalid default allowed IPv6 ::1"),
+                    ],
                     dual_stack: true,
                     bind_ipv6: Some("::".parse().expect("Invalid default IPv6 bind address ::")),
                     ipv6_port: Some(5060),
@@ -380,26 +414,31 @@ impl Default for Config {
                     bind_ip: "0.0.0.0".parse().expect("Invalid default bind IP 0.0.0.0"),
                     port: 5061,
                     protocol: Protocol::Tls,
-                    allowed_ips: vec!["127.0.0.1".parse().expect("Invalid default allowed IP 127.0.0.1"), "::1".parse().expect("Invalid default allowed IPv6 ::1")],
+                    allowed_ips: vec![
+                        "127.0.0.1"
+                            .parse()
+                            .expect("Invalid default allowed IP 127.0.0.1"),
+                        "::1".parse().expect("Invalid default allowed IPv6 ::1"),
+                    ],
                     dual_stack: true,
                     bind_ipv6: Some("::".parse().expect("Invalid default IPv6 bind address ::")),
                     ipv6_port: Some(5061),
                     tls_config: Some(TlsConfig::default()),
-                }
+                },
             ],
             monitoring: MonitoringConfig {
                 enabled: true,
-                endpoints: vec![
-                    SipEndpoint {
-                        name: "example-endpoint".to_string(),
-                        address: "192.168.1.100:5060".parse().expect("Invalid default monitoring endpoint address"),
-                        protocol: Protocol::Udp,
-                        enabled: false,
-                        ping_interval_seconds: 30,
-                        timeout_seconds: 5,
-                        tls_config: None,
-                    }
-                ],
+                endpoints: vec![SipEndpoint {
+                    name: "example-endpoint".to_string(),
+                    address: "192.168.1.100:5060"
+                        .parse()
+                        .expect("Invalid default monitoring endpoint address"),
+                    protocol: Protocol::Udp,
+                    enabled: false,
+                    ping_interval_seconds: 30,
+                    timeout_seconds: 5,
+                    tls_config: None,
+                }],
             },
             stir_shaken: StirShakenConfig::default(),
             routing: RoutingConfig::default(),
@@ -427,10 +466,10 @@ impl Config {
     pub fn load_from_file(path: &str) -> anyhow::Result<Self> {
         let content = std::fs::read_to_string(path)?;
         let config: Config = serde_json::from_str(&content)?;
-        
+
         // Comprehensive configuration validation
         config.validate()?;
-        
+
         Ok(config)
     }
 
@@ -439,33 +478,36 @@ impl Config {
         std::fs::write(path, content)?;
         Ok(())
     }
-    
+
     /// Comprehensive configuration validation with bounds checking
     pub fn validate(&self) -> anyhow::Result<()> {
         // Validate SIP profiles
         self.validate_sip_profiles()?;
-        
+
         // Validate monitoring configuration
         self.validate_monitoring_config()?;
-        
+
         // Validate TLS configurations
         self.validate_tls_configs()?;
-        
+
         // Validate anycast safety
         self.validate_anycast_safety()
             .map_err(|e| anyhow::anyhow!("Anycast safety validation failed: {}", e))?;
-        
+
         // Validate cluster binding
-        self.cluster_bind.validate()
+        self.cluster_bind
+            .validate()
             .map_err(|e| anyhow::anyhow!("Cluster bind validation failed: {}", e))?;
-        
+
         Ok(())
     }
 
     /// Validate SIP profiles with comprehensive bounds checking
     fn validate_sip_profiles(&self) -> anyhow::Result<()> {
         if self.sip_profiles.is_empty() {
-            return Err(anyhow::anyhow!("At least one SIP profile must be configured"));
+            return Err(anyhow::anyhow!(
+                "At least one SIP profile must be configured"
+            ));
         }
 
         for (i, profile) in self.sip_profiles.iter().enumerate() {
@@ -473,19 +515,28 @@ impl Config {
             if profile.name.is_empty() {
                 return Err(anyhow::anyhow!("SIP profile {} has empty name", i));
             }
-            
+
             if profile.name.len() > 64 {
-                return Err(anyhow::anyhow!("SIP profile '{}' name too long (max 64 characters)", profile.name));
+                return Err(anyhow::anyhow!(
+                    "SIP profile '{}' name too long (max 64 characters)",
+                    profile.name
+                ));
             }
 
             // Validate port ranges
             if profile.port == 0 {
-                return Err(anyhow::anyhow!("SIP profile '{}' has invalid port 0", profile.name));
+                return Err(anyhow::anyhow!(
+                    "SIP profile '{}' has invalid port 0",
+                    profile.name
+                ));
             }
-            
+
             if let Some(ipv6_port) = profile.ipv6_port {
                 if ipv6_port == 0 {
-                    return Err(anyhow::anyhow!("SIP profile '{}' has invalid IPv6 port 0", profile.name));
+                    return Err(anyhow::anyhow!(
+                        "SIP profile '{}' has invalid IPv6 port 0",
+                        profile.name
+                    ));
                 }
             }
 
@@ -493,7 +544,7 @@ impl Config {
             if profile.dual_stack {
                 if profile.bind_ipv6.is_none() {
                     return Err(anyhow::anyhow!(
-                        "SIP profile '{}' has dual_stack enabled but no bind_ipv6 address", 
+                        "SIP profile '{}' has dual_stack enabled but no bind_ipv6 address",
                         profile.name
                     ));
                 }
@@ -502,7 +553,7 @@ impl Config {
             // Validate allowed IPs are not empty
             if profile.allowed_ips.is_empty() {
                 return Err(anyhow::anyhow!(
-                    "SIP profile '{}' must have at least one allowed IP", 
+                    "SIP profile '{}' must have at least one allowed IP",
                     profile.name
                 ));
             }
@@ -512,8 +563,9 @@ impl Config {
                 Protocol::Tls | Protocol::Dtls => {
                     if profile.tls_config.is_none() {
                         return Err(anyhow::anyhow!(
-                            "SIP profile '{}' uses {:?} protocol but has no TLS configuration", 
-                            profile.name, profile.protocol
+                            "SIP profile '{}' uses {:?} protocol but has no TLS configuration",
+                            profile.name,
+                            profile.protocol
                         ));
                     }
                 }
@@ -525,7 +577,10 @@ impl Config {
         let mut names = std::collections::HashSet::new();
         for profile in &self.sip_profiles {
             if !names.insert(&profile.name) {
-                return Err(anyhow::anyhow!("Duplicate SIP profile name: '{}'", profile.name));
+                return Err(anyhow::anyhow!(
+                    "Duplicate SIP profile name: '{}'",
+                    profile.name
+                ));
             }
         }
 
@@ -543,23 +598,27 @@ impl Config {
             // Validate timeout and ping interval bounds
             if endpoint.timeout_seconds == 0 || endpoint.timeout_seconds > 300 {
                 return Err(anyhow::anyhow!(
-                    "Monitoring endpoint '{}' timeout must be between 1-300 seconds, got {}", 
-                    endpoint.name, endpoint.timeout_seconds
+                    "Monitoring endpoint '{}' timeout must be between 1-300 seconds, got {}",
+                    endpoint.name,
+                    endpoint.timeout_seconds
                 ));
             }
 
             if endpoint.ping_interval_seconds == 0 || endpoint.ping_interval_seconds > 3600 {
                 return Err(anyhow::anyhow!(
-                    "Monitoring endpoint '{}' ping interval must be between 1-3600 seconds, got {}", 
-                    endpoint.name, endpoint.ping_interval_seconds
+                    "Monitoring endpoint '{}' ping interval must be between 1-3600 seconds, got {}",
+                    endpoint.name,
+                    endpoint.ping_interval_seconds
                 ));
             }
 
             // Timeout should be less than ping interval
             if endpoint.timeout_seconds >= endpoint.ping_interval_seconds {
                 return Err(anyhow::anyhow!(
-                    "Monitoring endpoint '{}' timeout ({}) must be less than ping interval ({})", 
-                    endpoint.name, endpoint.timeout_seconds, endpoint.ping_interval_seconds
+                    "Monitoring endpoint '{}' timeout ({}) must be less than ping interval ({})",
+                    endpoint.name,
+                    endpoint.timeout_seconds,
+                    endpoint.ping_interval_seconds
                 ));
             }
         }
@@ -601,28 +660,40 @@ impl Config {
         let valid_versions = ["1.0", "1.1", "1.2", "1.3"];
         if !valid_versions.contains(&tls.min_tls_version.as_str()) {
             return Err(anyhow::anyhow!(
-                "{} has invalid min_tls_version '{}', must be one of: {:?}", 
-                context, tls.min_tls_version, valid_versions
+                "{} has invalid min_tls_version '{}', must be one of: {:?}",
+                context,
+                tls.min_tls_version,
+                valid_versions
             ));
         }
 
         if !valid_versions.contains(&tls.max_tls_version.as_str()) {
             return Err(anyhow::anyhow!(
-                "{} has invalid max_tls_version '{}', must be one of: {:?}", 
-                context, tls.max_tls_version, valid_versions
+                "{} has invalid max_tls_version '{}', must be one of: {:?}",
+                context,
+                tls.max_tls_version,
+                valid_versions
             ));
         }
 
         // Check min <= max
-        let min_version = tls.min_tls_version.replace(".", "").parse::<u32>()
+        let min_version = tls
+            .min_tls_version
+            .replace(".", "")
+            .parse::<u32>()
             .map_err(|_| anyhow::anyhow!("{} has invalid min_tls_version format", context))?;
-        let max_version = tls.max_tls_version.replace(".", "").parse::<u32>()
+        let max_version = tls
+            .max_tls_version
+            .replace(".", "")
+            .parse::<u32>()
             .map_err(|_| anyhow::anyhow!("{} has invalid max_tls_version format", context))?;
 
         if min_version > max_version {
             return Err(anyhow::anyhow!(
-                "{} min_tls_version ({}) must be <= max_tls_version ({})", 
-                context, tls.min_tls_version, tls.max_tls_version
+                "{} min_tls_version ({}) must be <= max_tls_version ({})",
+                context,
+                tls.min_tls_version,
+                tls.max_tls_version
             ));
         }
 
@@ -634,7 +705,10 @@ impl Config {
         // Check SIP profiles don't bind to anycast IPs if clustering is enabled
         if self.cluster_bind.enabled {
             for profile in &self.sip_profiles {
-                if !self.cluster_bind.is_ip_allowed_for_binding(&profile.bind_ip) {
+                if !self
+                    .cluster_bind
+                    .is_ip_allowed_for_binding(&profile.bind_ip)
+                {
                     return Err(format!(
                         "SIP profile '{}' binds to anycast IP {} - only local IPs should be used for SIP when clustering is enabled",
                         profile.name, profile.bind_ip
@@ -642,7 +716,7 @@ impl Config {
                 }
             }
         }
-        
+
         self.cluster_bind.validate()
     }
 }

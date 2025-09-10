@@ -1,24 +1,24 @@
 /*
  * Redfire Switch - A Class 4 SIP Telephone Switch
  * Copyright (C) 2025 Carrier One Inc and contributors
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * Sponsored by Carrier One Inc (https://www.carrierone.com)
  */
 
-use anyhow::{Result, anyhow};
-use chrono::{DateTime, Utc, Duration};
+use anyhow::{anyhow, Result};
+use chrono::{DateTime, Duration, Utc};
 use dashmap::DashMap;
 use parking_lot::RwLock;
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{info, warn, error, debug};
-use rust_decimal::Decimal;
+use tracing::{debug, error, info, warn};
 
 /// Billing service configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -99,7 +99,7 @@ impl Default for PaymentRequiredConfig {
         let mut headers = HashMap::new();
         headers.insert("P-Billing-Info".to_string(), "Payment Required".to_string());
         headers.insert("Retry-After".to_string(), "3600".to_string()); // 1 hour
-        
+
         Self {
             enabled: true,
             custom_headers: headers,
@@ -159,9 +159,12 @@ impl Default for NotificationConfig {
         let mut templates = HashMap::new();
         templates.insert("suspension".to_string(), 
             "Your account has been suspended due to insufficient funds. Please make a payment to restore service.".to_string());
-        templates.insert("low_balance".to_string(), 
-            "Your account balance is low. Please add funds to avoid service interruption.".to_string());
-        
+        templates.insert(
+            "low_balance".to_string(),
+            "Your account balance is low. Please add funds to avoid service interruption."
+                .to_string(),
+        );
+
         Self {
             email_enabled: false,
             sms_enabled: false,
@@ -355,7 +358,10 @@ impl BillingService {
     }
 
     /// Check if a call should be authorized based on billing status
-    pub async fn check_call_authorization(&self, request: CallAuthRequest) -> Result<BillingCheckResult> {
+    pub async fn check_call_authorization(
+        &self,
+        request: CallAuthRequest,
+    ) -> Result<BillingCheckResult> {
         if !self.config.enabled {
             return Ok(BillingCheckResult::Approved);
         }
@@ -374,7 +380,7 @@ impl BillingService {
                 stats.emergency_overrides += 1;
                 stats.approved_calls += 1;
                 return Ok(BillingCheckResult::EmergencyAllowed(
-                    "Emergency call allowed regardless of account status".to_string()
+                    "Emergency call allowed regardless of account status".to_string(),
                 ));
             }
         }
@@ -383,12 +389,15 @@ impl BillingService {
         let account = match self.get_account_status(&request.customer_id).await {
             Ok(account) => account,
             Err(e) => {
-                warn!("Failed to get account status for {}: {}", request.customer_id, e);
+                warn!(
+                    "Failed to get account status for {}: {}",
+                    request.customer_id, e
+                );
                 // Default to blocking if we can't verify account
                 let mut stats = self.stats.write();
                 stats.blocked_calls += 1;
                 return Ok(BillingCheckResult::AccountClosed(
-                    "Unable to verify account status".to_string()
+                    "Unable to verify account status".to_string(),
                 ));
             }
         };
@@ -398,9 +407,9 @@ impl BillingService {
             AccountStatus::Closed => {
                 BillingCheckResult::AccountClosed("Account has been closed".to_string())
             }
-            AccountStatus::Suspended => {
-                BillingCheckResult::AccountSuspended("Account suspended for non-payment".to_string())
-            }
+            AccountStatus::Suspended => BillingCheckResult::AccountSuspended(
+                "Account suspended for non-payment".to_string(),
+            ),
             AccountStatus::UnderReview => {
                 BillingCheckResult::AccountSuspended("Account under review".to_string())
             }
@@ -449,20 +458,24 @@ impl BillingService {
     }
 
     /// Check if account has sufficient funds for the call
-    fn check_call_funds(&self, account: &CustomerAccount, estimated_cost: f64) -> BillingCheckResult {
+    fn check_call_funds(
+        &self,
+        account: &CustomerAccount,
+        estimated_cost: f64,
+    ) -> BillingCheckResult {
         match account.account_type {
             AccountType::Prepaid => {
                 // For prepaid, check if balance covers the call
                 if account.balance < estimated_cost {
-                    BillingCheckResult::InsufficientFunds(
-                        format!("Insufficient prepaid balance: ${:.2} required, ${:.2} available", 
-                                estimated_cost, account.balance)
-                    )
+                    BillingCheckResult::InsufficientFunds(format!(
+                        "Insufficient prepaid balance: ${:.2} required, ${:.2} available",
+                        estimated_cost, account.balance
+                    ))
                 } else if account.balance < account.billing_profile.minimum_balance {
-                    BillingCheckResult::InsufficientFunds(
-                        format!("Balance below minimum required: ${:.2}", 
-                                account.billing_profile.minimum_balance)
-                    )
+                    BillingCheckResult::InsufficientFunds(format!(
+                        "Balance below minimum required: ${:.2}",
+                        account.billing_profile.minimum_balance
+                    ))
                 } else {
                     BillingCheckResult::Approved
                 }
@@ -472,12 +485,12 @@ impl BillingService {
                 if let Some(credit_limit) = account.credit_limit {
                     let current_debt = -account.balance; // Negative balance = debt
                     let potential_debt = current_debt + estimated_cost;
-                    
+
                     if potential_debt > credit_limit {
-                        BillingCheckResult::CreditLimitExceeded(
-                            format!("Credit limit exceeded: ${:.2} limit, ${:.2} would be used", 
-                                    credit_limit, potential_debt)
-                        )
+                        BillingCheckResult::CreditLimitExceeded(format!(
+                            "Credit limit exceeded: ${:.2} limit, ${:.2} would be used",
+                            credit_limit, potential_debt
+                        ))
                     } else {
                         BillingCheckResult::Approved
                     }
@@ -496,13 +509,13 @@ impl BillingService {
     /// Check if a number is an emergency number
     fn is_emergency_number(&self, number: &str) -> bool {
         let normalized = number.trim_start_matches('+').trim_start_matches('1');
-        
+
         for pattern in &self.config.suspension_config.emergency_numbers {
             if normalized == pattern || number == pattern {
                 return true;
             }
         }
-        
+
         false
     }
 
@@ -529,7 +542,7 @@ impl BillingService {
         }
 
         let account = self.fetch_account_from_database(customer_id).await?;
-        
+
         // Cache the result
         let expires_at = now + Duration::seconds(self.config.database_config.cache_duration as i64);
         let cached = CachedAccountStatus {
@@ -537,9 +550,9 @@ impl BillingService {
             cached_at: now,
             expires_at,
         };
-        
+
         self.account_cache.insert(customer_id.to_string(), cached);
-        
+
         Ok(account)
     }
 
@@ -547,12 +560,12 @@ impl BillingService {
     async fn fetch_account_from_database(&self, customer_id: &str) -> Result<CustomerAccount> {
         // TODO: Implement actual database connectivity
         // This is a placeholder that would connect to your billing database
-        
+
         debug!("Fetching account {} from billing database", customer_id);
-        
+
         // Simulate database lookup
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-        
+
         // Return a mock account for now
         let account = CustomerAccount {
             customer_id: customer_id.to_string(),
@@ -569,21 +582,25 @@ impl BillingService {
             billing_profile: BillingProfile::default(),
             metadata: HashMap::new(),
         };
-        
+
         Ok(account)
     }
 
     /// Generate SIP 402 Payment Required response
-    pub fn generate_payment_required_response(&self, customer_id: &str, reason: &str) -> PaymentRequiredResponse {
+    pub fn generate_payment_required_response(
+        &self,
+        customer_id: &str,
+        reason: &str,
+    ) -> PaymentRequiredResponse {
         let mut stats = self.stats.write();
         stats.payment_required_responses += 1;
 
         let mut headers = self.config.payment_required_config.custom_headers.clone();
-        
+
         if let Some(payment_url) = &self.config.payment_required_config.payment_url {
             headers.insert("P-Payment-URL".to_string(), payment_url.clone());
         }
-        
+
         headers.insert("P-Customer-ID".to_string(), customer_id.to_string());
         headers.insert("P-Block-Reason".to_string(), reason.to_string());
 
@@ -591,7 +608,11 @@ impl BillingService {
             status_code: 402,
             reason_phrase: self.config.payment_required_config.reason_phrase.clone(),
             headers,
-            body: if self.config.payment_required_config.include_payment_instructions {
+            body: if self
+                .config
+                .payment_required_config
+                .include_payment_instructions
+            {
                 Some(format!(
                     "Payment required for customer {}. Reason: {}. Please visit {} to make a payment.",
                     customer_id,
@@ -620,10 +641,10 @@ impl BillingService {
     /// Manually suspend an account
     pub async fn suspend_account(&self, customer_id: &str, reason: &str) -> Result<()> {
         // TODO: Update database to suspend account
-        
+
         // Invalidate cache
         self.invalidate_account_cache(customer_id);
-        
+
         info!("Account {} suspended: {}", customer_id, reason);
         Ok(())
     }
@@ -631,10 +652,10 @@ impl BillingService {
     /// Manually reactivate an account
     pub async fn reactivate_account(&self, customer_id: &str) -> Result<()> {
         // TODO: Update database to reactivate account
-        
+
         // Invalidate cache
         self.invalidate_account_cache(customer_id);
-        
+
         info!("Account {} reactivated", customer_id);
         Ok(())
     }
@@ -700,19 +721,17 @@ pub mod utils {
     ) -> f64 {
         // Basic cost calculation
         let base_cost = rate_per_minute * estimated_duration_minutes;
-        
+
         // Add connection charge (typical for telecom)
         let connection_charge = 0.01; // 1 cent
-        
+
         base_cost + connection_charge
     }
 
     /// Check if account needs balance warning
     pub fn needs_low_balance_warning(account: &CustomerAccount) -> bool {
         match account.account_type {
-            AccountType::Prepaid => {
-                account.balance <= account.low_balance_threshold
-            }
+            AccountType::Prepaid => account.balance <= account.low_balance_threshold,
             AccountType::Postpaid => {
                 if let Some(credit_limit) = account.credit_limit {
                     let current_debt = -account.balance;
@@ -729,7 +748,7 @@ pub mod utils {
     /// Generate billing report
     pub fn generate_billing_report(service: &BillingService) -> String {
         let stats = service.get_stats();
-        
+
         let approval_rate = if stats.total_checks > 0 {
             (stats.approved_calls as f64 / stats.total_checks as f64) * 100.0
         } else {
@@ -781,7 +800,7 @@ mod tests {
     fn test_emergency_number_detection() {
         let config = BillingConfig::default();
         let service = BillingService::new(config).unwrap();
-        
+
         assert!(service.is_emergency_number("911"));
         assert!(service.is_emergency_number("+1911"));
         assert!(service.is_emergency_number("933"));
@@ -791,7 +810,7 @@ mod tests {
     #[test]
     fn test_prepaid_funds_check() {
         let billing_service = BillingService::new(BillingConfig::default()).unwrap();
-        
+
         let account = CustomerAccount {
             customer_id: "test123".to_string(),
             account_type: AccountType::Prepaid,
@@ -820,7 +839,7 @@ mod tests {
     #[test]
     fn test_postpaid_credit_check() {
         let billing_service = BillingService::new(BillingConfig::default()).unwrap();
-        
+
         let account = CustomerAccount {
             customer_id: "test456".to_string(),
             account_type: AccountType::Postpaid,
@@ -856,7 +875,7 @@ mod tests {
     async fn test_call_authorization() {
         let config = BillingConfig::default();
         let service = BillingService::new(config).unwrap();
-        
+
         let request = CallAuthRequest {
             customer_id: "test123".to_string(),
             from_number: "+15551234567".to_string(),
@@ -875,7 +894,7 @@ mod tests {
     async fn test_emergency_call_override() {
         let config = BillingConfig::default();
         let service = BillingService::new(config).unwrap();
-        
+
         let request = CallAuthRequest {
             customer_id: "suspended123".to_string(),
             from_number: "+15551234567".to_string(),
@@ -893,7 +912,7 @@ mod tests {
     #[tokio::test]
     async fn test_rating_engine() {
         let engine = RatingEngine::new();
-        
+
         // Add a rate table
         let rate_table = RateTable {
             destination_name: "US Local".to_string(),
@@ -906,7 +925,7 @@ mod tests {
             expiry_date: None,
         };
         engine.update_rate(rate_table);
-        
+
         // Test pricing calculation
         let pricing = engine.calculate_pricing("15551234567", 120).await.unwrap();
         assert_eq!(pricing.matched_prefix, Some("1".to_string()));
@@ -951,9 +970,9 @@ impl Default for DefaultRates {
         Self {
             domestic_rate_per_minute: Decimal::from_str("0.01").unwrap(), // $0.01/min
             international_rate_per_minute: Decimal::from_str("0.05").unwrap(), // $0.05/min
-            premium_rate_per_minute: Decimal::from_str("0.25").unwrap(), // $0.25/min
-            minimum_charge: Decimal::from_str("0.01").unwrap(), // $0.01 minimum
-            setup_fee: Decimal::from_str("0.005").unwrap(), // $0.005 setup
+            premium_rate_per_minute: Decimal::from_str("0.25").unwrap(),  // $0.25/min
+            minimum_charge: Decimal::from_str("0.01").unwrap(),           // $0.01 minimum
+            setup_fee: Decimal::from_str("0.005").unwrap(),               // $0.005 setup
         }
     }
 }
@@ -980,7 +999,11 @@ impl RatingEngine {
     }
 
     /// Calculate pricing for a destination number
-    pub async fn calculate_pricing(&self, destination: &str, estimated_duration_seconds: u32) -> Result<CallPricing> {
+    pub async fn calculate_pricing(
+        &self,
+        destination: &str,
+        estimated_duration_seconds: u32,
+    ) -> Result<CallPricing> {
         // Find the longest matching prefix
         let mut best_match: Option<RateTable> = None;
         let mut longest_prefix = 0;
@@ -1037,9 +1060,12 @@ impl RatingEngine {
 
     /// Add or update a rate table entry
     pub fn update_rate(&self, rate_table: RateTable) {
-        info!("Updated rate for prefix {}: ${}/min", 
-              rate_table.prefix, rate_table.rate_per_minute);
-        self.rate_tables.insert(rate_table.prefix.clone(), rate_table);
+        info!(
+            "Updated rate for prefix {}: ${}/min",
+            rate_table.prefix, rate_table.rate_per_minute
+        );
+        self.rate_tables
+            .insert(rate_table.prefix.clone(), rate_table);
     }
 
     /// Remove a rate table entry
@@ -1051,7 +1077,10 @@ impl RatingEngine {
 
     /// Get all configured rates
     pub fn get_all_rates(&self) -> Vec<RateTable> {
-        self.rate_tables.iter().map(|entry| entry.value().clone()).collect()
+        self.rate_tables
+            .iter()
+            .map(|entry| entry.value().clone())
+            .collect()
     }
 
     /// Update default rates

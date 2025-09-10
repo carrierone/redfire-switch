@@ -9,7 +9,7 @@ use colored::*;
 use redfire_switch::cli::InteractiveCli;
 use std::process;
 use tokio;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Parser)]
@@ -64,6 +64,40 @@ async fn main() -> Result<()> {
 
     // Create and configure CLI
     let mut cli = InteractiveCli::new().context("Failed to create CLI instance")?;
+
+    // Auto-connect to the specified host and port
+    let target_address = format!("{}:{}", args.host, args.port);
+    info!("Attempting to connect to {}", target_address);
+
+    // Get session and attempt connection
+    {
+        let session_clone = cli.get_session();
+        let mut session = session_clone.write().await;
+        if let Err(e) = session.connect(target_address.clone()).await {
+            warn!("Failed to connect to {}: {}", target_address, e);
+            if args.execute.is_some() {
+                // For non-interactive mode, exit on connection failure
+                eprintln!(
+                    "{}: Failed to connect to {}: {}",
+                    "Error".red().bold(),
+                    target_address,
+                    e
+                );
+                process::exit(1);
+            } else {
+                // For interactive mode, warn but continue
+                eprintln!(
+                    "{}: Failed to connect to {}: {}",
+                    "Warning".yellow().bold(),
+                    target_address,
+                    e
+                );
+                eprintln!("Use 'connect {}' command to try again", target_address);
+            }
+        } else {
+            info!("Successfully connected to {}", target_address);
+        }
+    }
 
     // Handle non-interactive execution
     if let Some(ref command) = args.execute {

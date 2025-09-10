@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RedFire Switch - Simple Config Generator</title>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Arial, sans-serif; 
+            margin: 0; 
+            padding: 20px; 
+            background: #f5f5f5;
+        }
+        .container { 
+            max-width: 1200px; 
+            margin: 0 auto; 
+            background: white; 
+            padding: 20px; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 { color: #d73502; margin-bottom: 20px; }
+        h2 { color: #333; border-bottom: 2px solid #d73502; padding-bottom: 10px; }
+        .template-grid { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); 
+            gap: 20px; 
+            margin: 20px 0;
+        }
+        .template-card { 
+            border: 2px solid #e0e0e0; 
+            border-radius: 8px; 
+            padding: 20px; 
+            cursor: pointer; 
+            transition: all 0.2s ease;
+            background: #fafafa;
+        }
+        .template-card:hover, .template-card.selected { 
+            border-color: #d73502; 
+            background: #fff;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(215, 53, 2, 0.15);
+        }
+        .template-name { 
+            font-size: 1.2rem; 
+            font-weight: bold; 
+            color: #d73502; 
+            margin-bottom: 10px; 
+        }
+        .template-description { 
+            color: #666; 
+            margin-bottom: 10px; 
+        }
+        .template-params { 
+            font-size: 0.9em; 
+            color: #888; 
+        }
+        .error-message { 
+            background: #fed7d7; 
+            color: #c53030; 
+            padding: 15px; 
+            border-radius: 4px; 
+            border: 1px solid #feb2b2;
+        }
+        .success-message { 
+            background: #c6f6d5; 
+            color: #2f855a; 
+            padding: 15px; 
+            border-radius: 4px; 
+            border: 1px solid #9ae6b4;
+        }
+        .loading { 
+            text-align: center; 
+            padding: 40px; 
+            color: #666; 
+        }
+        .hidden { 
+            display: none; 
+        }
+        .debug-info {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 20px 0;
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔥 RedFire Switch - Simple Configuration Generator</h1>
+        <p>Generate configuration files for your RedFire Switch deployment.</p>
+        
+        <div id="debug-info" class="debug-info">
+            <strong>Debug Information:</strong>
+            <div id="debug-content">Loading...</div>
+        </div>
+        
+        <h2>Available Templates</h2>
+        <div id="template-grid" class="template-grid">
+            <div class="loading">Loading templates...</div>
+        </div>
+        
+        <div id="result-section" class="hidden">
+            <h2>Template Selected</h2>
+            <div id="template-details"></div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let templates = [];
+        let selectedTemplate = null;
+        
+        // Debug function
+        function addDebugInfo(message) {
+            const debugContent = document.getElementById('debug-content');
+            const timestamp = new Date().toLocaleTimeString();
+            debugContent.innerHTML += `<br>[${timestamp}] ${message}`;
+            console.log(message);
+        }
+        
+        // Load templates on page load
+        document.addEventListener('DOMContentLoaded', async function() {
+            addDebugInfo('Page loaded, starting template loading...');
+            await loadTemplates();
+        });
+        
+        async function loadTemplates() {
+            try {
+                addDebugInfo('Making request to /api/switch/config/templates');
+                
+                const response = await fetch('/api/switch/config/templates', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                addDebugInfo(`Response status: ${response.status}`);
+                addDebugInfo(`Response OK: ${response.ok}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                templates = await response.json();
+                addDebugInfo(`Templates loaded: ${templates.length} templates`);
+                addDebugInfo(`Template names: ${templates.map(t => t.name).join(', ')}`);
+                
+                renderTemplates();
+                
+            } catch (error) {
+                addDebugInfo(`ERROR: ${error.message}`);
+                console.error('Failed to load templates:', error);
+                
+                document.getElementById('template-grid').innerHTML = 
+                    `<div class="error-message">
+                        <h4>Failed to load templates</h4>
+                        <p>Error: ${error.message}</p>
+                        <button onclick="location.reload()" style="background: #d73502; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-top: 10px;">🔄 Retry</button>
+                     </div>`;
+            }
+        }
+        
+        function renderTemplates() {
+            const grid = document.getElementById('template-grid');
+            
+            if (!templates || templates.length === 0) {
+                grid.innerHTML = '<div class="error-message">No templates available</div>';
+                addDebugInfo('No templates to render');
+                return;
+            }
+            
+            addDebugInfo('Rendering templates to grid...');
+            
+            grid.innerHTML = templates.map(template => `
+                <div class="template-card" onclick="selectTemplate('${template.name}')">
+                    <div class="template-name">${template.name.replace(/_/g, ' ').toUpperCase()}</div>
+                    <div class="template-description">${template.description}</div>
+                    <div class="template-params">
+                        Required: ${template.required_params.length} | 
+                        Optional: ${template.optional_params.length}
+                    </div>
+                </div>
+            `).join('');
+            
+            addDebugInfo(`Successfully rendered ${templates.length} templates`);
+        }
+        
+        function selectTemplate(templateName) {
+            addDebugInfo(`Template selected: ${templateName}`);
+            
+            // Clear previous selection
+            document.querySelectorAll('.template-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            
+            // Select new template
+            event.target.closest('.template-card').classList.add('selected');
+            
+            selectedTemplate = templates.find(t => t.name === templateName);
+            if (selectedTemplate) {
+                displayTemplateDetails();
+                document.getElementById('result-section').classList.remove('hidden');
+            }
+        }
+        
+        function displayTemplateDetails() {
+            const detailsDiv = document.getElementById('template-details');
+            
+            let html = `
+                <div class="success-message">
+                    <h3>${selectedTemplate.name.replace(/_/g, ' ').toUpperCase()}</h3>
+                    <p>${selectedTemplate.description}</p>
+                    
+                    <h4>Required Parameters (${selectedTemplate.required_params.length}):</h4>
+                    <ul>
+                        ${selectedTemplate.required_params.map(param => `<li><strong>${param}</strong></li>`).join('')}
+                    </ul>
+                    
+                    <h4>Optional Parameters (${selectedTemplate.optional_params.length}):</h4>
+                    <ul>
+                        ${selectedTemplate.optional_params.map(param => `
+                            <li>
+                                <strong>${param.name}</strong> (${param.param_type})
+                                ${param.default_value !== null ? ` - Default: ${param.default_value}` : ''}
+                                ${param.description ? `<br><em>${param.description}</em>` : ''}
+                            </li>
+                        `).join('')}
+                    </ul>
+                </div>
+            `;
+            
+            detailsDiv.innerHTML = html;
+            addDebugInfo(`Displayed details for template: ${selectedTemplate.name}`);
+        }
+    </script>
+</body>
+</html>

@@ -128,7 +128,7 @@ async fn test_ai_analytics_integration() -> Result<()> {
     //     .await?;
 
     // assert!(fraud_risk >= 0.0 && fraud_risk <= 1.0);
-    
+
     // Just verify the engine was created
     let _ = analytics;
 
@@ -176,7 +176,7 @@ async fn test_security_monitoring_integration() -> Result<()> {
 
     // let blocked = security_monitor.is_blacklisted(source_ip).await?;
     // assert!(blocked, "IP should be blacklisted");
-    
+
     // Just verify the monitor was created
     let _ = security_monitor;
 
@@ -258,7 +258,7 @@ async fn test_system_integration_under_load() -> Result<()> {
 
         let handle = tokio::spawn(async move {
             let _source_ip = format!("192.168.1.{}", 100 + i).parse::<IpAddr>().unwrap();
-            
+
             // Keep references to avoid warnings
             let _ = &security_clone;
             let _ = &analytics_clone;

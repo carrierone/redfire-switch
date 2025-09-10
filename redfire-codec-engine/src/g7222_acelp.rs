@@ -607,10 +607,9 @@ impl G7222Encoder {
             let byte_index = *bit_index / 8;
             let bit_position = 7 - (*bit_index % 8);
 
-            if byte_index < bitstream.len()
-                && bit == 1 {
-                    bitstream[byte_index] |= 1 << bit_position;
-                }
+            if byte_index < bitstream.len() && bit == 1 {
+                bitstream[byte_index] |= 1 << bit_position;
+            }
 
             *bit_index += 1;
         }

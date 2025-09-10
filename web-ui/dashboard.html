@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RedFire Switch - Dashboard</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="icon" type="image/x-icon" href="/static/img/favicon.ico">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <span class="fire-icon">🔥</span>
+                    <h1>RedFire Switch</h1>
+                </div>
+                <nav class="nav">
+                    <a href="/" class="nav-link active">Dashboard</a>
+                    <a href="/calls" class="nav-link">Active Calls</a>
+                    <a href="/config" class="nav-link">Configuration</a>
+                    <a href="/config-manager" class="nav-link">Config Manager</a>
+                    <a href="/monitoring" class="nav-link">Monitoring</a>
+                    <button id="logout-btn" class="logout-btn">Logout</button>
+                </nav>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Status Cards -->
+            <div class="status-grid">
+                <div class="status-card">
+                    <div class="status-icon">📞</div>
+                    <div class="status-info">
+                        <h3>Active Calls</h3>
+                        <div class="status-value" id="active-calls">Loading...</div>
+                        <div class="status-change positive">↑ Live</div>
+                    </div>
+                </div>
+
+                <div class="status-card">
+                    <div class="status-icon">🔄</div>
+                    <div class="status-info">
+                        <h3>Calls Per Second</h3>
+                        <div class="status-value" id="calls-per-second">Loading...</div>
+                        <div class="status-change">Real-time</div>
+                    </div>
+                </div>
+
+                <div class="status-card">
+                    <div class="status-icon">💾</div>
+                    <div class="status-info">
+                        <h3>Memory Usage</h3>
+                        <div class="status-value" id="memory-usage">Loading...</div>
+                        <div class="status-change">System</div>
+                    </div>
+                </div>
+
+                <div class="status-card">
+                    <div class="status-icon">⚡</div>
+                    <div class="status-info">
+                        <h3>System Status</h3>
+                        <div class="status-value" id="system-status">Loading...</div>
+                        <div class="status-change positive" id="uptime">Loading...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts and Tables -->
+            <div class="dashboard-grid">
+                <!-- Recent Calls Table -->
+                <div class="dashboard-card">
+                    <div class="card-header">
+                        <h2>Recent Activity</h2>
+                        <button class="refresh-btn" onclick="refreshCalls()">🔄</button>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="recent-calls">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>From</th>
+                                    <th>To</th>
+                                    <th>Status</th>
+                                    <th>Duration</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="5" class="loading">Loading recent calls...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- System Information -->
+                <div class="dashboard-card">
+                    <div class="card-header">
+                        <h2>System Information</h2>
+                    </div>
+                    <div class="system-info">
+                        <div class="info-item">
+                            <span class="info-label">Version:</span>
+                            <span class="info-value" id="version">RedFire Switch v0.1.0</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Uptime:</span>
+                            <span class="info-value" id="system-uptime">Loading...</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Total Calls:</span>
+                            <span class="info-value" id="total-calls">Loading...</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Connection:</span>
+                            <span class="info-value status-connected" id="connection-status">Unix Socket</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="dashboard-card">
+                    <div class="card-header">
+                        <h2>Quick Actions</h2>
+                    </div>
+                    <div class="actions-grid">
+                        <button class="action-btn primary" onclick="viewActiveCalls()">
+                            📞 View Active Calls
+                        </button>
+                        <button class="action-btn secondary" onclick="reloadConfig()">
+                            ⚙️ Reload Configuration
+                        </button>
+                        <button class="action-btn secondary" onclick="viewLogs()">
+                            📋 View System Logs
+                        </button>
+                        <button class="action-btn secondary" onclick="exportStats()">
+                            📊 Export Statistics
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Trunk Status -->
+                <div class="dashboard-card">
+                    <div class="card-header">
+                        <h2>Trunk Status</h2>
+                    </div>
+                    <div id="trunk-status" class="trunk-list">
+                        <div class="loading">Loading trunk information...</div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/static/js/main.js"></script>
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>

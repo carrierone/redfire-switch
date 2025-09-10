@@ -1,0 +1,290 @@
+{
+  "billing": {
+    "currency": "USD",
+    "enabled": false,
+    "precision": 6
+  },
+  "carrier_interconnects": {
+    "origination": [
+      {
+        "authentication": {
+          "password": "secure_password",
+          "type": "digest_auth",
+          "username": "wholesale_user"
+        },
+        "capacity_limit": 500,
+        "carrier_id": "wholesale_001",
+        "carrier_name": "Wholesale Partner LLC",
+        "cic_range": "1-24",
+        "circuit_group_support": true,
+        "codec_preference": [
+          "g711u",
+          "g729"
+        ],
+        "description": "Wholesale partner origination interconnect",
+        "direction": "origination",
+        "id": 5000,
+        "isup_interworking": true,
+        "lcr_group": "wholesale",
+        "name": "wholesale_origination",
+        "quality_score": 88,
+        "remote_ip": "198.51.100.20",
+        "remote_port": 5060,
+        "sip_i_support": true,
+        "ss7_protocol": "ansi",
+        "transport": "udp"
+      }
+    ],
+    "termination": [
+      {
+        "authentication": {
+          "trusted_ips": [
+            "203.0.113.0/24"
+          ],
+          "type": "ip_auth"
+        },
+        "capacity_limit": 1000,
+        "carrier_id": "tier1_001",
+        "carrier_name": "Tier1 Carrier Corp",
+        "cic_range": "1-31,33-62",
+        "circuit_group_support": true,
+        "codec_preference": [
+          "g711u",
+          "g711a",
+          "g729"
+        ],
+        "description": "Tier 1 carrier termination interconnect",
+        "direction": "termination",
+        "id": 4000,
+        "isup_interworking": true,
+        "lcr_group": "tier1",
+        "name": "tier1_termination",
+        "quality_score": 95,
+        "remote_ip": "203.0.113.10",
+        "remote_port": 5060,
+        "sip_i_support": true,
+        "ss7_protocol": "itu_t",
+        "transport": "udp"
+      }
+    ]
+  },
+  "cdr": {
+    "batch_size": 100,
+    "database_url": "postgresql://redfire:password@localhost/cdr",
+    "enabled": true,
+    "flush_interval": 30
+  },
+  "codec": {
+    "enabled": true,
+    "preferred_codecs": [
+      "PCMU",
+      "PCMA",
+      "G729"
+    ],
+    "transcoding_enabled": true
+  },
+  "lcr_groups": {
+    "tier1": {
+      "description": "Premium Tier 1 carrier group for high-quality termination",
+      "max_cost": 0.01,
+      "name": "Tier 1 Carriers",
+      "priority": 1,
+      "quality_threshold": 90
+    },
+    "wholesale": {
+      "description": "Wholesale partner group for origination traffic",
+      "max_cost": 0.02,
+      "name": "Wholesale Partners",
+      "priority": 2,
+      "quality_threshold": 85
+    }
+  },
+  "monitoring": {
+    "enabled": true,
+    "endpoints": []
+  },
+  "routing": {
+    "database_url": "postgresql://redfire:password@localhost/routing",
+    "enabled": true,
+    "max_routes": 10
+  },
+  "rtp_proxy": {
+    "bind_ip": "0.0.0.0",
+    "enabled": true,
+    "port_range": "10000-20000"
+  },
+  "security": {
+    "blacklist": {
+      "auto_block_threshold": 100,
+      "enabled": true
+    },
+    "enabled": true,
+    "max_calls_per_minute": 1000
+  },
+  "sip_profiles": [
+    {
+      "auth_calls": false,
+      "bind_ip": "0.0.0.0",
+      "cause_code_mapping": "itu_t",
+      "codec_negotiation": "transparent",
+      "description": "Default SIP profile for Class 4 switch operations",
+      "dtmf_relay": "rfc2833",
+      "enable_registration": false,
+      "id": 1,
+      "isup_interworking": true,
+      "max_sessions": 100000,
+      "name": "default",
+      "port": 5060,
+      "proxy_media": false,
+      "record_route": true,
+      "release_source_header": true,
+      "session_timer": 1800,
+      "sip_i_support": true,
+      "ss7_gateway_support": true,
+      "transit_mode": true,
+      "transport": "udp"
+    }
+  ],
+  "stir_shaken": {
+    "certificate_path": "/etc/redfire-switch/certs/stir_shaken.crt",
+    "enabled": false,
+    "private_key_path": "/etc/redfire-switch/certs/stir_shaken.key"
+  },
+  "system": {
+    "description": "RedFire Switch PBX System",
+    "domain": "redfire.local",
+    "name": "redfire-switch"
+  },
+  "trunks": {
+    "origination": [
+      {
+        "allowed_codecs": [
+          "g711u",
+          "g729"
+        ],
+        "call_limits": {
+          "calls_per_second": 8,
+          "max_call_duration": 1800,
+          "max_concurrent_calls": 200
+        },
+        "carrier_interconnect": "wholesale_origination",
+        "description": "Trunk for wholesale partner origination",
+        "digit_manipulation": {
+          "add_prefix": "",
+          "add_suffix": "",
+          "number_translation": [],
+          "strip_digits": 0
+        },
+        "id": 2001,
+        "lcr_group": "wholesale",
+        "name": "wholesale_origination_trunk",
+        "sip_profile_id": 1,
+        "stir_shaken": {
+          "attestation_level": "B",
+          "enabled": true,
+          "verify_incoming": true
+        },
+        "tech_prefix": "2001",
+        "trunk_type": "origination",
+        "vendor_customer": "wholesale_partner"
+      }
+    ],
+    "termination": [
+      {
+        "allowed_codecs": [
+          "g711u",
+          "g711a",
+          "g729"
+        ],
+        "call_limits": {
+          "calls_per_second": 10,
+          "max_call_duration": 7200,
+          "max_concurrent_calls": 500
+        },
+        "carrier_interconnect": "tier1_termination",
+        "description": "Premium trunk for Tier 1 carrier termination",
+        "digit_manipulation": {
+          "add_prefix": "",
+          "add_suffix": "",
+          "number_translation": [],
+          "strip_digits": 0
+        },
+        "id": 1001,
+        "lcr_group": "tier1",
+        "name": "tier1_premium_trunk",
+        "sip_profile_id": 1,
+        "stir_shaken": {
+          "attestation_level": "A",
+          "enabled": true,
+          "verify_incoming": true
+        },
+        "tech_prefix": "1001",
+        "trunk_type": "termination",
+        "vendor_customer": "tier1_vendor"
+      },
+      {
+        "allowed_codecs": [
+          "g711u",
+          "g729"
+        ],
+        "call_limits": {
+          "calls_per_second": 5,
+          "max_call_duration": 3600,
+          "max_concurrent_calls": 250
+        },
+        "carrier_interconnect": "tier1_termination",
+        "description": "Premium trunk for wholesale termination",
+        "digit_manipulation": {
+          "add_prefix": "1",
+          "add_suffix": "",
+          "number_translation": [],
+          "strip_digits": 1
+        },
+        "id": 1002,
+        "lcr_group": "wholesale",
+        "name": "wholesale_premium_trunk",
+        "sip_profile_id": 1,
+        "stir_shaken": {
+          "attestation_level": "C",
+          "enabled": false,
+          "verify_incoming": false
+        },
+        "tech_prefix": "1002",
+        "trunk_type": "termination",
+        "vendor_customer": "wholesale_customer"
+      }
+    ]
+  },
+  "vendors_customers": {
+    "tier1_vendor": {
+      "contact_info": {
+        "billing_contact": "billing@tier1carrier.com",
+        "emergency_contact": "+1-555-0100",
+        "technical_contact": "noc@tier1carrier.com"
+      },
+      "id": 3001,
+      "name": "Tier1 Carrier Corp",
+      "type": "vendor"
+    },
+    "wholesale_customer": {
+      "contact_info": {
+        "billing_contact": "finance@wholesale.com",
+        "emergency_contact": "+1-555-0200",
+        "technical_contact": "support@wholesale.com"
+      },
+      "id": 3002,
+      "name": "Wholesale Customer Inc",
+      "type": "customer"
+    },
+    "wholesale_partner": {
+      "contact_info": {
+        "billing_contact": "accounts@partner.com",
+        "emergency_contact": "+1-555-0300",
+        "technical_contact": "ops@partner.com"
+      },
+      "id": 3003,
+      "name": "Wholesale Partner LLC",
+      "type": "partner"
+    }
+  }
+}

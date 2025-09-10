@@ -58,7 +58,7 @@ rust_decimal = "1.33"
 rust_decimal_macros = "1.33"
 
 # Phone number validation
-rlibphonenumber = "0.2.1"
+phonenumber = "0.3.7"
 
 # Cache and synchronization
 dashmap = "5.5"
@@ -67,8 +67,15 @@ once_cell = "1.19"
 
 # API and CLI
 axum = { version = "0.7", features = ["ws", "macros"] }
-tower = "0.4"
-tower-http = { version = "0.5", features = ["cors", "trace"] }
+axum-extra = { version = "0.9", features = ["typed-header"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.5", features = ["cors", "trace", "timeout", "limit", "fs"] }
+utoipa = { version = "5.0", features = ["axum_extras", "chrono"] }
+utoipa-swagger-ui = { version = "8.0", features = ["axum"] }
+hyper = { version = "1.0", features = ["full"] }
+hyper-util = { version = "0.1", features = ["full"] }
+http-body-util = "0.1"
+tokio-util = { version = "0.7", features = ["codec"] }
 regex = "1.10"
 lazy_static = "1.4"
 rand = "0.8"
@@ -158,11 +165,18 @@ gpu = ["cuda"]  # Alias for CUDA
 # Assembly optimization features
 g729_asm = []  # Enable G.729 assembly optimizations
 
+# BGP Anycast networking feature
+bgp-anycast = []  # Enable BGP anycast routing capabilities
+
 # Audio processing dependencies are now in codec engine
 
 [[bin]]
 name = "redfire-cli"
 path = "src/bin/redfire_cli.rs"
+
+[[bin]]
+name = "redfire-web-ui"
+path = "src/bin/redfire_web_ui.rs"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

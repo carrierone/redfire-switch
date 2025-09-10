@@ -47,6 +47,31 @@ A high-performance Class 4 SIP telephone switch written in Rust, designed for mo
 
 ## Quick Start
 
+### Current Demo System
+
+The current implementation provides a fully functional demo system with:
+
+#### Available Components
+- **Standalone API Server** (`standalone_api_server`) - Configuration management and templates
+- **Web Administration UI** (`redfire_web_ui`) - Modern web interface for system management
+- **Configuration Templates** - 8 comprehensive templates for SIP, trunks, security, monitoring, billing
+
+#### Quick Demo
+```bash
+# Start API server (default port 8080)
+cargo run --bin standalone_api_server
+
+# In another terminal, start Web UI (default port 3000) 
+cargo run --bin redfire_web_ui
+
+# Access the system
+open http://localhost:3000
+```
+
+**Demo Credentials:**
+- Username: `admin`
+- Password: `admin123`
+
 ### Installation
 
 #### Prerequisites
@@ -220,6 +245,80 @@ sipp -sf scenarios/stress_test.xml -r 100 -d 10000 target_ip:5060
 
 # Codec transcoding test
 sipp -sf scenarios/codec_test.xml target_ip:5060
+```
+
+## Current API & Web UI
+
+### API Server Features
+- **Configuration Templates** - Generate SIP profiles, trunks, security, monitoring configs
+- **RESTful API** - Full OpenAPI/Swagger documentation at `/swagger-ui`
+- **Command Line Options** - Flexible port and binding configuration
+- **Authentication** - JWT-based authentication system
+
+#### API Endpoints
+```bash
+# System health and statistics
+GET /api/v1/system/stats
+
+# Authentication
+POST /api/v1/auth/login
+
+# Configuration templates
+GET /api/v1/config/templates
+POST /api/v1/config/generate
+
+# Template generation example
+curl -X POST http://localhost:8080/api/v1/config/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "config_type": "basic_sip",
+    "parameters": {
+      "name": "internal",
+      "ip": "10.1.1.100",
+      "port": 5060,
+      "transport": "udp"
+    }
+  }'
+```
+
+### Web UI Features  
+- **Modern Interface** - Clean, responsive design with real-time updates
+- **Config Manager** - Visual template editing and generation
+- **Dashboard** - System statistics and health monitoring
+- **Call Management** - Active call monitoring and control (demo)
+- **Template Editor** - Full CRUD operations on configuration templates
+
+#### Web UI Pages
+- **Dashboard** (`/`) - System overview and real-time statistics
+- **Active Calls** (`/calls`) - Call monitoring and management interface  
+- **Configuration** (`/config`) - Basic system configuration
+- **Config Manager** (`/config-manager`) - Advanced template management with live preview
+- **Monitoring** (`/monitoring`) - System health and performance metrics
+
+### Command Line Usage
+
+#### API Server
+```bash
+# Default (port 8080, bind to 127.0.0.1)
+cargo run --bin standalone_api_server
+
+# Custom port and binding
+cargo run --bin standalone_api_server -- --port 9090 --bind 0.0.0.0
+
+# Help
+cargo run --bin standalone_api_server -- --help
+```
+
+#### Web UI
+```bash
+# Default (port 3000, connects to API at 127.0.0.1:8080)
+cargo run --bin redfire_web_ui
+
+# Custom configuration
+cargo run --bin redfire_web_ui -- --port 8080 --switch-url http://localhost:9090
+
+# Development mode with debug logging
+cargo run --bin redfire_web_ui -- --dev
 ```
 
 ## Documentation

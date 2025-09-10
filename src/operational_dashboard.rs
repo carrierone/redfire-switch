@@ -459,24 +459,24 @@ impl OperationalDashboard {
                 let metrics = SystemMetrics {
                     timestamp: SystemTime::now(),
                     uptime_seconds: uptime,
-                    cpu_usage_percent: 25.5, // Simulated
-                    memory_usage_mb: 512,    // Simulated
-                    memory_peak_mb: 768,     // Simulated peak memory
+                    cpu_usage_percent: 25.5,  // Simulated
+                    memory_usage_mb: 512,     // Simulated
+                    memory_peak_mb: 768,      // Simulated peak memory
                     disk_usage_percent: 45.0, // Simulated disk usage
                     network_rx_bytes: 1024 * 1024 * 100,
                     network_tx_bytes: 1024 * 1024 * 80,
                     active_connections: 150,
-                    peak_connections: 200,   // Simulated peak connections
+                    peak_connections: 200, // Simulated peak connections
                     messages_per_second: 367000.0,
                     peak_messages_per_second: 400000.0, // Simulated peak messages
                     error_rate_percent: 0.1,
-                    response_time_ms_avg: 25.0,  // Simulated average response time
-                    response_time_ms_p95: 45.0,  // Simulated 95th percentile
+                    response_time_ms_avg: 25.0, // Simulated average response time
+                    response_time_ms_p95: 45.0, // Simulated 95th percentile
                     response_time_ms_p99: 100.0, // Simulated 99th percentile
-                    thread_count: 32,        // Simulated thread count
-                    gc_collections: 0,       // Simulated GC collections
-                    database_connections_active: 10,  // Simulated active DB connections
-                    database_connections_idle: 20,    // Simulated idle DB connections
+                    thread_count: 32,           // Simulated thread count
+                    gc_collections: 0,          // Simulated GC collections
+                    database_connections_active: 10, // Simulated active DB connections
+                    database_connections_idle: 20, // Simulated idle DB connections
                 };
 
                 {
@@ -638,43 +638,43 @@ impl OperationalDashboard {
     async fn get_memory_peak(&self) -> Result<u64> {
         Ok(768) // Simulated peak memory in MB
     }
-    
+
     async fn get_disk_usage(&self) -> Result<f32> {
         Ok(45.2) // Simulated disk usage percentage
     }
-    
+
     async fn get_peak_connections(&self) -> Result<usize> {
         Ok(280) // Simulated peak connections
     }
-    
+
     async fn get_peak_message_rate(&self) -> Result<f32> {
         Ok(450000.0) // Peak validated throughput
     }
-    
+
     async fn get_avg_response_time(&self) -> Result<f32> {
         Ok(12.5) // Average response time in ms
     }
-    
+
     async fn get_p95_response_time(&self) -> Result<f32> {
         Ok(45.0) // 95th percentile response time in ms
     }
-    
+
     async fn get_p99_response_time(&self) -> Result<f32> {
         Ok(120.0) // 99th percentile response time in ms
     }
-    
+
     async fn get_thread_count(&self) -> Result<usize> {
         Ok(32) // Current active threads
     }
-    
+
     async fn get_gc_collections(&self) -> Result<u64> {
         Ok(145) // Garbage collection count
     }
-    
+
     async fn get_db_active_connections(&self) -> Result<usize> {
         Ok(8) // Active database connections
     }
-    
+
     async fn get_db_idle_connections(&self) -> Result<usize> {
         Ok(12) // Idle database connections
     }

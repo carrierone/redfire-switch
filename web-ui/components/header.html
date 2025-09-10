@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RedFire Switch - {PAGE_TITLE}</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="icon" type="image/x-icon" href="/static/img/favicon.ico">
+    {PAGE_STYLES}
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <span class="fire-icon">🔥</span>
+                    <h1>RedFire Switch</h1>
+                </div>
+                <nav class="nav">
+                    <a href="/" class="nav-link {ACTIVE_DASHBOARD}">Dashboard</a>
+                    <a href="/calls" class="nav-link {ACTIVE_CALLS}">Active Calls</a>
+                    <a href="/config" class="nav-link {ACTIVE_CONFIG}">Configuration</a>
+                    
+                    <a href="/config-manager" class="nav-link {ACTIVE_CONFIG_MANAGER}">Config Manager</a>
+                    <a href="/monitoring" class="nav-link {ACTIVE_MONITORING}">Monitoring</a>
+                    <button id="logout-btn" class="logout-btn">Logout</button>
+                </nav>
+            </div>
+        </header>
+
+        <!-- Main Content -->

@@ -812,8 +812,6 @@ pub mod utils {
 
     /// Extract call information from SIP message
     pub fn extract_call_info(_message: &SipMessage) -> CallInfo {
-        
-
         // TODO: Implement actual SIP header parsing
         // This is a placeholder implementation
 

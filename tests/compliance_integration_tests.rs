@@ -34,6 +34,7 @@ fn create_test_compliance_config() -> ComplianceConfig {
             fraud_detection: true,
             default_currency: "USD".to_string(),
             default_tariff_class: "TEST".to_string(),
+            intercept_targets: vec![],
         },
         li_config: LiControllerConfig {
             enabled: false,

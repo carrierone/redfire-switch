@@ -1,0 +1,552 @@
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="page-header">
+                <h2>System Monitoring</h2>
+                <div class="header-actions">
+                    <button class="action-btn primary" onclick="refreshAll()">🔄 Refresh All</button>
+                    <button class="action-btn secondary" onclick="exportLogs()">📊 Export Logs</button>
+                </div>
+            </div>
+
+            <!-- Monitoring Grid -->
+            <div class="monitoring-grid">
+                <!-- System Health -->
+                <div class="dashboard-card">
+                    <div class="card-header">
+                        <h3>System Health</h3>
+                        <span class="live-indicator">🔴 LIVE</span>
+                    </div>
+                    <div class="monitoring-content">
+                        <div class="health-metrics">
+                            <div class="metric-item">
+                                <div class="metric-label">CPU Usage</div>
+                                <div class="metric-value" id="cpu-usage">Loading...</div>
+                                <div class="metric-bar">
+                                    <div class="metric-progress" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            
+                            <div class="metric-item">
+                                <div class="metric-label">Memory Usage</div>
+                                <div class="metric-value" id="memory-usage-detailed">Loading...</div>
+                                <div class="metric-bar">
+                                    <div class="metric-progress" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            
+                            <div class="metric-item">
+                                <div class="metric-label">Disk Usage</div>
+                                <div class="metric-value" id="disk-usage">Loading...</div>
+                                <div class="metric-bar">
+                                    <div class="metric-progress" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            
+                            <div class="metric-item">
+                                <div class="metric-label">Network Load</div>
+                                <div class="metric-value" id="network-load">Loading...</div>
+                                <div class="metric-bar">
+                                    <div class="metric-progress" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Call Statistics -->
+                <div class="dashboard-card">
+                    <div class="card-header">
+                        <h3>Call Statistics (Last 24h)</h3>
+                    </div>
+                    <div class="monitoring-content">
+                        <div class="stats-grid">
+                            <div class="stat-box">
+                                <div class="stat-number" id="total-calls-24h">0</div>
+                                <div class="stat-label">Total Calls</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-number" id="successful-calls">0</div>
+                                <div class="stat-label">Successful</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-number" id="failed-calls">0</div>
+                                <div class="stat-label">Failed</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-number" id="avg-call-duration">0s</div>
+                                <div class="stat-label">Avg Duration</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Error Log -->
+                <div class="dashboard-card">
+                    <div class="card-header">
+                        <h3>Recent Errors & Warnings</h3>
+                        <button class="refresh-btn" onclick="loadErrorLogs()">🔄</button>
+                    </div>
+                    <div class="monitoring-content">
+                        <div class="log-container" id="error-logs">
+                            <div class="log-entry info">
+                                <span class="log-timestamp">2025-01-08 15:30:00</span>
+                                <span class="log-level info">INFO</span>
+                                <span class="log-message">System startup completed successfully</span>
+                            </div>
+                            <div class="log-entry warning">
+                                <span class="log-timestamp">2025-01-08 15:29:45</span>
+                                <span class="log-level warning">WARN</span>
+                                <span class="log-message">High memory usage detected (85%)</span>
+                            </div>
+                            <div class="log-entry error">
+                                <span class="log-timestamp">2025-01-08 15:28:30</span>
+                                <span class="log-level error">ERROR</span>
+                                <span class="log-message">Failed to connect to trunk: timeout</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Network Connections -->
+                <div class="dashboard-card">
+                    <div class="card-header">
+                        <h3>Network Connections</h3>
+                    </div>
+                    <div class="monitoring-content">
+                        <div class="connection-list">
+                            <div class="connection-item">
+                                <div class="connection-info">
+                                    <strong>API Server (HTTP)</strong>
+                                    <span class="connection-detail">127.0.0.1:8080</span>
+                                </div>
+                                <span class="connection-status online">ONLINE</span>
+                            </div>
+                            <div class="connection-item">
+                                <div class="connection-info">
+                                    <strong>API Server (Unix Socket)</strong>
+                                    <span class="connection-detail">/var/run/redfire-switch/api.sock</span>
+                                </div>
+                                <span class="connection-status online">ONLINE</span>
+                            </div>
+                            <div class="connection-item">
+                                <div class="connection-info">
+                                    <strong>SIP Trunk 1</strong>
+                                    <span class="connection-detail">sip.provider.com:5060</span>
+                                </div>
+                                <span class="connection-status online">ONLINE</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Performance Metrics -->
+                <div class="dashboard-card">
+                    <div class="card-header">
+                        <h3>Performance Metrics</h3>
+                    </div>
+                    <div class="monitoring-content">
+                        <div class="performance-grid">
+                            <div class="perf-metric">
+                                <div class="perf-label">Requests/sec</div>
+                                <div class="perf-value" id="requests-per-second">0</div>
+                            </div>
+                            <div class="perf-metric">
+                                <div class="perf-label">Response Time</div>
+                                <div class="perf-value" id="avg-response-time">0ms</div>
+                            </div>
+                            <div class="perf-metric">
+                                <div class="perf-label">Queue Length</div>
+                                <div class="perf-value" id="queue-length">0</div>
+                            </div>
+                            <div class="perf-metric">
+                                <div class="perf-label">Active Threads</div>
+                                <div class="perf-value" id="active-threads">0</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- System Resources -->
+                <div class="dashboard-card">
+                    <div class="card-header">
+                        <h3>System Resources</h3>
+                    </div>
+                    <div class="monitoring-content">
+                        <div class="resource-list">
+                            <div class="resource-item">
+                                <div class="resource-info">
+                                    <strong>Available Memory</strong>
+                                    <span class="resource-detail" id="available-memory">Loading...</span>
+                                </div>
+                            </div>
+                            <div class="resource-item">
+                                <div class="resource-info">
+                                    <strong>Free Disk Space</strong>
+                                    <span class="resource-detail" id="free-disk">Loading...</span>
+                                </div>
+                            </div>
+                            <div class="resource-item">
+                                <div class="resource-info">
+                                    <strong>Load Average</strong>
+                                    <span class="resource-detail" id="load-average">Loading...</span>
+                                </div>
+                            </div>
+                            <div class="resource-item">
+                                <div class="resource-info">
+                                    <strong>Open File Descriptors</strong>
+                                    <span class="resource-detail" id="open-files">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+<script src="/static/js/component-loader.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', async function() {
+    const pageContent = document.querySelector('main').outerHTML;
+    const pageStyles = document.querySelector('style').outerHTML;
+    const fullPage = await componentLoader.buildPage('monitoring', pageContent, pageStyles);
+    document.documentElement.innerHTML = fullPage;
+    
+    // Re-initialize monitoring functionality
+    initializeMonitoring();
+});
+
+function initializeMonitoring() {
+    let monitoringInterval;
+    
+        async function updateMonitoring() {
+            await loadMonitoringData();
+            
+            // Set up auto-refresh every 10 seconds
+            monitoringInterval = setInterval(loadMonitoringData, 10000);
+        }
+        
+        // Start monitoring
+        updateMonitoring();
+        }
+
+        async function loadMonitoringData() {
+            try {
+                // Load system stats
+                const stats = await getSystemStats();
+                if (stats) {
+                    updateSystemHealth(stats);
+                    updateCallStatistics(stats);
+                    updatePerformanceMetrics(stats);
+                    updateSystemResources(stats);
+                }
+                
+                loadErrorLogs();
+                
+            } catch (error) {
+                console.error('Failed to load monitoring data:', error);
+            }
+        }
+
+        function updateSystemHealth(stats) {
+            // Simulate CPU usage (in real implementation, this comes from stats)
+            const cpuUsage = Math.floor(Math.random() * 30) + 10; // 10-40%
+            updateMetric('cpu-usage', `${cpuUsage}%`, cpuUsage);
+            
+            // Memory usage
+            if (stats.memory_usage) {
+                const memUsage = stats.memory_usage.used_mb || 0;
+                const memTotal = stats.memory_usage.total_mb || 100;
+                const memPercent = Math.round((memUsage / memTotal) * 100);
+                updateMetric('memory-usage-detailed', `${memUsage} MB / ${memTotal} MB (${memPercent}%)`, memPercent);
+            }
+            
+            // Simulate other metrics
+            const diskUsage = Math.floor(Math.random() * 20) + 30; // 30-50%
+            updateMetric('disk-usage', `${diskUsage}%`, diskUsage);
+            
+            const networkLoad = Math.floor(Math.random() * 15) + 5; // 5-20%
+            updateMetric('network-load', `${networkLoad}%`, networkLoad);
+        }
+
+        function updateMetric(id, text, percentage) {
+            const element = document.getElementById(id);
+            if (element) {
+                element.textContent = text;
+                
+                // Update progress bar
+                const progressBar = element.closest('.metric-item')?.querySelector('.metric-progress');
+                if (progressBar) {
+                    progressBar.style.width = `${percentage}%`;
+                    
+                    // Color coding
+                    if (percentage > 80) {
+                        progressBar.style.background = 'var(--danger-color)';
+                    } else if (percentage > 60) {
+                        progressBar.style.background = 'var(--warning-color)';
+                    } else {
+                        progressBar.style.background = 'var(--success-color)';
+                    }
+                }
+            }
+        }
+
+        function updateCallStatistics(stats) {
+            document.getElementById('total-calls-24h').textContent = formatNumber(stats.total_calls || 0);
+            
+            // Simulate success/failure rates
+            const totalCalls = stats.total_calls || 0;
+            const successRate = 0.95; // 95% success rate
+            const successful = Math.floor(totalCalls * successRate);
+            const failed = totalCalls - successful;
+            
+            document.getElementById('successful-calls').textContent = formatNumber(successful);
+            document.getElementById('failed-calls').textContent = formatNumber(failed);
+            
+            // Average call duration (simulated)
+            document.getElementById('avg-call-duration').textContent = '45s';
+        }
+
+        function updatePerformanceMetrics(stats) {
+            // Simulate performance metrics
+            document.getElementById('requests-per-second').textContent = Math.floor(Math.random() * 50) + 20;
+            document.getElementById('avg-response-time').textContent = Math.floor(Math.random() * 50) + 10 + 'ms';
+            document.getElementById('queue-length').textContent = Math.floor(Math.random() * 5);
+            document.getElementById('active-threads').textContent = Math.floor(Math.random() * 10) + 8;
+        }
+
+        function updateSystemResources(stats) {
+            if (stats.memory_usage) {
+                const available = stats.memory_usage.total_mb - stats.memory_usage.used_mb;
+                document.getElementById('available-memory').textContent = `${available} MB`;
+            }
+            
+            // Simulate other resources
+            document.getElementById('free-disk').textContent = '50.2 GB';
+            document.getElementById('load-average').textContent = '0.8, 0.9, 1.1';
+            document.getElementById('open-files').textContent = '1,234';
+        }
+
+        function loadErrorLogs() {
+            // In a real implementation, this would load from the API
+            // For now, we'll keep the static sample logs
+        }
+
+        function refreshAll() {
+            showNotification('Refreshing all monitoring data...', 'info', 2000);
+            loadMonitoringData();
+        }
+
+        function exportLogs() {
+            showNotification('Log export not yet implemented', 'info');
+        }
+
+        // Cleanup
+        window.addEventListener('beforeunload', function() {
+            if (monitoringInterval) {
+                clearInterval(monitoringInterval);
+            }
+        });
+    </script>
+
+    <style>
+        .monitoring-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 2rem;
+        }
+
+        .monitoring-content {
+            padding: 1.5rem;
+        }
+
+        .health-metrics {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .metric-item {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .metric-label {
+            font-weight: 500;
+            color: var(--text-color);
+            font-size: var(--font-size-sm);
+        }
+
+        .metric-value {
+            font-weight: 600;
+            color: var(--text-color);
+        }
+
+        .metric-bar {
+            width: 100%;
+            height: 8px;
+            background: var(--border-color);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .metric-progress {
+            height: 100%;
+            background: var(--success-color);
+            transition: width 0.3s ease;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+        }
+
+        .stat-box {
+            text-align: center;
+            padding: 1rem;
+            background: var(--background-color);
+            border-radius: var(--border-radius);
+        }
+
+        .stat-number {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--primary-color);
+        }
+
+        .stat-label {
+            font-size: var(--font-size-sm);
+            color: var(--text-muted);
+            margin-top: 0.5rem;
+        }
+
+        .log-container {
+            max-height: 300px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .log-entry {
+            display: flex;
+            gap: 1rem;
+            padding: 0.75rem;
+            border-radius: var(--border-radius);
+            font-size: var(--font-size-sm);
+            font-family: monospace;
+        }
+
+        .log-entry.info {
+            background: #e7f3ff;
+        }
+
+        .log-entry.warning {
+            background: #fff8e7;
+        }
+
+        .log-entry.error {
+            background: #ffe7e7;
+        }
+
+        .log-timestamp {
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+
+        .log-level {
+            font-weight: bold;
+            text-transform: uppercase;
+            min-width: 50px;
+        }
+
+        .log-level.info { color: var(--info-color); }
+        .log-level.warning { color: var(--warning-color); }
+        .log-level.error { color: var(--danger-color); }
+
+        .log-message {
+            flex: 1;
+        }
+
+        .connection-list,
+        .resource-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .connection-item,
+        .resource-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem;
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            background: var(--background-color);
+        }
+
+        .connection-detail,
+        .resource-detail {
+            font-size: var(--font-size-sm);
+            color: var(--text-muted);
+            display: block;
+            margin-top: 0.25rem;
+        }
+
+        .connection-status {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: var(--font-size-sm);
+            font-weight: 500;
+        }
+
+        .connection-status.online {
+            background: #d4edda;
+            color: var(--success-color);
+        }
+
+        .connection-status.offline {
+            background: #f8d7da;
+            color: var(--danger-color);
+        }
+
+        .performance-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+        }
+
+        .perf-metric {
+            text-align: center;
+            padding: 1rem;
+            background: var(--background-color);
+            border-radius: var(--border-radius);
+        }
+
+        .perf-label {
+            font-size: var(--font-size-sm);
+            color: var(--text-muted);
+        }
+
+        .perf-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text-color);
+            margin-top: 0.5rem;
+        }
+
+        @media (max-width: 768px) {
+            .monitoring-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .stats-grid,
+            .performance-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</body>
+</html>

@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RedFire Switch - Config Manager</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="icon" type="image/x-icon" href="/static/img/favicon.ico">
+    <style>
+        .config-layout {
+            display: grid;
+            grid-template-columns: 300px 1fr 350px;
+            gap: 20px;
+            height: calc(100vh - 140px);
+            padding: 20px;
+        }
+
+        /* Tree Panel */
+        .config-tree {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            overflow-y: auto;
+        }
+
+        .tree-item {
+            padding: 8px 12px;
+            margin: 2px 0;
+            border-radius: 4px;
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .tree-item:hover {
+            background: #f8f9fa;
+        }
+
+        .tree-item.selected {
+            background: #d73502;
+            color: white;
+        }
+
+        .tree-item.has-children::before {
+            content: '▶';
+            position: absolute;
+            left: 4px;
+            transition: transform 0.2s ease;
+        }
+
+        .tree-item.expanded::before {
+            transform: rotate(90deg);
+        }
+
+        .tree-children {
+            margin-left: 20px;
+            display: none;
+        }
+
+        .tree-children.expanded {
+            display: block;
+        }
+
+        .tree-item .tree-icon {
+            margin-right: 8px;
+            font-size: 14px;
+        }
+
+        /* Editor Panel */
+        .config-editor {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            overflow-y: auto;
+        }
+
+        .editor-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .editor-title {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .editor-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .config-form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .field-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .field-label {
+            font-weight: bold;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .field-input {
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            transition: all 0.2s ease;
+        }
+
+        .field-input:focus {
+            border-color: #d73502;
+            outline: none;
+        }
+
+        /* Template vs Override styling */
+        .field-input.template-value {
+            background: #e8f4f8;
+            border-color: #0ea5e9;
+            color: #0369a1;
+        }
+
+        .field-input.override-value {
+            background: #fef3c7;
+            border-color: #f59e0b;
+            color: #92400e;
+        }
+
+        .field-input.custom-value {
+            background: #f0fdf4;
+            border-color: #22c55e;
+            color: #15803d;
+        }
+
+        .field-description {
+            font-size: 12px;
+            color: #666;
+            margin-top: 2px;
+        }
+
+        .template-indicator {
+            font-size: 12px;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+
+        .template-indicator.template {
+            background: #bfdbfe;
+            color: #1e40af;
+        }
+
+        .template-indicator.override {
+            background: #fed7aa;
+            color: #ea580c;
+        }
+
+        .template-indicator.custom {
+            background: #bbf7d0;
+            color: #16a34a;
+        }
+
+        /* Preview Panel */
+        .config-preview {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .preview-header {
+            font-weight: bold;
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .preview-content {
+            flex: 1;
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            overflow: auto;
+            white-space: pre;
+        }
+
+        .preview-actions {
+            margin-top: 10px;
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: bold;
+            transition: all 0.2s ease;
+        }
+
+        .btn.primary {
+            background: #d73502;
+            color: white;
+        }
+
+        .btn.primary:hover {
+            background: #b02e02;
+        }
+
+        .btn.secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn.secondary:hover {
+            background: #5a6268;
+        }
+
+        .btn.success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn.success:hover {
+            background: #218838;
+        }
+
+        /* Status indicators */
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+
+        .status-saved {
+            background: #22c55e;
+        }
+
+        .status-modified {
+            background: #f59e0b;
+        }
+
+        .status-error {
+            background: #ef4444;
+        }
+
+        /* Breadcrumb */
+        .breadcrumb {
+            background: #f8f9fa;
+            padding: 10px 15px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            font-size: 14px;
+            color: #6c757d;
+        }
+
+        .breadcrumb .current {
+            color: #d73502;
+            font-weight: bold;
+        }
+
+        @media (max-width: 1200px) {
+            .config-layout {
+                grid-template-columns: 250px 1fr;
+            }
+            
+            .config-preview {
+                display: none;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .config-layout {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto 1fr;
+            }
+        }
+
+        /* Enhanced Tooltips */
+        .tree-item[title] {
+            position: relative;
+            cursor: help;
+        }
+
+        .tree-item[title]:hover::after {
+            content: attr(title);
+            position: absolute;
+            left: 100%;
+            top: 50%;
+            transform: translateY(-50%);
+            margin-left: 10px;
+            padding: 8px 12px;
+            background: #2d3748;
+            color: #e2e8f0;
+            border-radius: 6px;
+            white-space: normal;
+            max-width: 300px;
+            font-size: 12px;
+            z-index: 1000;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            border: 1px solid #4a5568;
+            line-height: 1.4;
+        }
+
+        .tree-item[title]:hover::before {
+            content: '';
+            position: absolute;
+            left: calc(100% + 4px);
+            top: 50%;
+            transform: translateY(-50%);
+            border: 6px solid transparent;
+            border-right-color: #2d3748;
+            z-index: 1001;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <span class="fire-icon">🔥</span>
+                    <h1>RedFire Switch</h1>
+                </div>
+                <nav class="nav">
+                    <a href="/" class="nav-link">Dashboard</a>
+                    <a href="/calls" class="nav-link">Active Calls</a>
+                    <a href="/config" class="nav-link">Configuration</a>
+                    <a href="/config-manager" class="nav-link active">Config Manager</a>
+                    <a href="/monitoring" class="nav-link">Monitoring</a>
+                    <button id="logout-btn" class="logout-btn">Logout</button>
+                </nav>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="config-layout">
+                <!-- Configuration Tree -->
+                <div class="config-tree">
+                    <div class="tree-header">
+                        <h3>Configuration Tree</h3>
+                        <div class="tree-actions" style="display: flex; flex-direction: column; gap: 8px;">
+                            <button class="btn primary" onclick="window.location.href='/config-generator'">⚙️ Config Generator</button>
+                            <button class="btn secondary" onclick="loadConfiguration()">🔄 Reload</button>
+                        </div>
+                    </div>
+                    <div id="config-tree-content">
+                        <!-- Tree will be populated here -->
+                    </div>
+                </div>
+
+                <!-- Configuration Editor -->
+                <div class="config-editor">
+                    <div class="editor-header">
+                        <div>
+                            <div class="breadcrumb" id="config-breadcrumb">
+                                Select an item from the tree
+                            </div>
+                            <div class="editor-title" id="editor-title">
+                                Configuration Manager
+                            </div>
+                        </div>
+                        <div class="editor-actions">
+                            <span class="status-indicator status-saved" id="save-status"></span>
+                            <button class="btn success" onclick="saveConfiguration()" id="save-btn" disabled>💾 Save</button>
+                            <button class="btn secondary" onclick="resetConfiguration()" id="reset-btn" disabled>↶ Reset</button>
+                        </div>
+                    </div>
+
+                    <div id="config-form-container">
+                        <div style="text-align: center; color: #666; padding: 60px 20px;">
+                            <div style="font-size: 48px; margin-bottom: 20px;">⚙️</div>
+                            <h3>Welcome to Configuration Manager</h3>
+                            <p>Select an item from the configuration tree to begin editing.</p>
+                            <p><strong>Color Legend:</strong></p>
+                            <div style="margin-top: 15px; display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
+                                <div style="display: flex; align-items: center; gap: 5px;">
+                                    <div style="width: 20px; height: 12px; background: #e8f4f8; border: 1px solid #0ea5e9; border-radius: 2px;"></div>
+                                    <span style="font-size: 12px;">Template Value</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 5px;">
+                                    <div style="width: 20px; height: 12px; background: #fef3c7; border: 1px solid #f59e0b; border-radius: 2px;"></div>
+                                    <span style="font-size: 12px;">Override Value</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 5px;">
+                                    <div style="width: 20px; height: 12px; background: #f0fdf4; border: 1px solid #22c55e; border-radius: 2px;"></div>
+                                    <span style="font-size: 12px;">Custom Value</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Configuration Preview -->
+                <div class="config-preview">
+                    <div class="preview-header">
+                        <span>Live Configuration Preview</span>
+                        <span style="float: right; font-size: 12px; color: #666;" id="preview-status">Ready</span>
+                    </div>
+                    <div class="preview-content" id="config-preview-content">
+{
+  "message": "Select a configuration item to see the live preview",
+  "tip": "Changes will appear here in real-time as you edit"
+}
+                    </div>
+                    <div class="preview-actions">
+                        <button class="btn secondary" onclick="copyPreview()">📋 Copy</button>
+                        <button class="btn primary" onclick="downloadPreview()">💾 Export</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+    <script src="/static/js/config-manager.js"></script>
+</body>
+</html>

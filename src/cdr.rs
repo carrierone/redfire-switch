@@ -1,8 +1,8 @@
 //! CDR (Call Detail Records) module stub
 
-use serde::{Deserialize, Serialize};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CdrConfig {

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RedFire Switch - Active Calls</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="icon" type="image/x-icon" href="/static/img/favicon.ico">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <span class="fire-icon">🔥</span>
+                    <h1>RedFire Switch</h1>
+                </div>
+                <nav class="nav">
+                    <a href="/" class="nav-link">Dashboard</a>
+                    <a href="/calls" class="nav-link active">Active Calls</a>
+                    <a href="/config" class="nav-link">Configuration</a>
+                    <a href="/config-manager" class="nav-link">Config Manager</a>
+                    <a href="/monitoring" class="nav-link">Monitoring</a>
+                    <button id="logout-btn" class="logout-btn">Logout</button>
+                </nav>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="page-header">
+                <h2>Active Calls Management</h2>
+                <div class="header-actions">
+                    <button class="action-btn primary" onclick="refreshCalls()">🔄 Refresh</button>
+                    <button class="action-btn secondary" onclick="exportCalls()">📊 Export</button>
+                </div>
+            </div>
+
+            <!-- Call Statistics -->
+            <div class="stats-row">
+                <div class="stat-item">
+                    <div class="stat-value" id="total-active-calls">0</div>
+                    <div class="stat-label">Active Calls</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="calls-per-minute">0</div>
+                    <div class="stat-label">Calls/Min</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="avg-duration">0s</div>
+                    <div class="stat-label">Avg Duration</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="success-rate">100%</div>
+                    <div class="stat-label">Success Rate</div>
+                </div>
+            </div>
+
+            <!-- Call Filters -->
+            <div class="filters-section">
+                <div class="filter-group">
+                    <label for="status-filter">Status:</label>
+                    <select id="status-filter" onchange="filterCalls()">
+                        <option value="">All Statuses</option>
+                        <option value="ringing">Ringing</option>
+                        <option value="answered">Answered</option>
+                        <option value="busy">Busy</option>
+                        <option value="failed">Failed</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="search-filter">Search:</label>
+                    <input type="text" id="search-filter" placeholder="Search by number or call ID" 
+                           oninput="filterCalls()">
+                </div>
+                <div class="filter-group">
+                    <button class="action-btn secondary" onclick="clearFilters()">Clear</button>
+                </div>
+            </div>
+
+            <!-- Active Calls Table -->
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3>Active Calls</h3>
+                    <span class="live-indicator">🔴 LIVE</span>
+                </div>
+                <div class="table-container">
+                    <table class="data-table" id="active-calls-table">
+                        <thead>
+                            <tr>
+                                <th>Call ID</th>
+                                <th>From</th>
+                                <th>To</th>
+                                <th>Status</th>
+                                <th>Start Time</th>
+                                <th>Duration</th>
+                                <th>Trunk</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="calls-tbody">
+                            <tr>
+                                <td colspan="8" class="loading">Loading active calls...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Call Details Modal -->
+            <div class="modal hidden" id="call-details-modal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Call Details</h3>
+                        <button class="modal-close" onclick="closeModal()">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="call-details-grid" id="call-details-content">
+                            <!-- Dynamic content will be loaded here -->
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="action-btn danger" onclick="hangupCall()">📞 Hangup Call</button>
+                        <button class="action-btn secondary" onclick="closeModal()">Close</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Hangup Confirmation Modal -->
+            <div class="modal hidden" id="hangup-modal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Confirm Hangup</h3>
+                        <button class="modal-close" onclick="closeHangupModal()">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <p>Are you sure you want to hangup this call?</p>
+                        <p><strong>Call ID:</strong> <span id="hangup-call-id"></span></p>
+                        <p><strong>From:</strong> <span id="hangup-from"></span></p>
+                        <p><strong>To:</strong> <span id="hangup-to"></span></p>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="action-btn danger" onclick="confirmHangup()">Yes, Hangup</button>
+                        <button class="action-btn secondary" onclick="closeHangupModal()">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+    <script src="/static/js/calls.js"></script>
+</body>
+</html>

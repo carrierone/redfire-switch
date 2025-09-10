@@ -3,13 +3,13 @@
  * This is a minimal working B2BUA to test basic SIP forwarding
  */
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::UdpSocket;
-use tokio::sync::{RwLock, mpsc};
-use tracing::{info, warn, error, debug};
+use tokio::sync::{mpsc, RwLock};
+use tracing::{debug, error, info, warn};
 
 /// Simple call leg representation
 #[derive(Debug, Clone)]
@@ -43,7 +43,7 @@ impl SimpleB2BUA {
         let socket = UdpSocket::bind(bind_addr).await?;
         info!("Simple B2BUA listening on {}", bind_addr);
         info!("Termination target: {}:{}", term_host, term_port);
-        
+
         Ok(Self {
             socket: Arc::new(socket),
             calls: Arc::new(RwLock::new(HashMap::new())),
@@ -54,7 +54,7 @@ impl SimpleB2BUA {
 
     pub async fn start(&self) -> Result<()> {
         let mut buffer = vec![0u8; 4096];
-        
+
         loop {
             match self.socket.recv_from(&mut buffer).await {
                 Ok((len, from)) => {
@@ -63,18 +63,21 @@ impl SimpleB2BUA {
                         warn!("Oversized message from {}: {} bytes, dropping", from, len);
                         continue;
                     }
-                    
+
                     let message = String::from_utf8_lossy(&buffer[..len]);
-                    
-                    // SECURITY: Message content validation  
+
+                    // SECURITY: Message content validation
                     if let Err(e) = crate::security_utils::validate_message_size(&message) {
                         warn!("Message validation failed from {}: {}", from, e);
                         continue;
                     }
-                    
-                    debug!("Received from {}: {}", from, 
-                           crate::security_utils::sanitize_for_logging(&message));
-                    
+
+                    debug!(
+                        "Received from {}: {}",
+                        from,
+                        crate::security_utils::sanitize_for_logging(&message)
+                    );
+
                     if let Err(e) = self.handle_message(&message, from).await {
                         error!("Error handling message: {}", e);
                     }
@@ -107,15 +110,15 @@ impl SimpleB2BUA {
 
     async fn handle_invite(&self, message: &str, from: SocketAddr) -> Result<()> {
         info!("Handling INVITE from {}", from);
-        
+
         // Extract Call-ID
         let call_id = self.extract_header(message, "Call-ID")?;
         let from_tag = self.extract_from_tag(message)?;
-        
+
         // Send 100 Trying
         let trying_response = self.create_100_trying(message)?;
         self.send_to(trying_response.as_bytes(), from).await?;
-        
+
         // Create A-leg (origination side)
         let a_leg = CallLeg {
             call_id: call_id.clone(),
@@ -125,13 +128,13 @@ impl SimpleB2BUA {
             remote_addr: from,
             state: CallState::Proceeding,
         };
-        
+
         // Forward INVITE to termination
         let forwarded_invite = self.modify_invite_for_termination(message)?;
-        let term_addr = format!("{}:{}", self.termination_host, self.termination_port)
-            .parse::<SocketAddr>()?;
-        
-        // Create B-leg (termination side)  
+        let term_addr =
+            format!("{}:{}", self.termination_host, self.termination_port).parse::<SocketAddr>()?;
+
+        // Create B-leg (termination side)
         let b_leg = CallLeg {
             call_id: call_id.clone(),
             from_tag: from_tag,
@@ -140,36 +143,36 @@ impl SimpleB2BUA {
             remote_addr: term_addr,
             state: CallState::Initial,
         };
-        
+
         // Store call legs
         {
             let mut calls = self.calls.write().await;
             calls.insert(call_id, (a_leg, b_leg));
         }
-        
+
         // Forward INVITE to termination
         self.send_to(forwarded_invite.as_bytes(), term_addr).await?;
-        
+
         info!("INVITE forwarded to termination");
         Ok(())
     }
 
     async fn handle_options(&self, message: &str, from: SocketAddr) -> Result<()> {
         info!("Handling OPTIONS from {}", from);
-        
+
         let response = self.create_options_response(message)?;
         self.send_to(response.as_bytes(), from).await?;
-        
+
         info!("OPTIONS response sent");
         Ok(())
     }
 
     async fn handle_response(&self, message: &str, from: SocketAddr) -> Result<()> {
         info!("Handling SIP response from {}", from);
-        
+
         // For now, just forward responses back to origination
         // In a full implementation, we'd track call legs and forward appropriately
-        
+
         Ok(())
     }
 
@@ -193,7 +196,10 @@ impl SimpleB2BUA {
 
     fn extract_header(&self, message: &str, header_name: &str) -> Result<String> {
         for line in message.lines() {
-            if line.to_lowercase().starts_with(&format!("{}:", header_name.to_lowercase())) {
+            if line
+                .to_lowercase()
+                .starts_with(&format!("{}:", header_name.to_lowercase()))
+            {
                 if let Some(value) = line.split(':').nth(1) {
                     return Ok(value.trim().to_string());
                 }
@@ -206,7 +212,11 @@ impl SimpleB2BUA {
         for line in message.lines() {
             if line.to_lowercase().starts_with("from:") {
                 if let Some(tag_part) = line.split("tag=").nth(1) {
-                    if let Some(tag) = tag_part.split(';').next().or_else(|| tag_part.split('>').next()) {
+                    if let Some(tag) = tag_part
+                        .split(';')
+                        .next()
+                        .or_else(|| tag_part.split('>').next())
+                    {
                         return Ok(tag.trim().to_string());
                     }
                 }
@@ -221,7 +231,7 @@ impl SimpleB2BUA {
         let from = self.extract_header(request, "From")?;
         let to = self.extract_header(request, "To")?;
         let cseq = self.extract_header(request, "CSeq")?;
-        
+
         Ok(format!(
             "SIP/2.0 100 Trying\r\n\
              Via: {}\r\n\
@@ -242,7 +252,7 @@ impl SimpleB2BUA {
         let from = self.extract_header(request, "From")?;
         let to = self.extract_header(request, "To")?;
         let cseq = self.extract_header(request, "CSeq")?;
-        
+
         Ok(format!(
             "SIP/2.0 200 OK\r\n\
              Via: {}\r\n\
@@ -254,7 +264,12 @@ impl SimpleB2BUA {
              Allow: INVITE, ACK, CANCEL, BYE, OPTIONS\r\n\
              Content-Length: 0\r\n\
              \r\n",
-            via, from, to, chrono::Utc::now().timestamp(), call_id, cseq
+            via,
+            from,
+            to,
+            chrono::Utc::now().timestamp(),
+            call_id,
+            cseq
         ))
     }
 
@@ -282,7 +297,7 @@ impl SimpleB2BUA {
 pub async fn run_simple_b2bua() -> Result<()> {
     let bind_addr = "0.0.0.0:5060".parse()?;
     let b2bua = SimpleB2BUA::new(bind_addr, "127.0.0.1".to_string(), 5070).await?;
-    
+
     info!("Starting Simple B2BUA for testing...");
     b2bua.start().await
 }

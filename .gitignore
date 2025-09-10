@@ -93,4 +93,30 @@ production-*.toml
 *.crt
 *.cer
 
-.github
+# Claude Code temporary files
+.claude-code-sandbox
+.claude-code-sandbox-hash
+.claude/
+.tool-versions
+
+# HTML demo/test files
+*-test.html
+*-demo.html
+config-generator*.html
+debug-config-generator.html
+test-api.html
+working-config-generator*.html
+
+# Temporary test binaries and files
+*_test
+test_*
+lcr_simple_test*
+standalone_phone_test*
+test_cache_matching*
+test_jurisdiction_enhanced*
+test_route_costing*
+g729_manual_demo
+
+# Additional config files
+stir_shaken_config.json
+production_config.json

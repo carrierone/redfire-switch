@@ -206,7 +206,9 @@ pub mod utils {
     pub fn extract_user(uri: &str) -> Option<String> {
         if let Some(scheme_end) = uri.find(':') {
             let after_scheme = &uri[scheme_end + 1..];
-            after_scheme.find('@').map(|at_pos| after_scheme[..at_pos].to_string())
+            after_scheme
+                .find('@')
+                .map(|at_pos| after_scheme[..at_pos].to_string())
         } else {
             None
         }

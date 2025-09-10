@@ -159,8 +159,7 @@ pub enum TransactionState {
 }
 
 /// SIP transaction timers per RFC 3261
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub struct TransactionTimers {
     /// Timer A (INVITE retransmission)
     pub timer_a: Option<chrono::DateTime<chrono::Utc>>,
@@ -183,7 +182,6 @@ pub struct TransactionTimers {
     /// Timer K (response wait)
     pub timer_k: Option<chrono::DateTime<chrono::Utc>>,
 }
-
 
 /// SIP message parser implementing RFC 3261
 pub struct SipParser {

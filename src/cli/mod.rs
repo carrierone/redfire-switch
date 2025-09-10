@@ -32,6 +32,11 @@ pub struct InteractiveCli {
 }
 
 impl InteractiveCli {
+    /// Get session for external access
+    pub fn get_session(&self) -> Arc<RwLock<CliSession>> {
+        self.session.clone()
+    }
+
     /// Create a new interactive CLI instance
     pub fn new() -> Result<Self> {
         let mut editor = Editor::<RedFireCompleter, rustyline::history::DefaultHistory>::new()

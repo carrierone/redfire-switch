@@ -10,7 +10,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
-use super::session::CliSession;
+use super::session::{CliSession, SystemStats};
 use crate::class4_b2bua::Class4B2BUA;
 use crate::lcr::LcrEngine;
 use crate::services::ServiceRegistry;
@@ -124,14 +124,28 @@ impl CommandExecutor {
 
         match *status_type {
             "calls" => {
-                let headers = vec!["Metric".to_string(), "Value".to_string()];
-                let rows = vec![
-                    vec!["Active Calls".to_string(), "42".to_string()],
-                    vec!["Total Calls Today".to_string(), "1,234".to_string()],
-                    vec!["Failed Calls".to_string(), "5".to_string()],
-                    vec!["Average Call Duration".to_string(), "00:03:45".to_string()],
-                ];
-                Ok(CommandResult::Table(headers, rows))
+                let session = self.session.read().await;
+                match session.get_system_stats().await {
+                    Ok(stats) => {
+                        let headers = vec!["Metric".to_string(), "Value".to_string()];
+                        let rows = vec![
+                            vec!["Active Calls".to_string(), stats.active_calls.to_string()],
+                            vec![
+                                "System Uptime".to_string(),
+                                format!("{} seconds", stats.uptime_seconds),
+                            ],
+                            vec!["Last Updated".to_string(), stats.timestamp],
+                        ];
+                        Ok(CommandResult::Table(headers, rows))
+                    }
+                    Err(e) => {
+                        warn!("Failed to get system stats: {}", e);
+                        Ok(CommandResult::Error(format!(
+                            "Failed to fetch call statistics: {}",
+                            e
+                        )))
+                    }
+                }
             }
             "channels" => {
                 let headers = vec![
@@ -241,15 +255,43 @@ impl CommandExecutor {
                 ];
                 Ok(CommandResult::Table(headers, rows))
             }
-            "all" => Ok(CommandResult::Success(format!(
-                "System Status Summary:\n\
-                     ├─ Active Calls: 42\n\
-                     ├─ Online Gateways: 2/3\n\
-                     ├─ CPU Usage: 15.2%\n\
-                     ├─ Memory Usage: 30%\n\
-                     ├─ GPU Acceleration: Enabled\n\
-                     └─ System Uptime: 5 days, 3 hours"
-            ))),
+            "all" => {
+                let session = self.session.read().await;
+                match session.get_system_stats().await {
+                    Ok(stats) => {
+                        let uptime_days = stats.uptime_seconds / 86400;
+                        let uptime_hours = (stats.uptime_seconds % 86400) / 3600;
+                        let uptime_minutes = (stats.uptime_seconds % 3600) / 60;
+
+                        let uptime_str = if uptime_days > 0 {
+                            format!("{} days, {} hours", uptime_days, uptime_hours)
+                        } else if uptime_hours > 0 {
+                            format!("{} hours, {} minutes", uptime_hours, uptime_minutes)
+                        } else if uptime_minutes > 0 {
+                            format!("{} minutes", uptime_minutes)
+                        } else {
+                            format!("{} seconds", stats.uptime_seconds)
+                        };
+
+                        Ok(CommandResult::Success(format!(
+                            "System Status Summary:\n\
+                             ├─ Active Calls: {}\n\
+                             ├─ System Uptime: {}\n\
+                             ├─ API Connection: Connected\n\
+                             ├─ Last Updated: {}\n\
+                             └─ RedFire Switch Status: Online",
+                            stats.active_calls, uptime_str, stats.timestamp
+                        )))
+                    }
+                    Err(e) => {
+                        warn!("Failed to get system stats: {}", e);
+                        Ok(CommandResult::Error(format!(
+                            "Failed to fetch system status: {}",
+                            e
+                        )))
+                    }
+                }
+            }
             _ => Err(anyhow!("Unknown status type: {}", status_type)),
         }
     }

@@ -90,9 +90,7 @@ fn build_g729_assembly() {
                             );
                             continue;
                         }
-                        println!(
-                            "Successfully assembled with clang: {src_path} -> {obj_path}"
-                        );
+                        println!("Successfully assembled with clang: {src_path} -> {obj_path}");
                         object_files.push(obj_path);
                     }
                     Err(clang_e) => {
