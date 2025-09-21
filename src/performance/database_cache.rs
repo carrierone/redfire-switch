@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use moka::future::Cache;
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 use std::hash::BuildHasherDefault;
 use std::sync::Arc;
 use std::time::Duration;
@@ -433,7 +433,7 @@ impl DatabaseCache {
 
     async fn preload_common_routes(&self) -> Result<()> {
         // Query top 1000 most frequently called prefixes
-        let rows = sqlx::query!(
+        let rows = sqlx::query(
             "SELECT DISTINCT substring(dnis, 1, 6) as prefix, COUNT(*) as call_count
              FROM call_detail_records
              WHERE created_at > NOW() - INTERVAL '24 hours'
@@ -444,29 +444,35 @@ impl DatabaseCache {
         .fetch_all(&self.pool)
         .await?;
 
+        let row_count = rows.len();
         for row in rows {
-            if let Some(prefix) = row.prefix.as_deref() {
-                // Preload routes for this prefix
-                let _ = self
-                    .get_routes(prefix, RouteType::NANPA, CallJurisdiction::Interstate)
-                    .await;
+            if let Ok(prefix) = row.try_get::<Option<String>, _>("prefix") {
+                if let Some(prefix) = prefix {
+                    // Preload routes for this prefix
+                    let _ = self
+                        .get_routes(&prefix, RouteType::NANPA, CallJurisdiction::Interstate)
+                        .await;
+                }
             }
         }
 
-        info!("Preloaded routes for {} common prefixes", rows.len());
+        info!("Preloaded routes for {} common prefixes", row_count);
         Ok(())
     }
 
     async fn preload_trunks(&self) -> Result<()> {
-        let rows = sqlx::query!("SELECT id FROM trunks WHERE enabled = true")
+        let rows = sqlx::query("SELECT id FROM trunks WHERE enabled = true")
             .fetch_all(&self.pool)
             .await?;
 
+        let row_count = rows.len();
         for row in rows {
-            let _ = self.get_trunk(row.id).await;
+            if let Ok(id) = row.try_get::<i32, _>("id") {
+                let _ = self.get_trunk(id).await;
+            }
         }
 
-        info!("Preloaded {} trunk configurations", rows.len());
+        info!("Preloaded {} trunk configurations", row_count);
         Ok(())
     }
 
@@ -477,15 +483,15 @@ impl DatabaseCache {
         jurisdiction: CallJurisdiction,
     ) -> Result<Option<Vec<CachedRoute>>> {
         // Simplified database query - implement actual LCR logic
-        let rows = sqlx::query!(
+        let rows = sqlx::query(
             "SELECT t.id, t.name, r.rate, r.rating_code, r.effective_date, t.priority, t.enabled
              FROM routes r
              JOIN trunks t ON r.trunk_id = t.id
              WHERE r.rating_code = $1 AND t.enabled = true
              ORDER BY r.rate ASC, t.priority ASC
-             LIMIT 10",
-            dnis
+             LIMIT 10"
         )
+        .bind(dnis)
         .fetch_all(&self.pool)
         .await?;
 
@@ -495,14 +501,16 @@ impl DatabaseCache {
 
         let routes = rows
             .into_iter()
-            .map(|row| CachedRoute {
-                trunk_id: row.id,
-                trunk_name: intern_trunk_id(&row.name),
-                rate: row.rate,
-                rating_code: intern_phone_number(&row.rating_code),
-                effective_date: row.effective_date,
-                priority: row.priority as u32,
-                enabled: row.enabled,
+            .filter_map(|row| {
+                Some(CachedRoute {
+                    trunk_id: row.try_get::<i32, _>("id").ok()?,
+                    trunk_name: intern_trunk_id(&row.try_get::<String, _>("name").ok()?),
+                    rate: row.try_get::<rust_decimal::Decimal, _>("rate").ok()?,
+                    rating_code: intern_phone_number(&row.try_get::<String, _>("rating_code").ok()?),
+                    effective_date: row.try_get::<DateTime<Utc>, _>("effective_date").ok()?,
+                    priority: row.try_get::<i32, _>("priority").ok()? as u32,
+                    enabled: row.try_get::<bool, _>("enabled").ok()?,
+                })
             })
             .collect();
 
@@ -510,24 +518,24 @@ impl DatabaseCache {
     }
 
     async fn query_trunk_from_database(&self, trunk_id: i32) -> Result<Option<CachedTrunk>> {
-        let row = sqlx::query!(
+        let row = sqlx::query(
             "SELECT id, name, ip_address, port, enabled, concurrent_limit, cps_limit, updated_at
-             FROM trunks WHERE id = $1",
-            trunk_id
+             FROM trunks WHERE id = $1"
         )
+        .bind(trunk_id)
         .fetch_optional(&self.pool)
         .await?;
 
         if let Some(row) = row {
             Ok(Some(CachedTrunk {
-                id: row.id,
-                name: intern_trunk_id(&row.name),
-                ip_address: row.ip_address.parse()?,
-                port: row.port as u16,
-                enabled: row.enabled,
-                concurrent_limit: row.concurrent_limit.map(|l| l as u32),
-                cps_limit: row.cps_limit.map(|l| l as u32),
-                last_updated: row.updated_at,
+                id: row.try_get::<i32, _>("id")?,
+                name: intern_trunk_id(&row.try_get::<String, _>("name")?),
+                ip_address: row.try_get::<String, _>("ip_address")?.parse()?,
+                port: row.try_get::<i32, _>("port")? as u16,
+                enabled: row.try_get::<bool, _>("enabled")?,
+                concurrent_limit: row.try_get::<Option<i32>, _>("concurrent_limit")?.map(|l| l as u32),
+                cps_limit: row.try_get::<Option<i32>, _>("cps_limit")?.map(|l| l as u32),
+                last_updated: row.try_get::<DateTime<Utc>, _>("updated_at")?,
             }))
         } else {
             Ok(None)
@@ -539,24 +547,24 @@ impl DatabaseCache {
         deck_id: i32,
         rating_code: &str,
     ) -> Result<Option<CachedClientRate>> {
-        let row = sqlx::query!(
+        let row = sqlx::query(
             "SELECT rate, effective_date, rating_code, deck_id
              FROM client_rates
              WHERE deck_id = $1 AND rating_code = $2
              ORDER BY effective_date DESC
-             LIMIT 1",
-            deck_id,
-            rating_code
+             LIMIT 1"
         )
+        .bind(deck_id)
+        .bind(rating_code)
         .fetch_optional(&self.pool)
         .await?;
 
         if let Some(row) = row {
             Ok(Some(CachedClientRate {
-                rate: row.rate,
-                effective_date: row.effective_date,
-                rating_code: intern_phone_number(&row.rating_code),
-                deck_id: row.deck_id,
+                rate: row.try_get::<rust_decimal::Decimal, _>("rate")?,
+                effective_date: row.try_get::<DateTime<Utc>, _>("effective_date")?,
+                rating_code: intern_phone_number(&row.try_get::<String, _>("rating_code")?),
+                deck_id: row.try_get::<i32, _>("deck_id")?,
             }))
         } else {
             Ok(None)

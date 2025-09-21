@@ -205,7 +205,7 @@ impl DatabaseService {
     pub async fn insert_cdr(&self, cdr: &crate::cdr::CallDetailRecord) -> Result<()> {
         let start_time = std::time::Instant::now();
 
-        let result = sqlx::query!(
+        let result = sqlx::query(
             r#"
             INSERT INTO call_detail_records (
                 id, call_id, session_id, from_number, to_number, from_ip, to_ip,
@@ -213,25 +213,25 @@ impl DatabaseService {
                 trunk_id, route_id, codec_in, codec_out, recording_enabled, cost
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
             "#,
-            cdr.id,
-            cdr.call_id,
-            cdr.session_id,
-            cdr.from_number,
-            cdr.to_number,
-            cdr.from_ip.map(|ip| ip.to_string()),
-            cdr.to_ip.map(|ip| ip.to_string()),
-            cdr.start_time,
-            cdr.end_time,
-            cdr.duration_seconds as i64,
-            serde_json::to_string(&cdr.disposition)?,
-            cdr.hangup_cause.map(|c| c as i32),
-            cdr.trunk_id,
-            cdr.route_id,
-            cdr.codec_in,
-            cdr.codec_out,
-            cdr.recording_enabled,
-            cdr.cost.map(|c| c.to_string())
         )
+        .bind(cdr.id.as_ref().unwrap_or(&uuid::Uuid::new_v4().to_string()))
+        .bind(&cdr.call_id)
+        .bind(&cdr.session_id)
+        .bind(&cdr.from_number)
+        .bind(&cdr.to_number)
+        .bind(cdr.from_ip.map(|ip| ip.to_string()))
+        .bind(cdr.to_ip.map(|ip| ip.to_string()))
+        .bind(cdr.start_time)
+        .bind(cdr.end_time)
+        .bind(cdr.duration_seconds as i64)
+        .bind(serde_json::to_string(&cdr.disposition)?)
+        .bind(cdr.hangup_cause.map(|c| c as i32))
+        .bind(&cdr.trunk_id)
+        .bind(&cdr.route_id)
+        .bind(&cdr.codec_in)
+        .bind(&cdr.codec_out)
+        .bind(cdr.recording_enabled)
+        .bind(cdr.cost)
         .execute(&self.pool)
         .await;
 
@@ -284,36 +284,36 @@ impl DatabaseService {
 
         let state_str = format!("{:?}", session.state);
 
-        let result = sqlx::query!(
+        let result = sqlx::query(
             r#"
             INSERT INTO active_sessions (
                 id, call_id, session_id, from_number, to_number, from_ip, to_ip,
                 trunk_id, start_time, last_activity, state, codec_in, codec_out
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
             "#,
-            session.id,
-            session.call_id,
-            Some(session.id), // Using session.id as session_id
-            "unknown",        // TODO: Extract from session
-            "unknown",        // TODO: Extract from session
-            Some(session.from_addr.to_string()),
-            Some(session.to_addr.to_string()),
-            session
-                .trunk_id
-                .as_ref()
-                .and_then(|t| t.parse::<i32>().ok()),
-            session.start_time,
-            session.last_activity,
-            state_str,
-            session
-                .codec_pair
-                .as_ref()
-                .map(|(in_codec, _)| in_codec.as_str()),
-            session
-                .codec_pair
-                .as_ref()
-                .map(|(_, out_codec)| out_codec.as_str())
         )
+        .bind(session.id)
+        .bind(session.call_id.as_str())
+        .bind(Some(session.id)) // Using session.id as session_id
+        .bind("unknown")        // TODO: Extract from session
+        .bind("unknown")        // TODO: Extract from session
+        .bind(Some(session.from_addr.to_string()))
+        .bind(Some(session.to_addr.to_string()))
+        .bind(session
+            .trunk_id
+            .as_ref()
+            .and_then(|t| t.parse::<i32>().ok()))
+        .bind(session.start_time)
+        .bind(session.last_activity)
+        .bind(state_str)
+        .bind(session
+            .codec_pair
+            .as_ref()
+            .map(|(in_codec, _)| in_codec.as_str()))
+        .bind(session
+            .codec_pair
+            .as_ref()
+            .map(|(_, out_codec)| out_codec.as_str()))
         .execute(&self.pool)
         .await;
 
@@ -336,7 +336,8 @@ impl DatabaseService {
     pub async fn remove_active_session(&self, session_id: Uuid) -> Result<()> {
         let start_time = std::time::Instant::now();
 
-        let result = sqlx::query!("DELETE FROM active_sessions WHERE id = $1", session_id)
+        let result = sqlx::query("DELETE FROM active_sessions WHERE id = $1")
+            .bind(session_id)
             .execute(&self.pool)
             .await;
 
@@ -364,8 +365,7 @@ impl DatabaseService {
     ) -> Result<Vec<LcrRoute>> {
         let start_time = std::time::Instant::now();
 
-        let result = sqlx::query_as!(
-            LcrRoute,
+        let rows = sqlx::query(
             r#"
             SELECT
                 r.id, r.prefix, r.description, r.trunk_id, r.priority,
@@ -381,13 +381,31 @@ impl DatabaseService {
                 AND (r.expiry_date IS NULL OR r.expiry_date > NOW())
             ORDER BY LENGTH(r.prefix) DESC, r.priority ASC, r.cost_per_minute ASC
             LIMIT $3
-            "#,
-            route_group,
-            prefix,
-            limit
+            "#
         )
+        .bind(route_group)
+        .bind(prefix)
+        .bind(limit)
         .fetch_all(&self.pool)
         .await;
+
+        let result = rows.map(|rows| {
+            rows.into_iter()
+                .filter_map(|row| {
+                    Some(LcrRoute {
+                        id: row.try_get("id").ok()?,
+                        prefix: row.try_get("prefix").ok()?,
+                        description: row.try_get("description").ok(),
+                        trunk_id: row.try_get("trunk_id").ok(),
+                        priority: row.try_get("priority").ok(),
+                        cost_per_minute: row.try_get("cost_per_minute").ok(),
+                        quality_score: row.try_get("quality_score").ok(),
+                        max_call_duration: row.try_get("max_call_duration").ok(),
+                        trunk_name: row.try_get("trunk_name").ok(),
+                    })
+                })
+                .collect::<Vec<_>>()
+        });
 
         self.update_query_statistics(start_time, result.is_ok())
             .await;
@@ -413,20 +431,20 @@ impl DatabaseService {
     pub async fn insert_security_event(&self, event: &SecurityEvent) -> Result<()> {
         let start_time = std::time::Instant::now();
 
-        let result = sqlx::query!(
+        let result = sqlx::query(
             r#"
             INSERT INTO security_events (
                 id, event_type, source_ip, severity, description, details, action_taken
             ) VALUES ($1, $2, $3, $4, $5, $6, $7)
             "#,
-            event.id,
-            event.event_type,
-            event.source_ip.to_string(),
-            event.severity,
-            event.description,
-            serde_json::to_value(&event.details)?,
-            event.action_taken
         )
+        .bind(event.id)
+        .bind(&event.event_type)
+        .bind(event.source_ip.to_string())
+        .bind(&event.severity)
+        .bind(&event.description)
+        .bind(serde_json::to_value(&event.details)?)
+        .bind(&event.action_taken)
         .execute(&self.pool)
         .await;
 
@@ -449,17 +467,17 @@ impl DatabaseService {
     pub async fn insert_health_check_result(&self, result: &HealthCheckResult) -> Result<()> {
         let start_time = std::time::Instant::now();
 
-        let query_result = sqlx::query!(
+        let query_result = sqlx::query(
             r#"
             INSERT INTO health_check_results (id, component, status, response_time_ms, details)
             VALUES ($1, $2, $3, $4, $5)
             "#,
-            result.id,
-            result.component,
-            result.status,
-            result.response_time_ms,
-            serde_json::to_value(&result.details)?
         )
+        .bind(result.id)
+        .bind(&result.component)
+        .bind(&result.status)
+        .bind(result.response_time_ms)
+        .bind(serde_json::to_value(&result.details)?)
         .execute(&self.pool)
         .await;
 
@@ -485,10 +503,10 @@ impl DatabaseService {
     pub async fn get_config_value(&self, key: &str) -> Result<Option<serde_json::Value>> {
         let start_time = std::time::Instant::now();
 
-        let result = sqlx::query!(
-            "SELECT config_value FROM system_config WHERE config_key = $1",
-            key
+        let result = sqlx::query(
+            "SELECT config_value FROM system_config WHERE config_key = $1"
         )
+        .bind(key)
         .fetch_optional(&self.pool)
         .await;
 
@@ -496,7 +514,21 @@ impl DatabaseService {
             .await;
 
         match result {
-            Ok(Some(row)) => Ok(Some(row.config_value)),
+            Ok(Some(row)) => {
+                // Parse the JSONB value from database
+                if let Ok(config_value) = row.try_get::<String, _>("config_value") {
+                    match serde_json::from_str::<serde_json::Value>(&config_value) {
+                        Ok(value) => Ok(Some(value)),
+                        Err(e) => {
+                            error!("Failed to parse config value for key '{}': {}", key, e);
+                            Err(anyhow!("Failed to parse JSON config value: {}", e))
+                        }
+                    }
+                } else {
+                    error!("Failed to get config_value column for key '{}'", key);
+                    Err(anyhow!("Column access failed"))
+                }
+            },
             Ok(None) => Ok(None),
             Err(e) => {
                 error!("Failed to get config value for key '{}': {}", key, e);
@@ -509,16 +541,16 @@ impl DatabaseService {
     pub async fn set_config_value(&self, key: &str, value: serde_json::Value) -> Result<()> {
         let start_time = std::time::Instant::now();
 
-        let result = sqlx::query!(
+        let result = sqlx::query(
             r#"
             INSERT INTO system_config (config_key, config_value, config_type)
             VALUES ($1, $2, 'dynamic')
             ON CONFLICT (config_key)
             DO UPDATE SET config_value = $2, updated_at = NOW()
             "#,
-            key,
-            value
         )
+        .bind(key)
+        .bind(value)
         .execute(&self.pool)
         .await;
 
@@ -604,7 +636,7 @@ pub struct DatabaseHealthStatus {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, sqlx::FromRow)]
 pub struct LcrRoute {
     pub id: i32,
     pub prefix: String,

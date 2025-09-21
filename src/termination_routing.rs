@@ -622,7 +622,7 @@ impl TerminationRoutingService {
         };
 
         if should_decrement {
-            if let Some(mut count_ref) = self.active_calls.get_mut(&trunk_id) {
+            if let Some(count_ref) = self.active_calls.get_mut(&trunk_id) {
                 let current = count_ref.load(std::sync::atomic::Ordering::Relaxed);
                 if current > 0 {
                     count_ref.store(current - 1, std::sync::atomic::Ordering::Relaxed);

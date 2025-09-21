@@ -601,25 +601,25 @@ impl AuditLoggingService {
         // Use the database service to insert audit log entry
         let pool = database_service.get_pool();
 
-        sqlx::query!(
+        sqlx::query(
             r#"
             INSERT INTO audit_log (
                 id, user_id, action, resource_type, resource_id, details,
                 ip_address, user_agent, success, error_message, created_at
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             "#,
-            entry.id,
-            entry.user_id,
-            entry.action,
-            entry.resource_type,
-            entry.resource_id,
-            entry.details,
-            entry.source_ip.map(|ip| ip.to_string()),
-            entry.user_agent,
-            matches!(entry.outcome, AuditOutcome::Success),
-            entry.error_message,
-            entry.timestamp
         )
+        .bind(entry.id)
+        .bind(&entry.user_id)
+        .bind(&entry.action)
+        .bind(&entry.resource_type)
+        .bind(&entry.resource_id)
+        .bind(&entry.details)
+        .bind(entry.source_ip.map(|ip| ip.to_string()))
+        .bind(&entry.user_agent)
+        .bind(matches!(entry.outcome, AuditOutcome::Success))
+        .bind(&entry.error_message)
+        .bind(entry.timestamp)
         .execute(pool)
         .await?;
 

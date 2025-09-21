@@ -2,6 +2,7 @@
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,13 +38,24 @@ impl CdrService {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallDetailRecord {
+    pub id: Option<String>,
     pub call_id: String,
+    pub session_id: Option<String>,
     pub from_number: String,
     pub to_number: String,
+    pub from_ip: Option<std::net::IpAddr>,
+    pub to_ip: Option<std::net::IpAddr>,
     pub start_time: DateTime<Utc>,
     pub end_time: Option<DateTime<Utc>>,
     pub duration_seconds: u64,
     pub disposition: CallDisposition,
+    pub hangup_cause: Option<u32>,
+    pub trunk_id: Option<String>,
+    pub route_id: Option<String>,
+    pub codec_in: Option<String>,
+    pub codec_out: Option<String>,
+    pub recording_enabled: bool,
+    pub cost: Option<Decimal>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
