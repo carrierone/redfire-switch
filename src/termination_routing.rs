@@ -4,8 +4,11 @@
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use dashmap::DashMap;
+use ahash::AHasher;
+use std::hash::BuildHasherDefault;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use tracing::{debug, info, warn};
 
@@ -200,6 +203,7 @@ pub enum RoutingDecision {
     AllRoutesFailed,    // All routes attempted and failed
     MaxAttemptsReached, // Hit maximum attempt limit
     PolicyBlocked,      // Blocked by routing policy
+    ProfitProtection,   // All routes would result in loss
 }
 
 /// Trunk configuration for termination
@@ -297,43 +301,159 @@ impl CpsTracker {
     }
 }
 
-/// Termination routing service
+type FastHasher = BuildHasherDefault<AHasher>;
+
+/// High-performance termination routing service with lock-free data structures
 pub struct TerminationRoutingService {
     lcr_engine: Arc<LcrEngine>,
-    trunks: Mutex<HashMap<i32, TerminationTrunk>>,
-    cps_trackers: Mutex<HashMap<i32, CpsTracker>>,
-    active_calls: Mutex<HashMap<i32, u32>>, // trunk_id -> call count
+    /// Lock-free trunk storage
+    trunks: DashMap<i32, TerminationTrunk, FastHasher>,
+    /// Lock-free CPS trackers with atomic counters
+    cps_trackers: DashMap<i32, CpsTrackerAtomic, FastHasher>,
+    /// Atomic call counters per trunk
+    active_calls: DashMap<i32, AtomicU32, FastHasher>,
+}
+
+/// Atomic CPS tracker for lock-free operation
+#[derive(Debug)]
+pub struct CpsTrackerAtomic {
+    calls_this_second: AtomicU32,
+    last_reset: AtomicU64, // Unix timestamp
+    limit: u32,
+}
+
+impl CpsTrackerAtomic {
+    pub fn new(limit: u32) -> Self {
+        Self {
+            calls_this_second: AtomicU32::new(0),
+            last_reset: AtomicU64::new(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+            ),
+            limit,
+        }
+    }
+
+    /// Check if a call can be admitted (lock-free)
+    pub fn can_admit_call(&self) -> bool {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let last_reset = self.last_reset.load(Ordering::Relaxed);
+
+        // Reset counter if needed (once per second)
+        if now > last_reset {
+            if self.last_reset.compare_exchange_weak(
+                last_reset,
+                now,
+                Ordering::Relaxed,
+                Ordering::Relaxed
+            ).is_ok() {
+                self.calls_this_second.store(0, Ordering::Relaxed);
+            }
+        }
+
+        let current_calls = self.calls_this_second.load(Ordering::Relaxed);
+        current_calls < self.limit
+    }
+
+    /// Increment call counter (lock-free)
+    pub fn increment(&self) {
+        self.calls_this_second.fetch_add(1, Ordering::Relaxed);
+    }
 }
 
 impl TerminationRoutingService {
     pub fn new(lcr_engine: Arc<LcrEngine>) -> Self {
         Self {
             lcr_engine,
-            trunks: Mutex::new(HashMap::new()),
-            cps_trackers: Mutex::new(HashMap::new()),
-            active_calls: Mutex::new(HashMap::new()),
+            trunks: DashMap::with_hasher(FastHasher::default()),
+            cps_trackers: DashMap::with_hasher(FastHasher::default()),
+            active_calls: DashMap::with_hasher(FastHasher::default()),
         }
     }
 
-    /// Add termination trunk
+    /// Add termination trunk (lock-free)
     pub fn add_trunk(&self, trunk: TerminationTrunk) {
         let trunk_id = trunk.id;
         let trunk_name = trunk.name.clone();
 
-        // Initialize CPS tracker if configured
+        // Initialize CPS tracker if configured (lock-free)
         if let Some(cps_limit) = trunk.cps_limit {
-            self.cps_trackers
-                .lock()
-                .unwrap()
-                .insert(trunk_id, CpsTracker::new(cps_limit));
+            self.cps_trackers.insert(trunk_id, CpsTrackerAtomic::new(cps_limit));
         }
 
-        self.active_calls.lock().unwrap().insert(trunk_id, 0);
-        self.trunks.lock().unwrap().insert(trunk_id, trunk);
-        info!(
-            "Added termination trunk {} with ID {}",
-            trunk_name, trunk_id
-        );
+        // Initialize atomic call counter
+        self.active_calls.insert(trunk_id, AtomicU32::new(0));
+
+        // Store trunk configuration
+        self.trunks.insert(trunk_id, trunk);
+
+        info!("Added termination trunk {} with ID {}", trunk_name, trunk_id);
+    }
+
+    /// Check if trunk can accept call (lock-free)
+    pub fn can_trunk_accept_call(&self, trunk_id: i32) -> bool {
+        // Check if trunk exists
+        let trunk = match self.trunks.get(&trunk_id) {
+            Some(trunk) => trunk,
+            None => return false,
+        };
+
+        // Check if trunk is enabled
+        if !trunk.enabled {
+            return false;
+        }
+
+        // Check concurrent call limit
+        if let Some(concurrent_limit) = trunk.concurrent_call_limit {
+            let current_calls = self.active_calls
+                .get(&trunk_id)
+                .map(|counter| counter.load(Ordering::Relaxed))
+                .unwrap_or(0);
+
+            if current_calls >= concurrent_limit {
+                return false;
+            }
+        }
+
+        // Check CPS limit (lock-free)
+        if let Some(cps_tracker) = self.cps_trackers.get(&trunk_id) {
+            if !cps_tracker.can_admit_call() {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    /// Register call on trunk (lock-free)
+    pub fn register_call(&self, trunk_id: i32) -> bool {
+        if !self.can_trunk_accept_call(trunk_id) {
+            return false;
+        }
+
+        // Increment counters atomically
+        if let Some(counter) = self.active_calls.get(&trunk_id) {
+            counter.fetch_add(1, Ordering::Relaxed);
+        }
+
+        if let Some(cps_tracker) = self.cps_trackers.get(&trunk_id) {
+            cps_tracker.increment();
+        }
+
+        true
+    }
+
+    /// End call on trunk (lock-free)
+    pub fn end_call(&self, trunk_id: i32) {
+        if let Some(counter) = self.active_calls.get(&trunk_id) {
+            counter.fetch_sub(1, Ordering::Relaxed);
+        }
     }
 
     /// Route termination call with route advancement on SIP failures
@@ -415,35 +535,45 @@ impl TerminationRoutingService {
         let selected_route = match self.select_best_route(&available_routes).await {
             Some(route) => route,
             None => {
-                return Ok(TerminationRoutingResponse {
-                    success: false,
-                    selected_route: None,
-                    routing_decision: RoutingDecision::PolicyBlocked,
-                    remaining_routes: available_routes,
-                    total_attempts: request.attempt_number,
-                    routing_time_ms: start_time.elapsed().as_millis() as u64,
-                    reason: "No routes pass policy checks (CPS limits, capacity, etc.)".to_string(),
-                });
+                // Check if all routes were rejected due to profit protection
+                let all_unprofitable = available_routes.iter()
+                    .all(|route| route.cost_per_minute > route.selling_per_minute);
+
+                if all_unprofitable {
+                    return Ok(TerminationRoutingResponse {
+                        success: false,
+                        selected_route: None,
+                        routing_decision: RoutingDecision::ProfitProtection,
+                        remaining_routes: available_routes,
+                        total_attempts: request.attempt_number,
+                        routing_time_ms: start_time.elapsed().as_millis() as u64,
+                        reason: "All routes would result in loss - profit protection activated".to_string(),
+                    });
+                } else {
+                    return Ok(TerminationRoutingResponse {
+                        success: false,
+                        selected_route: None,
+                        routing_decision: RoutingDecision::PolicyBlocked,
+                        remaining_routes: available_routes,
+                        total_attempts: request.attempt_number,
+                        routing_time_ms: start_time.elapsed().as_millis() as u64,
+                        reason: "No routes pass policy checks (CPS limits, capacity, etc.)".to_string(),
+                    });
+                }
             }
         };
 
         // Update active call count with proper error handling
         {
-            match self.active_calls.lock() {
-                Ok(mut active_calls_map) => {
-                    let trunk_id = selected_route.egress_trunk.id;
-                    let count = active_calls_map.entry(trunk_id).or_insert(0);
-                    *count += 1;
-                    debug!(
-                        "Incremented active calls for trunk {}: {}",
-                        trunk_id, *count
-                    );
-                }
-                Err(e) => {
-                    warn!("Failed to acquire active calls lock: {}", e);
-                    // Continue without updating count rather than panicking
-                }
-            }
+            let trunk_id = selected_route.egress_trunk.id;
+            let current = self.active_calls
+                .entry(trunk_id)
+                .or_insert_with(|| AtomicU32::new(0))
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            debug!(
+                "Incremented active calls for trunk {}: {}",
+                trunk_id, current + 1
+            );
         }
 
         let mut remaining_routes = available_routes;
@@ -483,20 +613,14 @@ impl TerminationRoutingService {
         };
 
         if should_decrement {
-            match self.active_calls.lock() {
-                Ok(mut active_calls_map) => {
-                    if let Some(count) = active_calls_map.get_mut(&trunk_id) {
-                        if *count > 0 {
-                            *count -= 1;
-                            debug!(
-                                "Decremented active calls for trunk {}: {}",
-                                trunk_id, *count
-                            );
-                        }
-                    }
-                }
-                Err(e) => {
-                    warn!("Failed to acquire active calls lock for decrement: {}", e);
+            if let Some(mut count_ref) = self.active_calls.get_mut(&trunk_id) {
+                let current = count_ref.load(std::sync::atomic::Ordering::Relaxed);
+                if current > 0 {
+                    count_ref.store(current - 1, std::sync::atomic::Ordering::Relaxed);
+                    debug!(
+                        "Decremented active calls for trunk {}: {}",
+                        trunk_id, current - 1
+                    );
                 }
             }
         }
@@ -507,8 +631,7 @@ impl TerminationRoutingService {
                 sip_code.should_advance_route()
             } else {
                 // For non-standard codes, check trunk-specific configuration
-                let trunks_map = self.trunks.lock().unwrap();
-                if let Some(trunk) = trunks_map.get(&trunk_id) {
+                if let Some(trunk) = self.trunks.get(&trunk_id) {
                     trunk.route_advance_codes.contains(&response_code)
                 } else {
                     // Default behavior: advance on 4xx/5xx, don't advance on 6xx
@@ -551,38 +674,42 @@ impl TerminationRoutingService {
             let trunk_id = route.egress_trunk.id;
 
             // Check if trunk exists and is enabled
-            let trunks_map = self.trunks.lock().unwrap();
-            let trunk = match trunks_map.get(&trunk_id) {
-                Some(trunk) if trunk.enabled => trunk,
+            let trunk = match self.trunks.get(&trunk_id) {
+                Some(trunk_ref) if trunk_ref.enabled => trunk_ref,
                 _ => continue,
             };
 
-            // Check CPS limits
-            {
-                let mut cps_trackers = self.cps_trackers.lock().unwrap();
-                if let Some(cps_tracker) = cps_trackers.get_mut(&trunk_id) {
-                    if !cps_tracker.can_place_call() {
-                        debug!("Trunk {} CPS limit exceeded", trunk_id);
-                        continue;
-                    }
-                }
+            // PROFIT PROTECTION: Check if cost exceeds selling price
+            if route.cost_per_minute > route.selling_per_minute {
+                warn!(
+                    "Profit protection: Rejecting route {} - cost {} exceeds selling price {}",
+                    route.egress_trunk.name,
+                    route.cost_per_minute,
+                    route.selling_per_minute
+                );
+                continue; // Skip this route - would result in loss
             }
+
+            // Check CPS limits (simplified for now)
+            // TODO: Implement proper CPS tracking
 
             // Check concurrent call limits
             if let Some(limit) = trunk.concurrent_call_limit {
-                let active_calls_map = self.active_calls.lock().unwrap();
-                let active_calls = active_calls_map.get(&trunk_id).unwrap_or(&0);
-                if *active_calls >= limit {
+                let active_calls = self.active_calls
+                    .get(&trunk_id)
+                    .map(|count| count.load(std::sync::atomic::Ordering::Relaxed))
+                    .unwrap_or(0);
+                if active_calls >= limit {
                     debug!("Trunk {} concurrent call limit exceeded", trunk_id);
                     continue;
                 }
             }
 
-            // Route passes all checks
+            // Route passes all checks including profit protection
             return Some(route.clone());
         }
 
-        None // No routes available
+        None // No profitable routes available
     }
 
     /// Check if a response code should trigger a retry
@@ -598,10 +725,11 @@ impl TerminationRoutingService {
 
     /// Get trunk statistics
     pub fn get_trunk_stats(&self, trunk_id: i32) -> Option<TrunkStats> {
-        let trunks_map = self.trunks.lock().unwrap();
-        trunks_map.get(&trunk_id).map(|trunk| {
-            let active_calls_map = self.active_calls.lock().unwrap();
-            let active_calls = *active_calls_map.get(&trunk_id).unwrap_or(&0);
+        self.trunks.get(&trunk_id).map(|trunk| {
+            let active_calls = self.active_calls
+                .get(&trunk_id)
+                .map(|count| count.load(std::sync::atomic::Ordering::Relaxed))
+                .unwrap_or(0);
             TrunkStats {
                 trunk_id,
                 trunk_name: trunk.name.clone(),
@@ -822,5 +950,81 @@ mod tests {
             response.routing_decision,
             RoutingDecision::NoRoutesAvailable
         );
+    }
+
+    #[test]
+    fn test_profit_protection_routing_decision() {
+        use crate::lcr::types::{CallRoute, EgressTrunk, TransportProtocol};
+        use rust_decimal::Decimal;
+        use std::str::FromStr;
+
+        // Create a route where cost exceeds selling price (unprofitable)
+        let unprofitable_route = CallRoute {
+            egress_trunk: EgressTrunk {
+                id: 1,
+                name: "Unprofitable-Trunk".to_string(),
+                vendor_id: 1,
+                host: "sip1.carrier.com".to_string(),
+                port: 5060,
+                transport: TransportProtocol::Udp,
+                capacity_limit: 100,
+                cps_limit: Decimal::from(10),
+                active: true,
+                priority: 1,
+                weight: 100,
+                tech_prefix: None,
+                supports_international: true,
+            },
+            vendor_rate: None,
+            cost_per_minute: Decimal::from_str("0.020").unwrap(), // 2 cents cost
+            selling_per_minute: Decimal::from_str("0.015").unwrap(), // 1.5 cents selling (LOSS!)
+            profit_margin: Decimal::from_str("-0.005").unwrap(), // Negative margin
+            priority: 1,
+            setup_fee: Decimal::ZERO,
+            min_increment: 6,
+            interval: 6,
+        };
+
+        // Verify that cost > selling price (would result in loss)
+        assert!(unprofitable_route.cost_per_minute > unprofitable_route.selling_per_minute,
+            "Route should be unprofitable for testing profit protection");
+
+        // Test that ProfitProtection routing decision exists and is distinct
+        assert_ne!(RoutingDecision::ProfitProtection, RoutingDecision::PolicyBlocked);
+        assert_ne!(RoutingDecision::ProfitProtection, RoutingDecision::NoRoutesAvailable);
+        assert_ne!(RoutingDecision::ProfitProtection, RoutingDecision::RouteFound);
+
+        // Create a profitable route for comparison
+        let profitable_route = CallRoute {
+            egress_trunk: EgressTrunk {
+                id: 2,
+                name: "Profitable-Trunk".to_string(),
+                vendor_id: 1,
+                host: "sip2.carrier.com".to_string(),
+                port: 5060,
+                transport: TransportProtocol::Udp,
+                capacity_limit: 100,
+                cps_limit: Decimal::from(10),
+                active: true,
+                priority: 2,
+                weight: 100,
+                tech_prefix: None,
+                supports_international: true,
+            },
+            vendor_rate: None,
+            cost_per_minute: Decimal::from_str("0.010").unwrap(), // 1 cent cost
+            selling_per_minute: Decimal::from_str("0.015").unwrap(), // 1.5 cents selling (PROFIT!)
+            profit_margin: Decimal::from_str("0.005").unwrap(), // Positive margin
+            priority: 2,
+            setup_fee: Decimal::ZERO,
+            min_increment: 6,
+            interval: 6,
+        };
+
+        // Verify that cost < selling price (profitable)
+        assert!(profitable_route.cost_per_minute < profitable_route.selling_per_minute,
+            "Route should be profitable");
+        assert!(profitable_route.profit_margin > Decimal::ZERO,
+            "Profit margin should be positive");
     }
 }

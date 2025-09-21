@@ -251,9 +251,9 @@ impl DatabasePool {
                     host: t.get("host"),
                     port: t.get::<i32, _>("port") as u16,
                     transport: match transport_str.as_deref() {
-                        Some("TCP") => TransportProtocol::TCP,
-                        Some("TLS") => TransportProtocol::TLS,
-                        _ => TransportProtocol::UDP,
+                        Some("TCP") => TransportProtocol::Tcp,
+                        Some("TLS") => TransportProtocol::Tls,
+                        _ => TransportProtocol::Udp,
                     },
                     capacity_limit: t.get::<Option<i32>, _>("capacity_limit").unwrap_or(1000),
                     cps_limit: t

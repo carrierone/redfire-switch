@@ -20,14 +20,24 @@ pub mod api;
 pub mod monitor;
 pub mod rest_api;
 
-// Stub modules for missing dependencies
+// Core routing modules
 pub mod call_control;
-pub mod cdr;
-pub mod cnam;
 pub mod routing;
+
+// Database-dependent modules
+#[cfg(feature = "database")]
+pub mod cdr;
+
+// Optional service modules
+#[cfg(feature = "services")]
+pub mod cnam;
+#[cfg(feature = "services")]
 pub mod rtp_proxy;
+#[cfg(feature = "services")]
 pub mod sms;
+#[cfg(feature = "services")]
 pub mod stir_shaken;
+#[cfg(feature = "services")]
 pub mod twilio_api;
 
 // String parsing utilities
@@ -35,6 +45,10 @@ pub mod string_parser;
 
 // Memory safety and concurrency utilities
 pub mod memory_safety;
+
+// High-performance optimizations for carrier-grade operations
+#[cfg(feature = "database")]
+pub mod performance;
 
 // Performance optimization utilities
 pub mod buffer_pool;
@@ -44,6 +58,7 @@ pub mod codec_optimized;
 pub mod sipi_b2bua;
 pub mod sipi_compliance_tester;
 pub mod sipt_sipi;
+
 
 // Codec modules
 pub mod codec;
@@ -73,6 +88,18 @@ pub mod sdp;
 // Security framework
 pub mod security_monitor;
 pub mod security_utils;
+pub mod security;
+pub mod ddos_protection;
+
+// Database and data management
+pub mod database;
+
+// Monitoring and observability
+pub mod health_monitoring;
+pub mod snmp_monitoring;
+
+// Audit and compliance
+pub mod audit_logging;
 
 // Compliance and regulatory framework
 pub mod calea_sip_bridge;
@@ -133,8 +160,6 @@ pub mod services;
 // Plugin architecture for B2BUA
 pub mod plugins;
 
-// Security framework
-pub mod security;
 
 // ANI-II (Automatic Number Identification Information Indicator) handling
 pub mod ani_ii;

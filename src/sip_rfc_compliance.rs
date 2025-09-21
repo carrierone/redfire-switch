@@ -4,10 +4,10 @@
 //! compliant parsing and validation for telecommunications signaling.
 
 use anyhow::{anyhow, Result};
-use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
 /// RFC 3261 mandatory headers that MUST be present in all SIP requests
 pub const MANDATORY_SIP_HEADERS: &[&str] =
@@ -22,22 +22,23 @@ pub const MAX_URI_LENGTH: usize = 8192;
 /// Maximum allowed header value length
 pub const MAX_HEADER_LENGTH: usize = 4096;
 
-lazy_static! {
-    /// Regex for parsing SIP URIs per RFC 3261 - ReDoS safe version
-    static ref SIP_URI_REGEX: Regex = Regex::new(
-        r"^(sip|sips|tel):(?:([^@;?<>]+)@)?([^;?<>]+)(?:[;?](.+))?$"
-    ).expect("Invalid SIP URI regex");
+/// Regex for parsing SIP URIs per RFC 3261 - ReDoS safe version
+static SIP_URI_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^(sip|sips|tel):(?:([^@;?<>]+)@)?([^;?<>]+)(?:[;?](.+))?$")
+        .expect("Invalid SIP URI regex")
+});
 
-    /// Regex for extracting URI parameters - ReDoS safe version
-    static ref URI_PARAM_REGEX: Regex = Regex::new(
-        r"([^;=\s]+)=([^;\s]*)"
-    ).expect("Invalid URI parameter regex");
+/// Regex for extracting URI parameters - ReDoS safe version
+static URI_PARAM_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"([^;=\s]+)=([^;\s]*)")
+        .expect("Invalid URI parameter regex")
+});
 
-    /// Regex for validating E.164 phone numbers - RFC compliant
-    static ref E164_REGEX: Regex = Regex::new(
-        r"^\+[1-9]\d{0,14}$"
-    ).expect("Invalid E164 regex");
-}
+/// Regex for validating E.164 phone numbers - RFC compliant
+static E164_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^\+[1-9]\d{0,14}$")
+        .expect("Invalid E164 regex")
+});
 
 /// SIP URI components per RFC 3261
 #[derive(Debug, Clone, Serialize, Deserialize)]

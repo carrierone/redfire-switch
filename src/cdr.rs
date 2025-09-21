@@ -48,8 +48,22 @@ pub struct CallDetailRecord {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CallDisposition {
+    /// Call was answered and established successfully
     Answered,
+    /// Call was not answered (timeout or busy)
     NoAnswer,
+    /// Call was busy
     Busy,
+    /// Call failed due to network error
     Failed,
+    /// Call was cancelled by caller
+    Cancelled,
+    /// Call was rejected by callee
+    Rejected,
+    /// Call failed due to routing error
+    RoutingFailed,
+    /// Call failed due to codec negotiation
+    CodecFailed,
+    /// Call failed due to authentication
+    AuthFailed,
 }

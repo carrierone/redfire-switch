@@ -158,6 +158,15 @@ pub struct DeckLoadRequest {
     pub rates_data: Option<Vec<NanpaRate>>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TransportProtocol {
+    Udp,
+    Tcp,
+    Tls,
+    Ws,
+    Wss,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EgressTrunk {
     pub id: i32,
@@ -191,12 +200,6 @@ pub struct IngressTrunk {
     pub supports_international: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum TransportProtocol {
-    UDP,
-    TCP,
-    TLS,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LcrRoute {

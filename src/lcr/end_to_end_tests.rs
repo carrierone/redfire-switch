@@ -489,7 +489,7 @@ mod end_to_end_tests {
             vendor_id: 1,
             host: format!("sip{}.example.com", id),
             port: 5060,
-            transport: TransportProtocol::UDP,
+            transport: TransportProtocol::Udp,
             capacity_limit: 1000,
             cps_limit: Decimal::from_str("10.0").unwrap(),
             active: true,

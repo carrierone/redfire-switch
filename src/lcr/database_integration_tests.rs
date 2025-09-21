@@ -192,7 +192,7 @@ mod database_integration_tests {
         assert!(trunk.supports_international);
         assert!(trunk.active);
         assert_eq!(trunk.priority, 1);
-        assert_eq!(trunk.transport, TransportProtocol::UDP);
+        assert_eq!(trunk.transport, TransportProtocol::Udp);
     }
 
     #[test]
@@ -432,7 +432,7 @@ mod database_integration_tests {
             vendor_id: 1,
             host: "international.sip.example.com".to_string(),
             port: 5060,
-            transport: TransportProtocol::UDP,
+            transport: TransportProtocol::Udp,
             capacity_limit: 1000,
             cps_limit: Decimal::from_str("10.0").unwrap(),
             active: true,
