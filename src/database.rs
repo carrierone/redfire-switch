@@ -295,25 +295,31 @@ impl DatabaseService {
         .bind(session.id)
         .bind(session.call_id.as_str())
         .bind(Some(session.id)) // Using session.id as session_id
-        .bind("unknown")        // TODO: Extract from session
-        .bind("unknown")        // TODO: Extract from session
+        .bind("unknown") // TODO: Extract from session
+        .bind("unknown") // TODO: Extract from session
         .bind(Some(session.from_addr.to_string()))
         .bind(Some(session.to_addr.to_string()))
-        .bind(session
-            .trunk_id
-            .as_ref()
-            .and_then(|t| t.parse::<i32>().ok()))
+        .bind(
+            session
+                .trunk_id
+                .as_ref()
+                .and_then(|t| t.parse::<i32>().ok()),
+        )
         .bind(session.start_time)
         .bind(session.last_activity)
         .bind(state_str)
-        .bind(session
-            .codec_pair
-            .as_ref()
-            .map(|(in_codec, _)| in_codec.as_str()))
-        .bind(session
-            .codec_pair
-            .as_ref()
-            .map(|(_, out_codec)| out_codec.as_str()))
+        .bind(
+            session
+                .codec_pair
+                .as_ref()
+                .map(|(in_codec, _)| in_codec.as_str()),
+        )
+        .bind(
+            session
+                .codec_pair
+                .as_ref()
+                .map(|(_, out_codec)| out_codec.as_str()),
+        )
         .execute(&self.pool)
         .await;
 
@@ -381,7 +387,7 @@ impl DatabaseService {
                 AND (r.expiry_date IS NULL OR r.expiry_date > NOW())
             ORDER BY LENGTH(r.prefix) DESC, r.priority ASC, r.cost_per_minute ASC
             LIMIT $3
-            "#
+            "#,
         )
         .bind(route_group)
         .bind(prefix)
@@ -503,12 +509,10 @@ impl DatabaseService {
     pub async fn get_config_value(&self, key: &str) -> Result<Option<serde_json::Value>> {
         let start_time = std::time::Instant::now();
 
-        let result = sqlx::query(
-            "SELECT config_value FROM system_config WHERE config_key = $1"
-        )
-        .bind(key)
-        .fetch_optional(&self.pool)
-        .await;
+        let result = sqlx::query("SELECT config_value FROM system_config WHERE config_key = $1")
+            .bind(key)
+            .fetch_optional(&self.pool)
+            .await;
 
         self.update_query_statistics(start_time, result.is_ok())
             .await;
@@ -528,7 +532,7 @@ impl DatabaseService {
                     error!("Failed to get config_value column for key '{}'", key);
                     Err(anyhow!("Column access failed"))
                 }
-            },
+            }
             Ok(None) => Ok(None),
             Err(e) => {
                 error!("Failed to get config value for key '{}': {}", key, e);

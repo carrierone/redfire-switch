@@ -49,6 +49,17 @@ pub struct RouteAdvancementResult {
     pub reason: String,
 }
 
+/// Route quality metrics for testing
+#[derive(Debug, Clone)]
+pub struct RouteQualityMetrics {
+    pub success_rate: f64,
+    pub average_setup_time_ms: u32,
+    pub recent_failures: u32,
+    pub total_attempts: u32,
+    pub last_success: Option<DateTime<Utc>>,
+    pub last_failure: Option<DateTime<Utc>>,
+}
+
 /// Route advancement actions
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AdvancementAction {
@@ -469,7 +480,8 @@ mod tests {
     }
 
     async fn create_test_engine() -> RouteAdvancementEngine {
-        let termination_service = Arc::new(Mutex::new(TerminationRoutingService::new()));
+        let lcr_engine = Arc::new(crate::lcr::LcrEngine::new("sqlite::memory:").await.unwrap());
+        let termination_service = Arc::new(Mutex::new(TerminationRoutingService::new(lcr_engine)));
         RouteAdvancementEngine::new(termination_service, 3)
     }
 
@@ -720,7 +732,7 @@ mod tests {
         engine.active_calls.insert(call_id2.clone(), state2);
 
         // Clean up old calls
-        engine.cleanup_expired_calls(chrono::Duration::hours(1));
+        engine.cleanup_expired_calls(60); // 60 minutes
 
         // Should remove old completed call but keep active one
         assert!(!engine.active_calls.contains_key(&call_id1));
@@ -762,7 +774,11 @@ mod tests {
         assert_eq!(stats.call_id, call_id);
         assert_eq!(stats.current_attempt, 2);
         assert_eq!(stats.total_failed_attempts, 1);
-        assert!(!stats.current_trunk_name.is_empty());
+        assert!(stats
+            .current_trunk_name
+            .as_ref()
+            .map(|s| !s.is_empty())
+            .unwrap_or(false));
         assert!(stats.routing_duration_ms > 0);
     }
 

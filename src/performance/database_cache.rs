@@ -439,7 +439,7 @@ impl DatabaseCache {
              WHERE created_at > NOW() - INTERVAL '24 hours'
              GROUP BY substring(dnis, 1, 6)
              ORDER BY call_count DESC
-             LIMIT 1000"
+             LIMIT 1000",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -489,7 +489,7 @@ impl DatabaseCache {
              JOIN trunks t ON r.trunk_id = t.id
              WHERE r.rating_code = $1 AND t.enabled = true
              ORDER BY r.rate ASC, t.priority ASC
-             LIMIT 10"
+             LIMIT 10",
         )
         .bind(dnis)
         .fetch_all(&self.pool)
@@ -506,7 +506,9 @@ impl DatabaseCache {
                     trunk_id: row.try_get::<i32, _>("id").ok()?,
                     trunk_name: intern_trunk_id(&row.try_get::<String, _>("name").ok()?),
                     rate: row.try_get::<rust_decimal::Decimal, _>("rate").ok()?,
-                    rating_code: intern_phone_number(&row.try_get::<String, _>("rating_code").ok()?),
+                    rating_code: intern_phone_number(
+                        &row.try_get::<String, _>("rating_code").ok()?,
+                    ),
                     effective_date: row.try_get::<DateTime<Utc>, _>("effective_date").ok()?,
                     priority: row.try_get::<i32, _>("priority").ok()? as u32,
                     enabled: row.try_get::<bool, _>("enabled").ok()?,
@@ -520,7 +522,7 @@ impl DatabaseCache {
     async fn query_trunk_from_database(&self, trunk_id: i32) -> Result<Option<CachedTrunk>> {
         let row = sqlx::query(
             "SELECT id, name, ip_address, port, enabled, concurrent_limit, cps_limit, updated_at
-             FROM trunks WHERE id = $1"
+             FROM trunks WHERE id = $1",
         )
         .bind(trunk_id)
         .fetch_optional(&self.pool)
@@ -533,8 +535,12 @@ impl DatabaseCache {
                 ip_address: row.try_get::<String, _>("ip_address")?.parse()?,
                 port: row.try_get::<i32, _>("port")? as u16,
                 enabled: row.try_get::<bool, _>("enabled")?,
-                concurrent_limit: row.try_get::<Option<i32>, _>("concurrent_limit")?.map(|l| l as u32),
-                cps_limit: row.try_get::<Option<i32>, _>("cps_limit")?.map(|l| l as u32),
+                concurrent_limit: row
+                    .try_get::<Option<i32>, _>("concurrent_limit")?
+                    .map(|l| l as u32),
+                cps_limit: row
+                    .try_get::<Option<i32>, _>("cps_limit")?
+                    .map(|l| l as u32),
                 last_updated: row.try_get::<DateTime<Utc>, _>("updated_at")?,
             }))
         } else {
@@ -552,7 +558,7 @@ impl DatabaseCache {
              FROM client_rates
              WHERE deck_id = $1 AND rating_code = $2
              ORDER BY effective_date DESC
-             LIMIT 1"
+             LIMIT 1",
         )
         .bind(deck_id)
         .bind(rating_code)

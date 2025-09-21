@@ -545,7 +545,7 @@ mod tests {
         let engine = ThreatDetectionEngine::new(config);
 
         // Create a suspicious profile
-        let mut profile = CallBehaviorProfile {
+        let profile = CallBehaviorProfile {
             ip_address: IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
             total_calls: 100,
             successful_calls: 5,    // Very low success rate

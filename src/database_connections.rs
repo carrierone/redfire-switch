@@ -537,7 +537,7 @@ mod tests {
         assert!(stats.total_connections > 0);
 
         // Test transaction
-        let mut tx = pool
+        let tx = pool
             .begin_transaction()
             .await
             .expect("Failed to begin transaction");
