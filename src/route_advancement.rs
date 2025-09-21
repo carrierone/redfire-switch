@@ -419,10 +419,10 @@ impl RouteAdvancementEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lcr::types::{RouteType, EgressTrunk, TransportProtocol};
+    use crate::lcr::types::{EgressTrunk, RouteType, TransportProtocol};
     use crate::termination_routing::TerminationRoutingService;
-    use std::str::FromStr;
     use rust_decimal::Decimal;
+    use std::str::FromStr;
     use uuid::Uuid;
 
     fn create_test_route(id: i32, priority: i32) -> CallRoute {
@@ -479,15 +479,20 @@ mod tests {
         let call_id = Uuid::new_v4().to_string();
         let route_request = create_test_route_request();
 
-        let result = engine.start_call_routing(
-            call_id.clone(),
-            "14155551234".to_string(),
-            "16505559876".to_string(),
-            route_request,
-        ).await;
+        let result = engine
+            .start_call_routing(
+                call_id.clone(),
+                "14155551234".to_string(),
+                "16505559876".to_string(),
+                route_request,
+            )
+            .await;
 
         // Note: In real implementation with routes available, this would succeed
-        assert!(result.is_ok() || result.is_err(), "Should handle routing attempt");
+        assert!(
+            result.is_ok() || result.is_err(),
+            "Should handle routing attempt"
+        );
     }
 
     #[tokio::test]
@@ -496,10 +501,7 @@ mod tests {
         let call_id = Uuid::new_v4().to_string();
 
         // Create call state with multiple routes
-        let routes = vec![
-            create_test_route(1, 1),
-            create_test_route(2, 2),
-        ];
+        let routes = vec![create_test_route(1, 1), create_test_route(2, 2)];
 
         let call_state = CallRoutingState {
             call_id: call_id.clone(),
@@ -517,17 +519,22 @@ mod tests {
         engine.active_calls.insert(call_id.clone(), call_state);
 
         // Test response that should trigger advancement
-        let result = engine.handle_sip_response(
-            &call_id,
-            503, // Service Unavailable - should advance
-            "Service Unavailable",
-        ).await;
+        let result = engine
+            .handle_sip_response(
+                &call_id,
+                503, // Service Unavailable - should advance
+                "Service Unavailable",
+            )
+            .await;
 
         assert!(result.is_ok());
         let advancement = result.unwrap();
 
         // Should advance to next route or reject if no more routes
-        assert!(matches!(advancement.action, AdvancementAction::RouteToNext | AdvancementAction::RejectCall));
+        assert!(matches!(
+            advancement.action,
+            AdvancementAction::RouteToNext | AdvancementAction::RejectCall
+        ));
     }
 
     #[tokio::test]
@@ -552,11 +559,12 @@ mod tests {
         engine.active_calls.insert(call_id.clone(), call_state);
 
         // Test response that should complete call
-        let result = engine.handle_sip_response(
-            &call_id,
-            603, // Decline - should complete
-            "Decline",
-        ).await;
+        let result = engine
+            .handle_sip_response(
+                &call_id, 603, // Decline - should complete
+                "Decline",
+            )
+            .await;
 
         assert!(result.is_ok());
         let advancement = result.unwrap();
@@ -604,11 +612,9 @@ mod tests {
         engine.active_calls.insert(call_id.clone(), call_state);
 
         // Any response should now reject the call
-        let result = engine.handle_sip_response(
-            &call_id,
-            503,
-            "Service Unavailable",
-        ).await;
+        let result = engine
+            .handle_sip_response(&call_id, 503, "Service Unavailable")
+            .await;
 
         assert!(result.is_ok());
         let advancement = result.unwrap();
@@ -733,16 +739,14 @@ mod tests {
             dnis: "16505559876".to_string(),
             original_request: create_test_route_request(),
             current_attempt: 2,
-            failed_attempts: vec![
-                FailedAttempt {
-                    trunk_id: 1,
-                    trunk_name: "Trunk-1".to_string(),
-                    response_code: 503,
-                    response_reason: "Service Unavailable".to_string(),
-                    attempt_time: Utc::now(),
-                    duration_ms: 1000,
-                },
-            ],
+            failed_attempts: vec![FailedAttempt {
+                trunk_id: 1,
+                trunk_name: "Trunk-1".to_string(),
+                response_code: 503,
+                response_reason: "Service Unavailable".to_string(),
+                attempt_time: Utc::now(),
+                duration_ms: 1000,
+            }],
             current_route: Some(create_test_route(2, 2)),
             remaining_routes: vec![],
             routing_started_at: Utc::now() - chrono::Duration::seconds(10),
@@ -790,11 +794,9 @@ mod tests {
         engine.active_calls.insert(call_id.clone(), call_state);
 
         // First failure - should advance to next route
-        let result1 = engine.handle_sip_response(
-            &call_id,
-            503,
-            "Service Unavailable",
-        ).await;
+        let result1 = engine
+            .handle_sip_response(&call_id, 503, "Service Unavailable")
+            .await;
 
         assert!(result1.is_ok());
         let advancement1 = result1.unwrap();
@@ -846,12 +848,14 @@ mod tests {
                 let route_request = create_test_route_request();
 
                 let mut eng = engine_clone.lock().await;
-                let result = eng.start_call_routing(
-                    call_id,
-                    "14155551234".to_string(),
-                    "16505559876".to_string(),
-                    route_request,
-                ).await;
+                let result = eng
+                    .start_call_routing(
+                        call_id,
+                        "14155551234".to_string(),
+                        "16505559876".to_string(),
+                        route_request,
+                    )
+                    .await;
 
                 // Should handle gracefully
                 result.is_ok() || result.is_err()

@@ -44,7 +44,7 @@ pub struct TrafficShapingConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueueConfig {
-    pub priority: u8, // 0-255, higher is better priority
+    pub priority: u8,             // 0-255, higher is better priority
     pub bandwidth_percentage: u8, // 0-100
     pub max_queue_size: u32,
 }
@@ -61,26 +61,38 @@ pub struct AnomalyDetectionConfig {
 impl Default for DDoSProtectionConfig {
     fn default() -> Self {
         let mut priority_queues = HashMap::new();
-        priority_queues.insert("emergency".to_string(), QueueConfig {
-            priority: 255,
-            bandwidth_percentage: 20,
-            max_queue_size: 1000,
-        });
-        priority_queues.insert("sip_signaling".to_string(), QueueConfig {
-            priority: 200,
-            bandwidth_percentage: 30,
-            max_queue_size: 5000,
-        });
-        priority_queues.insert("rtp_media".to_string(), QueueConfig {
-            priority: 180,
-            bandwidth_percentage: 40,
-            max_queue_size: 10000,
-        });
-        priority_queues.insert("management".to_string(), QueueConfig {
-            priority: 100,
-            bandwidth_percentage: 10,
-            max_queue_size: 1000,
-        });
+        priority_queues.insert(
+            "emergency".to_string(),
+            QueueConfig {
+                priority: 255,
+                bandwidth_percentage: 20,
+                max_queue_size: 1000,
+            },
+        );
+        priority_queues.insert(
+            "sip_signaling".to_string(),
+            QueueConfig {
+                priority: 200,
+                bandwidth_percentage: 30,
+                max_queue_size: 5000,
+            },
+        );
+        priority_queues.insert(
+            "rtp_media".to_string(),
+            QueueConfig {
+                priority: 180,
+                bandwidth_percentage: 40,
+                max_queue_size: 10000,
+            },
+        );
+        priority_queues.insert(
+            "management".to_string(),
+            QueueConfig {
+                priority: 100,
+                bandwidth_percentage: 10,
+                max_queue_size: 1000,
+            },
+        );
 
         Self {
             enabled: true,
@@ -210,7 +222,8 @@ impl DDoSProtectionService {
     fn parse_whitelist_subnets(subnets: &[String]) -> Result<Vec<ipnetwork::IpNetwork>> {
         let mut networks = Vec::new();
         for subnet in subnets {
-            let network = subnet.parse::<ipnetwork::IpNetwork>()
+            let network = subnet
+                .parse::<ipnetwork::IpNetwork>()
                 .map_err(|e| anyhow!("Invalid subnet '{}': {}", subnet, e))?;
             networks.push(network);
         }
@@ -218,7 +231,11 @@ impl DDoSProtectionService {
     }
 
     /// Check if a request from the given IP should be allowed
-    pub async fn should_allow_request(&self, ip: IpAddr, request_size: usize) -> Result<ProtectionDecision> {
+    pub async fn should_allow_request(
+        &self,
+        ip: IpAddr,
+        request_size: usize,
+    ) -> Result<ProtectionDecision> {
         if !self.config.enabled {
             return Ok(ProtectionDecision::Allow);
         }
@@ -250,7 +267,8 @@ impl DDoSProtectionService {
         if self.config.anomaly_detection.enabled {
             if let Some(anomaly_score) = self.detect_anomaly(ip, request_size).await? {
                 if anomaly_score > self.config.anomaly_detection.deviation_threshold {
-                    self.add_to_blacklist(ip, BlacklistReason::AnomalousTraffic).await?;
+                    self.add_to_blacklist(ip, BlacklistReason::AnomalousTraffic)
+                        .await?;
                     return Ok(ProtectionDecision::Block(BlacklistReason::AnomalousTraffic));
                 }
             }
@@ -285,7 +303,10 @@ impl DDoSProtectionService {
         let mut tracker = self.connection_tracker.write().await;
 
         // Check request rate in sliding window
-        let request_window = tracker.request_windows.entry(ip).or_insert_with(VecDeque::new);
+        let request_window = tracker
+            .request_windows
+            .entry(ip)
+            .or_insert_with(VecDeque::new);
 
         // Remove old requests outside the window
         let window_start = now - Duration::from_secs(self.config.detection_window_seconds);
@@ -295,18 +316,25 @@ impl DDoSProtectionService {
         request_window.push_back(now);
 
         // Check if rate limit exceeded
-        if request_window.len() > self.config.max_requests_per_second as usize * self.config.detection_window_seconds as usize {
+        if request_window.len()
+            > self.config.max_requests_per_second as usize
+                * self.config.detection_window_seconds as usize
+        {
             // Potential DDoS attack detected
-            self.add_to_blacklist(ip, BlacklistReason::DDoSAttackDetected).await?;
+            self.add_to_blacklist(ip, BlacklistReason::DDoSAttackDetected)
+                .await?;
             return Ok(Some("DDoS attack pattern detected".to_string()));
         }
 
         // Check burst limits
-        let burst_tracker = tracker.burst_trackers.entry(ip).or_insert_with(|| BurstTracker {
-            requests_in_burst: 0,
-            burst_start: now,
-            last_request: now,
-        });
+        let burst_tracker = tracker
+            .burst_trackers
+            .entry(ip)
+            .or_insert_with(|| BurstTracker {
+                requests_in_burst: 0,
+                burst_start: now,
+                last_request: now,
+            });
 
         // Reset burst if there's been a gap
         if now.duration_since(burst_tracker.last_request) > Duration::from_secs(5) {
@@ -330,10 +358,14 @@ impl DDoSProtectionService {
         let now = Utc::now();
 
         // Update current metrics
-        analyzer.current_metrics.insert("request_size".to_string(), request_size as f64);
+        analyzer
+            .current_metrics
+            .insert("request_size".to_string(), request_size as f64);
 
         // Update baseline for request size
-        let baseline = analyzer.baseline_metrics.entry("request_size".to_string())
+        let baseline = analyzer
+            .baseline_metrics
+            .entry("request_size".to_string())
             .or_insert_with(|| BaselineMetric {
                 samples: VecDeque::new(),
                 mean: 0.0,
@@ -344,20 +376,28 @@ impl DDoSProtectionService {
         baseline.samples.push_back(request_size as f64);
 
         // Keep only samples within the baseline window
-        let window_start = now - chrono::Duration::minutes(self.config.anomaly_detection.baseline_window_minutes as i64);
-        baseline.samples.retain(|_| baseline.last_updated > window_start);
+        let window_start = now
+            - chrono::Duration::minutes(
+                self.config.anomaly_detection.baseline_window_minutes as i64,
+            );
+        baseline
+            .samples
+            .retain(|_| baseline.last_updated > window_start);
 
         if baseline.samples.len() >= self.config.anomaly_detection.min_samples_required as usize {
             // Calculate mean and standard deviation
             let sum: f64 = baseline.samples.iter().sum();
             baseline.mean = sum / baseline.samples.len() as f64;
 
-            let variance: f64 = baseline.samples.iter()
+            let variance: f64 = baseline
+                .samples
+                .iter()
                 .map(|value| {
                     let diff = value - baseline.mean;
                     diff * diff
                 })
-                .sum::<f64>() / baseline.samples.len() as f64;
+                .sum::<f64>()
+                / baseline.samples.len() as f64;
 
             baseline.std_dev = variance.sqrt();
 
@@ -369,10 +409,16 @@ impl DDoSProtectionService {
                 analyzer.anomaly_scores.push_back((now, z_score.abs()));
 
                 // Keep only recent anomaly scores
-                analyzer.anomaly_scores.retain(|(timestamp, _)| *timestamp > window_start);
+                analyzer
+                    .anomaly_scores
+                    .retain(|(timestamp, _)| *timestamp > window_start);
 
-                debug!("Anomaly detection for {}: z_score={:.2}, threshold={:.2}",
-                    ip, z_score.abs(), self.config.anomaly_detection.deviation_threshold);
+                debug!(
+                    "Anomaly detection for {}: z_score={:.2}, threshold={:.2}",
+                    ip,
+                    z_score.abs(),
+                    self.config.anomaly_detection.deviation_threshold
+                );
 
                 return Ok(Some(z_score.abs()));
             }
@@ -383,7 +429,8 @@ impl DDoSProtectionService {
 
     async fn add_to_blacklist(&self, ip: IpAddr, reason: BlacklistReason) -> Result<()> {
         let now = Utc::now();
-        let expires_at = now + chrono::Duration::minutes(self.config.blacklist_duration_minutes as i64);
+        let expires_at =
+            now + chrono::Duration::minutes(self.config.blacklist_duration_minutes as i64);
 
         let mut blacklist = self.blacklist.write().await;
 
@@ -393,15 +440,20 @@ impl DDoSProtectionService {
             1
         };
 
-        blacklist.insert(ip, BlacklistEntry {
-            reason: reason.clone(),
-            created_at: now,
-            expires_at,
-            violation_count,
-        });
+        blacklist.insert(
+            ip,
+            BlacklistEntry {
+                reason: reason.clone(),
+                created_at: now,
+                expires_at,
+                violation_count,
+            },
+        );
 
-        warn!("IP {} blacklisted for {:?} (violation #{}) until {}",
-            ip, reason, violation_count, expires_at);
+        warn!(
+            "IP {} blacklisted for {:?} (violation #{}) until {}",
+            ip, reason, violation_count, expires_at
+        );
 
         // Update statistics
         let mut stats = self.statistics.write().await;
@@ -442,7 +494,10 @@ impl DDoSProtectionService {
         let mut stats = self.statistics.write().await;
         stats.concurrent_connections = total_connections + 1;
 
-        debug!("Connection registered for {}: {} active connections", ip, current_connections);
+        debug!(
+            "Connection registered for {}: {} active connections",
+            ip, current_connections
+        );
         Ok(true)
     }
 
@@ -508,12 +563,14 @@ impl DDoSProtectionService {
         for (_, window) in tracker.request_windows.iter_mut() {
             window.retain(|&request_time| request_time > cutoff);
         }
-        tracker.request_windows.retain(|_, window| !window.is_empty());
+        tracker
+            .request_windows
+            .retain(|_, window| !window.is_empty());
 
         // Clean up old burst trackers
-        tracker.burst_trackers.retain(|_, burst| {
-            burst.last_request > cutoff
-        });
+        tracker
+            .burst_trackers
+            .retain(|_, burst| burst.last_request > cutoff);
 
         Ok(())
     }

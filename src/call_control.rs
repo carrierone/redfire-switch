@@ -2,20 +2,22 @@
 //! Handles call admission control, session management, and resource allocation
 //! Optimized for carrier-grade performance with lock-free data structures
 
+use ahash::AHasher;
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
+use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
+use std::hash::BuildHasherDefault;
 use std::net::IpAddr;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::Arc;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
-use dashmap::DashMap;
-use ahash::AHasher;
-use std::hash::BuildHasherDefault;
 
-use crate::performance::memory_pools::{PooledCallSession, CallState, pools};
-use crate::performance::string_interner::{Symbol, intern_trunk_id, resolve_trunk_id, intern_phone_number};
+use crate::performance::memory_pools::{pools, CallState, PooledCallSession};
+use crate::performance::string_interner::{
+    intern_phone_number, intern_trunk_id, resolve_trunk_id, Symbol,
+};
 
 type FastHasher = BuildHasherDefault<AHasher>;
 
@@ -108,7 +110,11 @@ impl CallControlService {
     }
 
     /// High-performance call admission check (lock-free)
-    pub fn can_admit_call_fast(&self, from_addr: IpAddr, trunk_id: Option<&str>) -> AdmissionDecision {
+    pub fn can_admit_call_fast(
+        &self,
+        from_addr: IpAddr,
+        trunk_id: Option<&str>,
+    ) -> AdmissionDecision {
         if !self.config.enabled {
             return AdmissionDecision {
                 admit: true,
@@ -133,12 +139,11 @@ impl CallControlService {
 
         // Reset CPS counter if needed (once per second)
         if now > last_reset {
-            if self.last_cps_reset.compare_exchange_weak(
-                last_reset,
-                now,
-                Ordering::Relaxed,
-                Ordering::Relaxed
-            ).is_ok() {
+            if self
+                .last_cps_reset
+                .compare_exchange_weak(last_reset, now, Ordering::Relaxed, Ordering::Relaxed)
+                .is_ok()
+            {
                 self.calls_per_second_current.store(0, Ordering::Relaxed);
             }
         }
@@ -157,10 +162,14 @@ impl CallControlService {
             let trunk_symbol = intern_trunk_id(trunk_name);
             if let Some(limits) = self.trunk_limits.get(&trunk_symbol) {
                 // Count active calls for this trunk (fast iteration)
-                let trunk_calls = self.active_sessions
+                let trunk_calls = self
+                    .active_sessions
                     .iter()
                     .filter(|entry| {
-                        entry.value().trunk_id.as_ref()
+                        entry
+                            .value()
+                            .trunk_id
+                            .as_ref()
                             .map(|id| id.as_str() == trunk_name)
                             .unwrap_or(false)
                     })
@@ -235,7 +244,8 @@ impl CallControlService {
         // Update atomic counters
         self.active_calls.fetch_add(1, Ordering::Relaxed);
         self.total_calls_established.fetch_add(1, Ordering::Relaxed);
-        self.calls_per_second_current.fetch_add(1, Ordering::Relaxed);
+        self.calls_per_second_current
+            .fetch_add(1, Ordering::Relaxed);
 
         info!(
             "Registered call {} from {} to {} (total active: {})",
@@ -293,7 +303,9 @@ impl CallControlService {
 
     /// Get a call session (lock-free read)
     pub fn get_call_session(&self, session_id: &Uuid) -> Option<CallSession> {
-        self.active_sessions.get(session_id).map(|entry| entry.value().clone())
+        self.active_sessions
+            .get(session_id)
+            .map(|entry| entry.value().clone())
     }
 
     /// Count active calls for a specific trunk (optimized)
@@ -301,7 +313,10 @@ impl CallControlService {
         self.active_sessions
             .iter()
             .filter(|entry| {
-                entry.value().trunk_id.as_ref()
+                entry
+                    .value()
+                    .trunk_id
+                    .as_ref()
                     .map(|id| id.as_str() == trunk_id)
                     .unwrap_or(false)
             })

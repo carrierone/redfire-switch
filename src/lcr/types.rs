@@ -200,7 +200,6 @@ pub struct IngressTrunk {
     pub supports_international: bool,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LcrRoute {
     pub id: i32,

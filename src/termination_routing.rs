@@ -1,14 +1,14 @@
 //! Termination Routing Engine
 //! Handles outbound call routing with SIP response code handling and route advancement
 
+use ahash::AHasher;
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
 use dashmap::DashMap;
-use ahash::AHasher;
+use serde::{Deserialize, Serialize};
 use std::hash::BuildHasherDefault;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{debug, info, warn};
 
@@ -330,7 +330,7 @@ impl CpsTrackerAtomic {
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
-                    .as_secs()
+                    .as_secs(),
             ),
             limit,
         }
@@ -347,12 +347,11 @@ impl CpsTrackerAtomic {
 
         // Reset counter if needed (once per second)
         if now > last_reset {
-            if self.last_reset.compare_exchange_weak(
-                last_reset,
-                now,
-                Ordering::Relaxed,
-                Ordering::Relaxed
-            ).is_ok() {
+            if self
+                .last_reset
+                .compare_exchange_weak(last_reset, now, Ordering::Relaxed, Ordering::Relaxed)
+                .is_ok()
+            {
                 self.calls_this_second.store(0, Ordering::Relaxed);
             }
         }
@@ -384,7 +383,8 @@ impl TerminationRoutingService {
 
         // Initialize CPS tracker if configured (lock-free)
         if let Some(cps_limit) = trunk.cps_limit {
-            self.cps_trackers.insert(trunk_id, CpsTrackerAtomic::new(cps_limit));
+            self.cps_trackers
+                .insert(trunk_id, CpsTrackerAtomic::new(cps_limit));
         }
 
         // Initialize atomic call counter
@@ -393,7 +393,10 @@ impl TerminationRoutingService {
         // Store trunk configuration
         self.trunks.insert(trunk_id, trunk);
 
-        info!("Added termination trunk {} with ID {}", trunk_name, trunk_id);
+        info!(
+            "Added termination trunk {} with ID {}",
+            trunk_name, trunk_id
+        );
     }
 
     /// Check if trunk can accept call (lock-free)
@@ -411,7 +414,8 @@ impl TerminationRoutingService {
 
         // Check concurrent call limit
         if let Some(concurrent_limit) = trunk.concurrent_call_limit {
-            let current_calls = self.active_calls
+            let current_calls = self
+                .active_calls
                 .get(&trunk_id)
                 .map(|counter| counter.load(Ordering::Relaxed))
                 .unwrap_or(0);
@@ -536,7 +540,8 @@ impl TerminationRoutingService {
             Some(route) => route,
             None => {
                 // Check if all routes were rejected due to profit protection
-                let all_unprofitable = available_routes.iter()
+                let all_unprofitable = available_routes
+                    .iter()
                     .all(|route| route.cost_per_minute > route.selling_per_minute);
 
                 if all_unprofitable {
@@ -547,7 +552,8 @@ impl TerminationRoutingService {
                         remaining_routes: available_routes,
                         total_attempts: request.attempt_number,
                         routing_time_ms: start_time.elapsed().as_millis() as u64,
-                        reason: "All routes would result in loss - profit protection activated".to_string(),
+                        reason: "All routes would result in loss - profit protection activated"
+                            .to_string(),
                     });
                 } else {
                     return Ok(TerminationRoutingResponse {
@@ -557,7 +563,8 @@ impl TerminationRoutingService {
                         remaining_routes: available_routes,
                         total_attempts: request.attempt_number,
                         routing_time_ms: start_time.elapsed().as_millis() as u64,
-                        reason: "No routes pass policy checks (CPS limits, capacity, etc.)".to_string(),
+                        reason: "No routes pass policy checks (CPS limits, capacity, etc.)"
+                            .to_string(),
                     });
                 }
             }
@@ -566,13 +573,15 @@ impl TerminationRoutingService {
         // Update active call count with proper error handling
         {
             let trunk_id = selected_route.egress_trunk.id;
-            let current = self.active_calls
+            let current = self
+                .active_calls
                 .entry(trunk_id)
                 .or_insert_with(|| AtomicU32::new(0))
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             debug!(
                 "Incremented active calls for trunk {}: {}",
-                trunk_id, current + 1
+                trunk_id,
+                current + 1
             );
         }
 
@@ -619,7 +628,8 @@ impl TerminationRoutingService {
                     count_ref.store(current - 1, std::sync::atomic::Ordering::Relaxed);
                     debug!(
                         "Decremented active calls for trunk {}: {}",
-                        trunk_id, current - 1
+                        trunk_id,
+                        current - 1
                     );
                 }
             }
@@ -683,9 +693,7 @@ impl TerminationRoutingService {
             if route.cost_per_minute > route.selling_per_minute {
                 warn!(
                     "Profit protection: Rejecting route {} - cost {} exceeds selling price {}",
-                    route.egress_trunk.name,
-                    route.cost_per_minute,
-                    route.selling_per_minute
+                    route.egress_trunk.name, route.cost_per_minute, route.selling_per_minute
                 );
                 continue; // Skip this route - would result in loss
             }
@@ -695,7 +703,8 @@ impl TerminationRoutingService {
 
             // Check concurrent call limits
             if let Some(limit) = trunk.concurrent_call_limit {
-                let active_calls = self.active_calls
+                let active_calls = self
+                    .active_calls
                     .get(&trunk_id)
                     .map(|count| count.load(std::sync::atomic::Ordering::Relaxed))
                     .unwrap_or(0);
@@ -726,7 +735,8 @@ impl TerminationRoutingService {
     /// Get trunk statistics
     pub fn get_trunk_stats(&self, trunk_id: i32) -> Option<TrunkStats> {
         self.trunks.get(&trunk_id).map(|trunk| {
-            let active_calls = self.active_calls
+            let active_calls = self
+                .active_calls
                 .get(&trunk_id)
                 .map(|count| count.load(std::sync::atomic::Ordering::Relaxed))
                 .unwrap_or(0);
@@ -978,7 +988,7 @@ mod tests {
             vendor_rate: None,
             cost_per_minute: Decimal::from_str("0.020").unwrap(), // 2 cents cost
             selling_per_minute: Decimal::from_str("0.015").unwrap(), // 1.5 cents selling (LOSS!)
-            profit_margin: Decimal::from_str("-0.005").unwrap(), // Negative margin
+            profit_margin: Decimal::from_str("-0.005").unwrap(),  // Negative margin
             priority: 1,
             setup_fee: Decimal::ZERO,
             min_increment: 6,
@@ -986,13 +996,24 @@ mod tests {
         };
 
         // Verify that cost > selling price (would result in loss)
-        assert!(unprofitable_route.cost_per_minute > unprofitable_route.selling_per_minute,
-            "Route should be unprofitable for testing profit protection");
+        assert!(
+            unprofitable_route.cost_per_minute > unprofitable_route.selling_per_minute,
+            "Route should be unprofitable for testing profit protection"
+        );
 
         // Test that ProfitProtection routing decision exists and is distinct
-        assert_ne!(RoutingDecision::ProfitProtection, RoutingDecision::PolicyBlocked);
-        assert_ne!(RoutingDecision::ProfitProtection, RoutingDecision::NoRoutesAvailable);
-        assert_ne!(RoutingDecision::ProfitProtection, RoutingDecision::RouteFound);
+        assert_ne!(
+            RoutingDecision::ProfitProtection,
+            RoutingDecision::PolicyBlocked
+        );
+        assert_ne!(
+            RoutingDecision::ProfitProtection,
+            RoutingDecision::NoRoutesAvailable
+        );
+        assert_ne!(
+            RoutingDecision::ProfitProtection,
+            RoutingDecision::RouteFound
+        );
 
         // Create a profitable route for comparison
         let profitable_route = CallRoute {
@@ -1014,7 +1035,7 @@ mod tests {
             vendor_rate: None,
             cost_per_minute: Decimal::from_str("0.010").unwrap(), // 1 cent cost
             selling_per_minute: Decimal::from_str("0.015").unwrap(), // 1.5 cents selling (PROFIT!)
-            profit_margin: Decimal::from_str("0.005").unwrap(), // Positive margin
+            profit_margin: Decimal::from_str("0.005").unwrap(),   // Positive margin
             priority: 2,
             setup_fee: Decimal::ZERO,
             min_increment: 6,
@@ -1022,9 +1043,13 @@ mod tests {
         };
 
         // Verify that cost < selling price (profitable)
-        assert!(profitable_route.cost_per_minute < profitable_route.selling_per_minute,
-            "Route should be profitable");
-        assert!(profitable_route.profit_margin > Decimal::ZERO,
-            "Profit margin should be positive");
+        assert!(
+            profitable_route.cost_per_minute < profitable_route.selling_per_minute,
+            "Route should be profitable"
+        );
+        assert!(
+            profitable_route.profit_margin > Decimal::ZERO,
+            "Profit margin should be positive"
+        );
     }
 }

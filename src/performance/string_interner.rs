@@ -1,12 +1,12 @@
 //! High-performance string interning for common telecommunications identifiers
 //! Eliminates repeated allocations for phone number prefixes, trunk names, etc.
 
-use string_interner::{DefaultSymbol, StringInterner, backend::StringBackend};
-use std::sync::RwLock;
-use once_cell::sync::Lazy;
-use dashmap::DashMap;
 use ahash::AHasher;
+use dashmap::DashMap;
+use once_cell::sync::Lazy;
 use std::hash::BuildHasherDefault;
+use std::sync::RwLock;
+use string_interner::{backend::StringBackend, DefaultSymbol, StringInterner};
 
 type FastHasher = BuildHasherDefault<AHasher>;
 
@@ -138,8 +138,7 @@ impl GlobalInterners {
     pub fn preload_common_strings(&self) {
         // Common phone number prefixes
         let common_prefixes = [
-            "1", "+1", "011", "00",
-            "1800", "1888", "1877", "1866", "1855", "1844", "1833", "1822",
+            "1", "+1", "011", "00", "1800", "1888", "1877", "1866", "1855", "1844", "1833", "1822",
             "911", "411", "311", "211", "611", "711", "811",
         ];
         for prefix in &common_prefixes {
@@ -148,8 +147,8 @@ impl GlobalInterners {
 
         // Common codec names
         let common_codecs = [
-            "G.711", "PCMU", "PCMA", "G.729", "G.722", "G.723", "GSM",
-            "iLBC", "Speex", "Opus", "AMR", "AMR-WB", "SILK",
+            "G.711", "PCMU", "PCMA", "G.729", "G.722", "G.723", "GSM", "iLBC", "Speex", "Opus",
+            "AMR", "AMR-WB", "SILK",
         ];
         for codec in &common_codecs {
             self.codec_names.intern(codec);
@@ -157,11 +156,23 @@ impl GlobalInterners {
 
         // Common SIP response codes and messages
         let common_sip_messages = [
-            "100 Trying", "180 Ringing", "183 Progress", "200 OK",
-            "300 Multiple Choices", "301 Moved Permanently", "302 Moved Temporarily",
-            "400 Bad Request", "401 Unauthorized", "403 Forbidden", "404 Not Found",
-            "480 Temporarily Unavailable", "486 Busy Here", "487 Request Terminated",
-            "500 Internal Server Error", "503 Service Unavailable", "504 Server Time-out",
+            "100 Trying",
+            "180 Ringing",
+            "183 Progress",
+            "200 OK",
+            "300 Multiple Choices",
+            "301 Moved Permanently",
+            "302 Moved Temporarily",
+            "400 Bad Request",
+            "401 Unauthorized",
+            "403 Forbidden",
+            "404 Not Found",
+            "480 Temporarily Unavailable",
+            "486 Busy Here",
+            "487 Request Terminated",
+            "500 Internal Server Error",
+            "503 Service Unavailable",
+            "504 Server Time-out",
         ];
         for message in &common_sip_messages {
             self.error_messages.intern(message);
@@ -169,8 +180,17 @@ impl GlobalInterners {
 
         // Common trunk prefixes
         let common_trunk_prefixes = [
-            "trunk-", "sip-", "pri-", "fxo-", "fxs-", "t1-", "e1-",
-            "origination-", "termination-", "test-", "backup-",
+            "trunk-",
+            "sip-",
+            "pri-",
+            "fxo-",
+            "fxs-",
+            "t1-",
+            "e1-",
+            "origination-",
+            "termination-",
+            "test-",
+            "backup-",
         ];
         for prefix in &common_trunk_prefixes {
             self.trunk_ids.intern(prefix);
@@ -283,7 +303,10 @@ mod tests {
     #[test]
     fn test_global_interners() {
         let symbol = intern_phone_number("18001234567");
-        assert_eq!(resolve_phone_number(symbol), Some("18001234567".to_string()));
+        assert_eq!(
+            resolve_phone_number(symbol),
+            Some("18001234567".to_string())
+        );
 
         let codec_symbol = intern_codec_name("G.711");
         assert_eq!(resolve_codec_name(codec_symbol), Some("G.711".to_string()));

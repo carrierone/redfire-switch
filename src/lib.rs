@@ -59,7 +59,6 @@ pub mod sipi_b2bua;
 pub mod sipi_compliance_tester;
 pub mod sipt_sipi;
 
-
 // Codec modules
 pub mod codec;
 
@@ -86,10 +85,10 @@ pub mod rtp_proxy_impl;
 pub mod sdp;
 
 // Security framework
+pub mod ddos_protection;
+pub mod security;
 pub mod security_monitor;
 pub mod security_utils;
-pub mod security;
-pub mod ddos_protection;
 
 // Database and data management
 pub mod database;
@@ -159,7 +158,6 @@ pub mod services;
 
 // Plugin architecture for B2BUA
 pub mod plugins;
-
 
 // ANI-II (Automatic Number Identification Information Indicator) handling
 pub mod ani_ii;

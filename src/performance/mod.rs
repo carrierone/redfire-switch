@@ -14,31 +14,31 @@
 //! - 2x improvement in concurrent call handling
 //! - 90%+ cache hit rate for routing decisions
 
+pub mod database_cache;
 pub mod memory_pools;
 pub mod string_interner;
-pub mod database_cache;
 
 // Re-export commonly used types
 pub use memory_pools::{
-    MemoryPools, PooledCallSession, PooledRouteRequest, PooledRouteResponse,
-    PooledSipContext, FastString, RouteVec, pools
+    pools, FastString, MemoryPools, PooledCallSession, PooledRouteRequest, PooledRouteResponse,
+    PooledSipContext, RouteVec,
 };
 
 pub use string_interner::{
-    TelecomStringInterner, Symbol, GlobalInterners, INTERNERS,
-    intern_phone_number, intern_trunk_id, intern_customer_id, intern_sip_id,
-    resolve_phone_number, resolve_trunk_id, resolve_customer_id, resolve_sip_id
+    intern_customer_id, intern_phone_number, intern_sip_id, intern_trunk_id, resolve_customer_id,
+    resolve_phone_number, resolve_sip_id, resolve_trunk_id, GlobalInterners, Symbol,
+    TelecomStringInterner, INTERNERS,
 };
 
 pub use database_cache::{
-    DatabaseCache, CachedRoute, CachedTrunk, CachedClientRate, CacheStatistics
+    CacheStatistics, CachedClientRate, CachedRoute, CachedTrunk, DatabaseCache,
 };
 
 /// Performance monitoring and statistics
 pub mod stats {
+    use once_cell::sync::Lazy;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{Duration, Instant};
-    use once_cell::sync::Lazy;
 
     /// Global performance counters
     pub struct PerformanceCounters {

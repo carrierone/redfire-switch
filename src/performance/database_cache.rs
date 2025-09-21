@@ -1,21 +1,21 @@
 //! High-performance database caching layer for LCR routing
 //! Eliminates database queries in hot paths using aggressive in-memory caching
 
-use moka::future::Cache;
-use dashmap::DashMap;
 use ahash::AHasher;
+use anyhow::Result;
+use chrono::{DateTime, Utc};
+use dashmap::DashMap;
+use moka::future::Cache;
+use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
 use std::hash::BuildHasherDefault;
 use std::sync::Arc;
 use std::time::Duration;
-use anyhow::Result;
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
-use tracing::{debug, info, warn};
 use tokio::time::interval;
+use tracing::{debug, info, warn};
 
-use crate::performance::memory_pools::{RouteVec};
-use crate::performance::string_interner::{Symbol, intern_trunk_id, intern_phone_number};
+use crate::performance::memory_pools::RouteVec;
+use crate::performance::string_interner::{intern_phone_number, intern_trunk_id, Symbol};
 
 type FastHasher = BuildHasherDefault<AHasher>;
 
@@ -161,7 +161,12 @@ impl DatabaseCache {
     }
 
     /// Get routes for a destination (optimized cache lookup)
-    pub async fn get_routes(&self, dnis: &str, route_type: RouteType, jurisdiction: CallJurisdiction) -> Result<Option<RouteVec<CachedRoute>>> {
+    pub async fn get_routes(
+        &self,
+        dnis: &str,
+        route_type: RouteType,
+        jurisdiction: CallJurisdiction,
+    ) -> Result<Option<RouteVec<CachedRoute>>> {
         // Create cache key
         let prefix_symbol = self.get_dnis_prefix_symbol(dnis, route_type);
         let cache_key = RouteKey {
@@ -172,19 +177,25 @@ impl DatabaseCache {
 
         // Hot cache check first (fastest path)
         if let Some(routes) = self.hot_routes.get(&cache_key) {
-            self.stats.hot_cache_hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            self.stats
+                .hot_cache_hits
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             return Ok(Some(routes.clone()));
         }
 
         // Check negative cache
         if self.negative_cache.get(&cache_key).await.is_some() {
-            self.stats.negative_hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            self.stats
+                .negative_hits
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             return Ok(None);
         }
 
         // Main cache lookup
         if let Some(routes) = self.route_cache.get(&cache_key).await {
-            self.stats.route_hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            self.stats
+                .route_hits
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
             // Promote to hot cache if frequently accessed
             if routes.len() > 0 {
@@ -195,13 +206,20 @@ impl DatabaseCache {
         }
 
         // Cache miss - query database
-        self.stats.route_misses.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.stats
+            .route_misses
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        match self.query_routes_from_database(dnis, route_type, jurisdiction).await {
+        match self
+            .query_routes_from_database(dnis, route_type, jurisdiction)
+            .await
+        {
             Ok(Some(routes)) => {
                 // Cache the result
                 let cached_routes = RouteVec::from_iter(routes);
-                self.route_cache.insert(cache_key.clone(), cached_routes.clone()).await;
+                self.route_cache
+                    .insert(cache_key.clone(), cached_routes.clone())
+                    .await;
 
                 // Add to hot cache if it's a good route
                 if cached_routes.len() > 0 {
@@ -222,12 +240,16 @@ impl DatabaseCache {
     /// Get trunk configuration (cached)
     pub async fn get_trunk(&self, trunk_id: i32) -> Result<Option<CachedTrunk>> {
         if let Some(trunk) = self.trunk_cache.get(&trunk_id).await {
-            self.stats.trunk_hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            self.stats
+                .trunk_hits
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             return Ok(Some(trunk));
         }
 
         // Cache miss - query database
-        self.stats.trunk_misses.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.stats
+            .trunk_misses
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         match self.query_trunk_from_database(trunk_id).await {
             Ok(Some(trunk)) => {
@@ -240,19 +262,30 @@ impl DatabaseCache {
     }
 
     /// Get client rate (cached)
-    pub async fn get_client_rate(&self, deck_id: i32, rating_code: &str) -> Result<Option<CachedClientRate>> {
+    pub async fn get_client_rate(
+        &self,
+        deck_id: i32,
+        rating_code: &str,
+    ) -> Result<Option<CachedClientRate>> {
         let rating_symbol = intern_phone_number(rating_code);
         let cache_key = (deck_id, rating_symbol);
 
         if let Some(rate) = self.client_rate_cache.get(&cache_key).await {
-            self.stats.client_rate_hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            self.stats
+                .client_rate_hits
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             return Ok(Some(rate));
         }
 
         // Cache miss - query database
-        self.stats.client_rate_misses.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.stats
+            .client_rate_misses
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        match self.query_client_rate_from_database(deck_id, rating_code).await {
+        match self
+            .query_client_rate_from_database(deck_id, rating_code)
+            .await
+        {
             Ok(Some(rate)) => {
                 self.client_rate_cache.insert(cache_key, rate.clone()).await;
                 Ok(Some(rate))
@@ -302,13 +335,19 @@ impl DatabaseCache {
         CacheStatistics {
             route_hit_ratio: if route_hits + route_misses > 0 {
                 route_hits as f64 / (route_hits + route_misses) as f64
-            } else { 0.0 },
+            } else {
+                0.0
+            },
             trunk_hit_ratio: if trunk_hits + trunk_misses > 0 {
                 trunk_hits as f64 / (trunk_hits + trunk_misses) as f64
-            } else { 0.0 },
+            } else {
+                0.0
+            },
             client_rate_hit_ratio: if client_rate_hits + client_rate_misses > 0 {
                 client_rate_hits as f64 / (client_rate_hits + client_rate_misses) as f64
-            } else { 0.0 },
+            } else {
+                0.0
+            },
             route_cache_size: self.route_cache.entry_count(),
             trunk_cache_size: self.trunk_cache.entry_count(),
             client_rate_cache_size: self.client_rate_cache.entry_count(),
@@ -375,12 +414,18 @@ impl DatabaseCache {
                 interval.tick().await;
 
                 let route_hits = stats.route_hits.load(std::sync::atomic::Ordering::Relaxed);
-                let route_misses = stats.route_misses.load(std::sync::atomic::Ordering::Relaxed);
+                let route_misses = stats
+                    .route_misses
+                    .load(std::sync::atomic::Ordering::Relaxed);
 
                 if route_hits + route_misses > 0 {
                     let hit_ratio = route_hits as f64 / (route_hits + route_misses) as f64;
-                    debug!("Route cache hit ratio: {:.2}% ({} hits, {} misses)",
-                        hit_ratio * 100.0, route_hits, route_misses);
+                    debug!(
+                        "Route cache hit ratio: {:.2}% ({} hits, {} misses)",
+                        hit_ratio * 100.0,
+                        route_hits,
+                        route_misses
+                    );
                 }
             }
         });
@@ -402,7 +447,9 @@ impl DatabaseCache {
         for row in rows {
             if let Some(prefix) = row.prefix.as_deref() {
                 // Preload routes for this prefix
-                let _ = self.get_routes(prefix, RouteType::NANPA, CallJurisdiction::Interstate).await;
+                let _ = self
+                    .get_routes(prefix, RouteType::NANPA, CallJurisdiction::Interstate)
+                    .await;
             }
         }
 
@@ -411,11 +458,9 @@ impl DatabaseCache {
     }
 
     async fn preload_trunks(&self) -> Result<()> {
-        let rows = sqlx::query!(
-            "SELECT id FROM trunks WHERE enabled = true"
-        )
-        .fetch_all(&self.pool)
-        .await?;
+        let rows = sqlx::query!("SELECT id FROM trunks WHERE enabled = true")
+            .fetch_all(&self.pool)
+            .await?;
 
         for row in rows {
             let _ = self.get_trunk(row.id).await;
@@ -425,7 +470,12 @@ impl DatabaseCache {
         Ok(())
     }
 
-    async fn query_routes_from_database(&self, dnis: &str, route_type: RouteType, jurisdiction: CallJurisdiction) -> Result<Option<Vec<CachedRoute>>> {
+    async fn query_routes_from_database(
+        &self,
+        dnis: &str,
+        route_type: RouteType,
+        jurisdiction: CallJurisdiction,
+    ) -> Result<Option<Vec<CachedRoute>>> {
         // Simplified database query - implement actual LCR logic
         let rows = sqlx::query!(
             "SELECT t.id, t.name, r.rate, r.rating_code, r.effective_date, t.priority, t.enabled
@@ -443,15 +493,18 @@ impl DatabaseCache {
             return Ok(None);
         }
 
-        let routes = rows.into_iter().map(|row| CachedRoute {
-            trunk_id: row.id,
-            trunk_name: intern_trunk_id(&row.name),
-            rate: row.rate,
-            rating_code: intern_phone_number(&row.rating_code),
-            effective_date: row.effective_date,
-            priority: row.priority as u32,
-            enabled: row.enabled,
-        }).collect();
+        let routes = rows
+            .into_iter()
+            .map(|row| CachedRoute {
+                trunk_id: row.id,
+                trunk_name: intern_trunk_id(&row.name),
+                rate: row.rate,
+                rating_code: intern_phone_number(&row.rating_code),
+                effective_date: row.effective_date,
+                priority: row.priority as u32,
+                enabled: row.enabled,
+            })
+            .collect();
 
         Ok(Some(routes))
     }
@@ -481,7 +534,11 @@ impl DatabaseCache {
         }
     }
 
-    async fn query_client_rate_from_database(&self, deck_id: i32, rating_code: &str) -> Result<Option<CachedClientRate>> {
+    async fn query_client_rate_from_database(
+        &self,
+        deck_id: i32,
+        rating_code: &str,
+    ) -> Result<Option<CachedClientRate>> {
         let row = sqlx::query!(
             "SELECT rate, effective_date, rating_code, deck_id
              FROM client_rates
@@ -544,12 +601,18 @@ mod tests {
         // Test cache statistics calculation
         let stats = CacheStats::default();
 
-        stats.route_hits.store(80, std::sync::atomic::Ordering::Relaxed);
-        stats.route_misses.store(20, std::sync::atomic::Ordering::Relaxed);
+        stats
+            .route_hits
+            .store(80, std::sync::atomic::Ordering::Relaxed);
+        stats
+            .route_misses
+            .store(20, std::sync::atomic::Ordering::Relaxed);
 
-        let hit_ratio = stats.route_hits.load(std::sync::atomic::Ordering::Relaxed) as f64 /
-            (stats.route_hits.load(std::sync::atomic::Ordering::Relaxed) +
-             stats.route_misses.load(std::sync::atomic::Ordering::Relaxed)) as f64;
+        let hit_ratio = stats.route_hits.load(std::sync::atomic::Ordering::Relaxed) as f64
+            / (stats.route_hits.load(std::sync::atomic::Ordering::Relaxed)
+                + stats
+                    .route_misses
+                    .load(std::sync::atomic::Ordering::Relaxed)) as f64;
 
         assert_eq!(hit_ratio, 0.8);
     }

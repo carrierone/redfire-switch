@@ -80,14 +80,12 @@ impl Default for HealthMonitoringConfig {
             timeout_seconds: 10,
             prometheus_enabled: true,
             prometheus_port: 9090,
-            alert_channels: vec![
-                AlertChannel {
-                    name: "log".to_string(),
-                    channel_type: AlertChannelType::Log,
-                    config: HashMap::new(),
-                    enabled: true,
-                },
-            ],
+            alert_channels: vec![AlertChannel {
+                name: "log".to_string(),
+                channel_type: AlertChannelType::Log,
+                config: HashMap::new(),
+                enabled: true,
+            }],
             components: vec![
                 ComponentConfig {
                     name: "database".to_string(),
@@ -264,19 +262,13 @@ impl HealthMonitoringService {
                         continue;
                     }
 
-                    let check_result = Self::perform_health_check(
-                        component_config,
-                        &database_service,
-                    ).await;
+                    let check_result =
+                        Self::perform_health_check(component_config, &database_service).await;
 
                     let mut states = component_states.write().await;
                     if let Some(state) = states.get_mut(&component_config.name) {
-                        Self::update_component_state(
-                            state,
-                            check_result,
-                            &config,
-                            &alert_sender,
-                        ).await;
+                        Self::update_component_state(state, check_result, &config, &alert_sender)
+                            .await;
                     }
                 }
             }
@@ -303,7 +295,9 @@ impl HealthMonitoringService {
                                     }
                                 } else {
                                     HealthCheckResult::Unhealthy {
-                                        error: status.error.unwrap_or("Database not connected".to_string()),
+                                        error: status
+                                            .error
+                                            .unwrap_or("Database not connected".to_string()),
                                         response_time_ms: Some(status.response_time_ms),
                                     }
                                 }
@@ -320,96 +314,90 @@ impl HealthMonitoringService {
                         }
                     }
                 }
-                ComponentType::MemoryUsage => {
-                    match Self::check_memory_usage().await {
-                        Ok(usage_percentage) => {
-                            let mut metrics = HashMap::new();
-                            metrics.insert("usage_percentage".to_string(), usage_percentage);
+                ComponentType::MemoryUsage => match Self::check_memory_usage().await {
+                    Ok(usage_percentage) => {
+                        let mut metrics = HashMap::new();
+                        metrics.insert("usage_percentage".to_string(), usage_percentage);
 
-                            if usage_percentage > 90.0 {
-                                HealthCheckResult::Unhealthy {
-                                    error: format!("Memory usage too high: {:.1}%", usage_percentage),
-                                    response_time_ms: Some(start_time.elapsed().as_millis() as f64),
-                                }
-                            } else if usage_percentage > 80.0 {
-                                HealthCheckResult::Degraded {
-                                    warning: format!("High memory usage: {:.1}%", usage_percentage),
-                                    response_time_ms: start_time.elapsed().as_millis() as f64,
-                                    metrics,
-                                }
-                            } else {
-                                HealthCheckResult::Healthy {
-                                    response_time_ms: start_time.elapsed().as_millis() as f64,
-                                    metrics,
-                                }
+                        if usage_percentage > 90.0 {
+                            HealthCheckResult::Unhealthy {
+                                error: format!("Memory usage too high: {:.1}%", usage_percentage),
+                                response_time_ms: Some(start_time.elapsed().as_millis() as f64),
+                            }
+                        } else if usage_percentage > 80.0 {
+                            HealthCheckResult::Degraded {
+                                warning: format!("High memory usage: {:.1}%", usage_percentage),
+                                response_time_ms: start_time.elapsed().as_millis() as f64,
+                                metrics,
+                            }
+                        } else {
+                            HealthCheckResult::Healthy {
+                                response_time_ms: start_time.elapsed().as_millis() as f64,
+                                metrics,
                             }
                         }
-                        Err(e) => HealthCheckResult::Unhealthy {
-                            error: e.to_string(),
-                            response_time_ms: None,
-                        },
                     }
-                }
-                ComponentType::CpuUsage => {
-                    match Self::check_cpu_usage().await {
-                        Ok(usage_percentage) => {
-                            let mut metrics = HashMap::new();
-                            metrics.insert("usage_percentage".to_string(), usage_percentage);
+                    Err(e) => HealthCheckResult::Unhealthy {
+                        error: e.to_string(),
+                        response_time_ms: None,
+                    },
+                },
+                ComponentType::CpuUsage => match Self::check_cpu_usage().await {
+                    Ok(usage_percentage) => {
+                        let mut metrics = HashMap::new();
+                        metrics.insert("usage_percentage".to_string(), usage_percentage);
 
-                            if usage_percentage > 95.0 {
-                                HealthCheckResult::Unhealthy {
-                                    error: format!("CPU usage too high: {:.1}%", usage_percentage),
-                                    response_time_ms: Some(start_time.elapsed().as_millis() as f64),
-                                }
-                            } else if usage_percentage > 85.0 {
-                                HealthCheckResult::Degraded {
-                                    warning: format!("High CPU usage: {:.1}%", usage_percentage),
-                                    response_time_ms: start_time.elapsed().as_millis() as f64,
-                                    metrics,
-                                }
-                            } else {
-                                HealthCheckResult::Healthy {
-                                    response_time_ms: start_time.elapsed().as_millis() as f64,
-                                    metrics,
-                                }
+                        if usage_percentage > 95.0 {
+                            HealthCheckResult::Unhealthy {
+                                error: format!("CPU usage too high: {:.1}%", usage_percentage),
+                                response_time_ms: Some(start_time.elapsed().as_millis() as f64),
+                            }
+                        } else if usage_percentage > 85.0 {
+                            HealthCheckResult::Degraded {
+                                warning: format!("High CPU usage: {:.1}%", usage_percentage),
+                                response_time_ms: start_time.elapsed().as_millis() as f64,
+                                metrics,
+                            }
+                        } else {
+                            HealthCheckResult::Healthy {
+                                response_time_ms: start_time.elapsed().as_millis() as f64,
+                                metrics,
                             }
                         }
-                        Err(e) => HealthCheckResult::Unhealthy {
-                            error: e.to_string(),
-                            response_time_ms: None,
-                        },
                     }
-                }
-                ComponentType::DiskUsage => {
-                    match Self::check_disk_usage("/").await {
-                        Ok(usage_percentage) => {
-                            let mut metrics = HashMap::new();
-                            metrics.insert("usage_percentage".to_string(), usage_percentage);
+                    Err(e) => HealthCheckResult::Unhealthy {
+                        error: e.to_string(),
+                        response_time_ms: None,
+                    },
+                },
+                ComponentType::DiskUsage => match Self::check_disk_usage("/").await {
+                    Ok(usage_percentage) => {
+                        let mut metrics = HashMap::new();
+                        metrics.insert("usage_percentage".to_string(), usage_percentage);
 
-                            if usage_percentage > 95.0 {
-                                HealthCheckResult::Unhealthy {
-                                    error: format!("Disk usage too high: {:.1}%", usage_percentage),
-                                    response_time_ms: Some(start_time.elapsed().as_millis() as f64),
-                                }
-                            } else if usage_percentage > 85.0 {
-                                HealthCheckResult::Degraded {
-                                    warning: format!("High disk usage: {:.1}%", usage_percentage),
-                                    response_time_ms: start_time.elapsed().as_millis() as f64,
-                                    metrics,
-                                }
-                            } else {
-                                HealthCheckResult::Healthy {
-                                    response_time_ms: start_time.elapsed().as_millis() as f64,
-                                    metrics,
-                                }
+                        if usage_percentage > 95.0 {
+                            HealthCheckResult::Unhealthy {
+                                error: format!("Disk usage too high: {:.1}%", usage_percentage),
+                                response_time_ms: Some(start_time.elapsed().as_millis() as f64),
+                            }
+                        } else if usage_percentage > 85.0 {
+                            HealthCheckResult::Degraded {
+                                warning: format!("High disk usage: {:.1}%", usage_percentage),
+                                response_time_ms: start_time.elapsed().as_millis() as f64,
+                                metrics,
+                            }
+                        } else {
+                            HealthCheckResult::Healthy {
+                                response_time_ms: start_time.elapsed().as_millis() as f64,
+                                metrics,
                             }
                         }
-                        Err(e) => HealthCheckResult::Unhealthy {
-                            error: e.to_string(),
-                            response_time_ms: None,
-                        },
                     }
-                }
+                    Err(e) => HealthCheckResult::Unhealthy {
+                        error: e.to_string(),
+                        response_time_ms: None,
+                    },
+                },
                 ComponentType::NetworkConnectivity => {
                     // Simple network connectivity check (ping localhost)
                     match tokio::process::Command::new("ping")
@@ -444,7 +432,8 @@ impl HealthMonitoringService {
                     }
                 }
             }
-        }).await;
+        })
+        .await;
 
         match result {
             Ok(check_result) => check_result,
@@ -465,7 +454,10 @@ impl HealthMonitoringService {
         state.last_check = Utc::now();
 
         match result {
-            HealthCheckResult::Healthy { response_time_ms, metrics } => {
+            HealthCheckResult::Healthy {
+                response_time_ms,
+                metrics,
+            } => {
                 state.consecutive_failures = 0;
                 state.consecutive_successes += 1;
                 state.response_time_ms = Some(response_time_ms);
@@ -476,7 +468,11 @@ impl HealthMonitoringService {
                     state.status = HealthStatus::Healthy;
                 }
             }
-            HealthCheckResult::Degraded { warning: _, response_time_ms, metrics } => {
+            HealthCheckResult::Degraded {
+                warning: _,
+                response_time_ms,
+                metrics,
+            } => {
                 state.consecutive_failures = 0;
                 state.consecutive_successes += 1;
                 state.response_time_ms = Some(response_time_ms);
@@ -484,7 +480,10 @@ impl HealthMonitoringService {
                 state.metrics = metrics;
                 state.status = HealthStatus::Degraded;
             }
-            HealthCheckResult::Unhealthy { error, response_time_ms } => {
+            HealthCheckResult::Unhealthy {
+                error,
+                response_time_ms,
+            } => {
                 state.consecutive_successes = 0;
                 state.consecutive_failures += 1;
                 state.response_time_ms = response_time_ms;
@@ -509,7 +508,10 @@ impl HealthMonitoringService {
                 id: Uuid::new_v4(),
                 component: state.name.clone(),
                 severity,
-                title: format!("Component {} status changed to {:?}", state.name, state.status),
+                title: format!(
+                    "Component {} status changed to {:?}",
+                    state.name, state.status
+                ),
                 description: state.error_message.clone().unwrap_or_default(),
                 timestamp: Utc::now(),
                 resolved: state.status == HealthStatus::Healthy,
@@ -545,29 +547,30 @@ impl HealthMonitoringService {
             }
 
             match channel.channel_type {
-                AlertChannelType::Log => {
-                    match alert.severity {
-                        AlertSeverity::Info => info!(
-                            "[ALERT] {}: {} - {}",
-                            alert.component, alert.title, alert.description
-                        ),
-                        AlertSeverity::Warning => warn!(
-                            "[ALERT] {}: {} - {}",
-                            alert.component, alert.title, alert.description
-                        ),
-                        AlertSeverity::Critical => error!(
-                            "[ALERT] {}: {} - {}",
-                            alert.component, alert.title, alert.description
-                        ),
-                    }
-                }
+                AlertChannelType::Log => match alert.severity {
+                    AlertSeverity::Info => info!(
+                        "[ALERT] {}: {} - {}",
+                        alert.component, alert.title, alert.description
+                    ),
+                    AlertSeverity::Warning => warn!(
+                        "[ALERT] {}: {} - {}",
+                        alert.component, alert.title, alert.description
+                    ),
+                    AlertSeverity::Critical => error!(
+                        "[ALERT] {}: {} - {}",
+                        alert.component, alert.title, alert.description
+                    ),
+                },
                 AlertChannelType::Webhook => {
                     // TODO: Implement webhook alert sending
                     debug!("Would send webhook alert: {}", alert.title);
                 }
                 _ => {
                     // TODO: Implement other alert channel types
-                    debug!("Would send {:?} alert: {}", channel.channel_type, alert.title);
+                    debug!(
+                        "Would send {:?} alert: {}",
+                        channel.channel_type, alert.title
+                    );
                 }
             }
         }
@@ -598,7 +601,8 @@ impl HealthMonitoringService {
                 }
 
                 // TODO: Update other metrics (connections, requests, etc.)
-                debug!("System metrics updated: mem={:.1}%, cpu={:.1}%, disk={:.1}%",
+                debug!(
+                    "System metrics updated: mem={:.1}%, cpu={:.1}%, disk={:.1}%",
                     metrics.memory_usage_percentage,
                     metrics.cpu_usage_percentage,
                     metrics.disk_usage_percentage
@@ -626,7 +630,8 @@ impl HealthMonitoringService {
 
     async fn check_memory_usage() -> Result<f64> {
         // Read /proc/meminfo on Linux
-        let meminfo = tokio::fs::read_to_string("/proc/meminfo").await
+        let meminfo = tokio::fs::read_to_string("/proc/meminfo")
+            .await
             .map_err(|e| anyhow!("Failed to read memory info: {}", e))?;
 
         let mut total_kb = 0u64;
@@ -634,11 +639,15 @@ impl HealthMonitoringService {
 
         for line in meminfo.lines() {
             if line.starts_with("MemTotal:") {
-                total_kb = line.split_whitespace().nth(1)
+                total_kb = line
+                    .split_whitespace()
+                    .nth(1)
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(0);
             } else if line.starts_with("MemAvailable:") {
-                available_kb = line.split_whitespace().nth(1)
+                available_kb = line
+                    .split_whitespace()
+                    .nth(1)
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(0);
             }
@@ -654,10 +663,13 @@ impl HealthMonitoringService {
 
     async fn check_cpu_usage() -> Result<f64> {
         // Read /proc/loadavg on Linux
-        let loadavg = tokio::fs::read_to_string("/proc/loadavg").await
+        let loadavg = tokio::fs::read_to_string("/proc/loadavg")
+            .await
             .map_err(|e| anyhow!("Failed to read load average: {}", e))?;
 
-        let load_1min = loadavg.split_whitespace().next()
+        let load_1min = loadavg
+            .split_whitespace()
+            .next()
             .and_then(|s| s.parse::<f64>().ok())
             .unwrap_or(0.0);
 
@@ -676,7 +688,8 @@ impl HealthMonitoringService {
         {
             Ok(output) => {
                 let output_str = String::from_utf8_lossy(&output.stdout);
-                for line in output_str.lines().skip(1) { // Skip header
+                for line in output_str.lines().skip(1) {
+                    // Skip header
                     if let Some(usage_str) = line.split_whitespace().nth(4) {
                         if let Some(percentage_str) = usage_str.strip_suffix('%') {
                             if let Ok(percentage) = percentage_str.parse::<f64>() {
@@ -709,8 +722,9 @@ impl HealthMonitoringService {
                 HealthStatus::Unhealthy => {
                     unhealthy_count += 1;
                     // Check if this is a critical component
-                    if let Some(component_config) = self.config.components.iter()
-                        .find(|c| c.name == *name) {
+                    if let Some(component_config) =
+                        self.config.components.iter().find(|c| c.name == *name)
+                    {
                         if component_config.critical {
                             has_critical_failure = true;
                         }
@@ -742,18 +756,23 @@ impl HealthMonitoringService {
     }
 
     /// Get detailed component health information
-    pub async fn get_component_health(&self, component_name: &str) -> Option<ComponentHealthStatus> {
+    pub async fn get_component_health(
+        &self,
+        component_name: &str,
+    ) -> Option<ComponentHealthStatus> {
         let states = self.component_states.read().await;
-        states.get(component_name).map(|state| ComponentHealthStatus {
-            name: state.name.clone(),
-            status: state.status.clone(),
-            last_check: state.last_check,
-            response_time_ms: state.response_time_ms,
-            error_message: state.error_message.clone(),
-            metrics: state.metrics.clone(),
-            consecutive_failures: state.consecutive_failures,
-            consecutive_successes: state.consecutive_successes,
-        })
+        states
+            .get(component_name)
+            .map(|state| ComponentHealthStatus {
+                name: state.name.clone(),
+                status: state.status.clone(),
+                last_check: state.last_check,
+                response_time_ms: state.response_time_ms,
+                error_message: state.error_message.clone(),
+                metrics: state.metrics.clone(),
+                consecutive_failures: state.consecutive_failures,
+                consecutive_successes: state.consecutive_successes,
+            })
     }
 
     /// Trigger manual health check for all components

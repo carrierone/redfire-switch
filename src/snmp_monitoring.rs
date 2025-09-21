@@ -164,7 +164,8 @@ impl SnmpMonitoringService {
     pub async fn new(config: SnmpConfig) -> Result<Self> {
         let socket = if config.enabled {
             let addr = SocketAddr::new(config.bind_address, config.port);
-            let socket = UdpSocket::bind(addr).await
+            let socket = UdpSocket::bind(addr)
+                .await
                 .map_err(|e| anyhow!("Failed to bind SNMP socket to {}: {}", addr, e))?;
             info!("SNMP agent listening on {}", addr);
             Some(Arc::new(socket))
@@ -194,12 +195,15 @@ impl SnmpMonitoringService {
     async fn initialize_mib_values(&self) {
         let mut values = self.mib_values.write().await;
 
-        values.insert("1.3.6.1.2.1.1.1.0".to_string(),
-            SnmpValue::String(self.config.system_description.clone()));
-        values.insert("1.3.6.1.2.1.1.2.0".to_string(),
-            SnmpValue::String("1.3.6.1.4.1.9999".to_string()));
-        values.insert("1.3.6.1.2.1.1.3.0".to_string(),
-            SnmpValue::TimeTicks(0));
+        values.insert(
+            "1.3.6.1.2.1.1.1.0".to_string(),
+            SnmpValue::String(self.config.system_description.clone()),
+        );
+        values.insert(
+            "1.3.6.1.2.1.1.2.0".to_string(),
+            SnmpValue::String("1.3.6.1.4.1.9999".to_string()),
+        );
+        values.insert("1.3.6.1.2.1.1.3.0".to_string(), SnmpValue::TimeTicks(0));
 
         for mib in &self.config.custom_mibs {
             for object in &mib.objects {
@@ -256,10 +260,14 @@ impl SnmpMonitoringService {
                 let mut values = mib_values.write().await;
 
                 let uptime_centiseconds = start_time.elapsed().as_millis() / 10;
-                values.insert("1.3.6.1.2.1.1.3.0".to_string(),
-                    SnmpValue::TimeTicks(uptime_centiseconds as u32));
-                values.insert("1.3.6.1.4.1.9999.1.1.1".to_string(),
-                    SnmpValue::String("RedFire Switch v1.0.0".to_string()));
+                values.insert(
+                    "1.3.6.1.2.1.1.3.0".to_string(),
+                    SnmpValue::TimeTicks(uptime_centiseconds as u32),
+                );
+                values.insert(
+                    "1.3.6.1.4.1.9999.1.1.1".to_string(),
+                    SnmpValue::String("RedFire Switch v1.0.0".to_string()),
+                );
 
                 debug!("Updated MIB values");
             }
@@ -296,9 +304,10 @@ impl SnmpTrapEvent {
             enterprise_oid: "1.3.6.1.4.1.9999".to_string(),
             specific_trap: 1,
             timestamp: Utc::now(),
-            variable_bindings: vec![
-                ("1.3.6.1.4.1.9999.1.1.1".to_string(), "System started".to_string()),
-            ],
+            variable_bindings: vec![(
+                "1.3.6.1.4.1.9999.1.1.1".to_string(),
+                "System started".to_string(),
+            )],
         }
     }
 }

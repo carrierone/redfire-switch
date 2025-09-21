@@ -6,9 +6,13 @@ use sqlx::{PgPool, Row};
 use std::sync::Arc;
 use tracing::{info, warn};
 
-use crate::performance::database_cache::{DatabaseCache, RouteType as CacheRouteType, CallJurisdiction as CacheJurisdiction};
-use crate::performance::memory_pools::{PooledRouteRequest, PooledRouteResponse, pools};
-use crate::performance::string_interner::{intern_phone_number, resolve_phone_number, resolve_trunk_id};
+use crate::performance::database_cache::{
+    CallJurisdiction as CacheJurisdiction, DatabaseCache, RouteType as CacheRouteType,
+};
+use crate::performance::memory_pools::{pools, PooledRouteRequest, PooledRouteResponse};
+use crate::performance::string_interner::{
+    intern_phone_number, resolve_phone_number, resolve_trunk_id,
+};
 
 use crate::lcr::cache::LcrCache;
 use crate::lcr::jurisdiction::JurisdictionCalculator;
@@ -47,7 +51,9 @@ impl RoutingEngine {
             pool,
             lrn_dip_service: None,
             db_cache,
-            static_route_patterns: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+            static_route_patterns: Arc::new(std::sync::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
         }
     }
 
@@ -67,7 +73,9 @@ impl RoutingEngine {
             pool,
             lrn_dip_service: Some(lrn_dip_service),
             db_cache,
-            static_route_patterns: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+            static_route_patterns: Arc::new(std::sync::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
         }
     }
 
@@ -96,7 +104,8 @@ impl RoutingEngine {
         let effective_time = request.effective_time.unwrap_or_else(Utc::now);
 
         // Fast cache-based routing
-        self.find_routes_cached(&pooled_request, effective_time).await
+        self.find_routes_cached(&pooled_request, effective_time)
+            .await
     }
 
     /// Optimized route finding using database cache
@@ -113,18 +122,19 @@ impl RoutingEngine {
         };
 
         // Determine jurisdiction for caching
-        let jurisdiction = if request.route_type == crate::performance::memory_pools::RouteType::NANPA {
-            CacheJurisdiction::Interstate // Simplified for now
-        } else {
-            CacheJurisdiction::International
-        };
+        let jurisdiction =
+            if request.route_type == crate::performance::memory_pools::RouteType::NANPA {
+                CacheJurisdiction::Interstate // Simplified for now
+            } else {
+                CacheJurisdiction::International
+            };
 
         // Query routes from cache (eliminates database hit in 95% of cases)
-        if let Some(cached_routes) = self.db_cache.get_routes(
-            &request.dnis,
-            cache_route_type,
-            jurisdiction,
-        ).await? {
+        if let Some(cached_routes) = self
+            .db_cache
+            .get_routes(&request.dnis, cache_route_type, jurisdiction)
+            .await?
+        {
             // Convert cached routes to response format
             let mut response_routes = Vec::with_capacity(cached_routes.len());
 
@@ -142,7 +152,8 @@ impl RoutingEngine {
                                 transport: crate::lcr::types::TransportProtocol::Udp,
                                 port: cached_trunk.port,
                                 active: cached_trunk.enabled,
-                                capacity_limit: cached_trunk.concurrent_limit.unwrap_or(1000) as i32,
+                                capacity_limit: cached_trunk.concurrent_limit.unwrap_or(1000)
+                                    as i32,
                                 cps_limit: rust_decimal::Decimal::from(10),
                                 priority: 1,
                                 weight: 1,
@@ -152,7 +163,8 @@ impl RoutingEngine {
                             vendor_rate: Some(crate::lcr::types::NanpaRate {
                                 id: 0,
                                 deck_id: 0,
-                                code: resolve_phone_number(cached_route.rating_code).unwrap_or_default(),
+                                code: resolve_phone_number(cached_route.rating_code)
+                                    .unwrap_or_default(),
                                 inter_rate: cached_route.rate,
                                 intra_rate: cached_route.rate,
                                 ij_rate: cached_route.rate,
@@ -185,8 +197,7 @@ impl RoutingEngine {
 
             info!(
                 "Found {} cached routes for {} (cache hit)",
-                response.total_routes,
-                request.dnis
+                response.total_routes, request.dnis
             );
 
             return Ok(response);
@@ -202,7 +213,10 @@ impl RoutingEngine {
         request: &PooledRouteRequest,
         effective_time: DateTime<Utc>,
     ) -> Result<RouteResponse> {
-        warn!("Route cache miss for {} - using fallback database query", request.dnis);
+        warn!(
+            "Route cache miss for {} - using fallback database query",
+            request.dnis
+        );
 
         // Convert back to original request format for legacy code
         let legacy_request = RouteRequest {
@@ -219,11 +233,15 @@ impl RoutingEngine {
         };
 
         // Call original implementation
-        self.find_routes_legacy(&legacy_request, effective_time).await
+        self.find_routes_legacy(&legacy_request, effective_time)
+            .await
     }
 
     /// Helper to convert route types
-    fn convert_route_type(&self, route_type: RouteType) -> crate::performance::memory_pools::RouteType {
+    fn convert_route_type(
+        &self,
+        route_type: RouteType,
+    ) -> crate::performance::memory_pools::RouteType {
         match route_type {
             RouteType::NANPA => crate::performance::memory_pools::RouteType::NANPA,
             RouteType::AZ => crate::performance::memory_pools::RouteType::AZ,
@@ -231,7 +249,10 @@ impl RoutingEngine {
         }
     }
 
-    fn convert_route_type_back(&self, route_type: crate::performance::memory_pools::RouteType) -> RouteType {
+    fn convert_route_type_back(
+        &self,
+        route_type: crate::performance::memory_pools::RouteType,
+    ) -> RouteType {
         match route_type {
             crate::performance::memory_pools::RouteType::NANPA => RouteType::NANPA,
             crate::performance::memory_pools::RouteType::AZ => RouteType::AZ,
@@ -240,7 +261,11 @@ impl RoutingEngine {
     }
 
     /// Legacy route finding (for cache misses only)
-    async fn find_routes_legacy(&self, request: &RouteRequest, effective_time: DateTime<Utc>) -> Result<RouteResponse> {
+    async fn find_routes_legacy(
+        &self,
+        request: &RouteRequest,
+        effective_time: DateTime<Utc>,
+    ) -> Result<RouteResponse> {
         // Original implementation goes here (truncated for brevity)
         // This would contain the original database queries
         Ok(RouteResponse {

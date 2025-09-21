@@ -1,14 +1,14 @@
 //! High-performance memory pools for carrier-grade call processing
 //! Eliminates allocation overhead for hot path objects
 
+use chrono::{DateTime, Utc};
 use object_pool::{Pool, Reusable};
-use smallvec::SmallVec;
+use once_cell::sync::Lazy;
 use smallstr::SmallString;
+use smallvec::SmallVec;
+use std::net::IpAddr;
 use std::sync::Arc;
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
-use std::net::IpAddr;
-use once_cell::sync::Lazy;
 
 /// Small string optimized for phone numbers and identifiers
 pub type FastString = SmallString<[u8; 32]>;

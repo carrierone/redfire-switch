@@ -29,16 +29,12 @@ static SIP_URI_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 /// Regex for extracting URI parameters - ReDoS safe version
-static URI_PARAM_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"([^;=\s]+)=([^;\s]*)")
-        .expect("Invalid URI parameter regex")
-});
+static URI_PARAM_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"([^;=\s]+)=([^;\s]*)").expect("Invalid URI parameter regex"));
 
 /// Regex for validating E.164 phone numbers - RFC compliant
-static E164_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^\+[1-9]\d{0,14}$")
-        .expect("Invalid E164 regex")
-});
+static E164_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\+[1-9]\d{0,14}$").expect("Invalid E164 regex"));
 
 /// SIP URI components per RFC 3261
 #[derive(Debug, Clone, Serialize, Deserialize)]

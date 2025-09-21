@@ -28,10 +28,10 @@ pub struct AuditConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AuditLogLevel {
-    Essential,   // Only critical operations (auth, config changes, security events)
-    Standard,    // Standard operations + call control
-    Detailed,    // All operations including SIP messages
-    Forensic,    // Maximum detail for forensic analysis
+    Essential, // Only critical operations (auth, config changes, security events)
+    Standard,  // Standard operations + call control
+    Detailed,  // All operations including SIP messages
+    Forensic,  // Maximum detail for forensic analysis
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -75,15 +75,15 @@ pub struct RetentionPolicy {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ComplianceStandard {
-    Sox,        // Sarbanes-Oxley
-    Pci,        // PCI DSS
-    Hipaa,      // HIPAA
-    Gdpr,       // GDPR
-    Iso27001,   // ISO 27001
-    Nist,       // NIST Cybersecurity Framework
-    Calea,      // CALEA (Communications Assistance for Law Enforcement Act)
-    FccPart68,  // FCC Part 68
-    TracedAct,  // TRACED Act
+    Sox,       // Sarbanes-Oxley
+    Pci,       // PCI DSS
+    Hipaa,     // HIPAA
+    Gdpr,      // GDPR
+    Iso27001,  // ISO 27001
+    Nist,      // NIST Cybersecurity Framework
+    Calea,     // CALEA (Communications Assistance for Law Enforcement Act)
+    FccPart68, // FCC Part 68
+    TracedAct, // TRACED Act
 }
 
 impl Default for AuditConfig {
@@ -97,7 +97,8 @@ impl Default for AuditConfig {
                     file_prefix: "audit".to_string(),
                 },
                 backup_storage: Some(StorageBackend::Database {
-                    connection_string: "postgresql://redfire:password@localhost/redfire_audit".to_string(),
+                    connection_string: "postgresql://redfire:password@localhost/redfire_audit"
+                        .to_string(),
                     table_name: "audit_log".to_string(),
                 }),
                 encryption_enabled: true,
@@ -197,9 +198,9 @@ pub enum AuditOutcome {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RetentionCategory {
-    Hot,    // Immediate access
-    Warm,   // Frequent access
-    Cold,   // Infrequent access
+    Hot,     // Immediate access
+    Warm,    // Frequent access
+    Cold,    // Infrequent access
     Archive, // Long-term retention
 }
 
@@ -235,8 +236,10 @@ impl AuditLoggingService {
             service.start_retention_manager().await;
         }
 
-        info!("Audit logging service initialized with {:?} compliance standards",
-            config.compliance_standards);
+        info!(
+            "Audit logging service initialized with {:?} compliance standards",
+            config.compliance_standards
+        );
         Ok(service)
     }
 
@@ -265,7 +268,8 @@ impl AuditLoggingService {
             error_message: None,
             compliance_tags: vec![],
             retention_category: RetentionCategory::Hot,
-        }).await
+        })
+        .await
     }
 
     /// Log a detailed audit event with full context
@@ -325,13 +329,17 @@ impl AuditLoggingService {
             resource_type: Some("authentication".to_string()),
             resource_id: None,
             action: "login_attempt".to_string(),
-            description: format!("Authentication attempt for user {} from {}", user_id, source_ip),
+            description: format!(
+                "Authentication attempt for user {} from {}",
+                user_id, source_ip
+            ),
             details,
             outcome,
             error_message: None,
             compliance_tags: vec![],
             retention_category: RetentionCategory::Hot,
-        }).await
+        })
+        .await
     }
 
     /// Log configuration change
@@ -368,7 +376,8 @@ impl AuditLoggingService {
             error_message: None,
             compliance_tags: vec![],
             retention_category: RetentionCategory::Warm,
-        }).await
+        })
+        .await
     }
 
     /// Log security event
@@ -398,7 +407,8 @@ impl AuditLoggingService {
             error_message: None,
             compliance_tags: vec![],
             retention_category: RetentionCategory::Hot,
-        }).await
+        })
+        .await
     }
 
     /// Log call control event
@@ -429,7 +439,8 @@ impl AuditLoggingService {
             error_message: None,
             compliance_tags: vec![],
             retention_category: RetentionCategory::Warm,
-        }).await
+        })
+        .await
     }
 
     async fn start_background_processor(
@@ -528,7 +539,10 @@ impl AuditLoggingService {
 
     async fn write_to_storage(storage: &StorageBackend, entries: &[AuditLogEntry]) -> Result<()> {
         match storage {
-            StorageBackend::File { base_path, file_prefix } => {
+            StorageBackend::File {
+                base_path,
+                file_prefix,
+            } => {
                 let timestamp = Utc::now().format("%Y%m%d_%H");
                 let filename = format!("{}/{}_{}.jsonl", base_path, file_prefix, timestamp);
 
@@ -554,14 +568,26 @@ impl AuditLoggingService {
             }
             StorageBackend::Syslog { server, facility } => {
                 // TODO: Implement syslog writing
-                debug!("Would write {} entries to syslog: {}:{}", entries.len(), server, facility);
+                debug!(
+                    "Would write {} entries to syslog: {}:{}",
+                    entries.len(),
+                    server,
+                    facility
+                );
             }
             StorageBackend::Database { .. } => {
                 // Handled separately by write_to_database
             }
-            StorageBackend::ElasticSearch { endpoints, index_pattern } => {
+            StorageBackend::ElasticSearch {
+                endpoints,
+                index_pattern,
+            } => {
                 // TODO: Implement Elasticsearch writing
-                debug!("Would write {} entries to Elasticsearch: {:?}", entries.len(), endpoints);
+                debug!(
+                    "Would write {} entries to Elasticsearch: {:?}",
+                    entries.len(),
+                    endpoints
+                );
             }
         }
 
@@ -630,29 +656,31 @@ impl AuditLoggingService {
         for standard in &self.config.compliance_standards {
             let should_tag = match standard {
                 ComplianceStandard::Sox => {
-                    matches!(entry.event_type,
-                        AuditEventType::Configuration |
-                        AuditEventType::UserManagement |
-                        AuditEventType::SystemOperation
+                    matches!(
+                        entry.event_type,
+                        AuditEventType::Configuration
+                            | AuditEventType::UserManagement
+                            | AuditEventType::SystemOperation
                     )
                 }
                 ComplianceStandard::Calea => {
-                    matches!(entry.event_type,
-                        AuditEventType::CallControl |
-                        AuditEventType::SipMessage |
-                        AuditEventType::EmergencyAction
+                    matches!(
+                        entry.event_type,
+                        AuditEventType::CallControl
+                            | AuditEventType::SipMessage
+                            | AuditEventType::EmergencyAction
                     )
                 }
                 ComplianceStandard::TracedAct => {
-                    matches!(entry.event_type,
-                        AuditEventType::CallControl |
-                        AuditEventType::SecurityEvent
+                    matches!(
+                        entry.event_type,
+                        AuditEventType::CallControl | AuditEventType::SecurityEvent
                     ) && entry.description.contains("fraud")
                 }
                 ComplianceStandard::Pci => {
-                    matches!(entry.event_type,
-                        AuditEventType::Authentication |
-                        AuditEventType::BillingOperation
+                    matches!(
+                        entry.event_type,
+                        AuditEventType::Authentication | AuditEventType::BillingOperation
                     )
                 }
                 _ => false,
@@ -668,8 +696,12 @@ impl AuditLoggingService {
 
     fn determine_retention_category(&self, entry: &AuditLogEntry) -> RetentionCategory {
         match entry.event_type {
-            AuditEventType::Authentication | AuditEventType::SecurityEvent => RetentionCategory::Hot,
-            AuditEventType::Configuration | AuditEventType::UserManagement => RetentionCategory::Warm,
+            AuditEventType::Authentication | AuditEventType::SecurityEvent => {
+                RetentionCategory::Hot
+            }
+            AuditEventType::Configuration | AuditEventType::UserManagement => {
+                RetentionCategory::Warm
+            }
             AuditEventType::CallControl => RetentionCategory::Cold,
             _ => RetentionCategory::Archive,
         }
@@ -678,7 +710,12 @@ impl AuditLoggingService {
     fn sanitize_sensitive_data(&self, mut data: serde_json::Value) -> serde_json::Value {
         if let serde_json::Value::Object(ref mut map) = data {
             for (key, value) in map.iter_mut() {
-                if self.config.sensitive_fields.iter().any(|field| key.to_lowercase().contains(&field.to_lowercase())) {
+                if self
+                    .config
+                    .sensitive_fields
+                    .iter()
+                    .any(|field| key.to_lowercase().contains(&field.to_lowercase()))
+                {
                     *value = serde_json::Value::String("[REDACTED]".to_string());
                 }
             }
@@ -689,15 +726,14 @@ impl AuditLoggingService {
     fn should_log_event(&self, entry: &AuditLogEntry) -> bool {
         match self.config.log_level {
             AuditLogLevel::Essential => {
-                matches!(entry.event_type,
-                    AuditEventType::Authentication |
-                    AuditEventType::Configuration |
-                    AuditEventType::SecurityEvent
+                matches!(
+                    entry.event_type,
+                    AuditEventType::Authentication
+                        | AuditEventType::Configuration
+                        | AuditEventType::SecurityEvent
                 )
             }
-            AuditLogLevel::Standard => {
-                !matches!(entry.event_type, AuditEventType::SipMessage)
-            }
+            AuditLogLevel::Standard => !matches!(entry.event_type, AuditEventType::SipMessage),
             AuditLogLevel::Detailed | AuditLogLevel::Forensic => true,
         }
     }
@@ -751,22 +787,31 @@ pub struct ComplianceReport {
 // Convenience functions for common audit events
 impl AuditLoggingService {
     pub async fn log_user_login(&self, user_id: &str, ip: IpAddr, success: bool) -> Result<()> {
-        let outcome = if success { AuditOutcome::Success } else { AuditOutcome::Failure };
-        self.log_authentication(user_id, ip, outcome, serde_json::json!({
-            "action": "login",
-            "success": success
-        })).await
+        let outcome = if success {
+            AuditOutcome::Success
+        } else {
+            AuditOutcome::Failure
+        };
+        self.log_authentication(
+            user_id,
+            ip,
+            outcome,
+            serde_json::json!({
+                "action": "login",
+                "success": success
+            }),
+        )
+        .await
     }
 
-    pub async fn log_trunk_configuration(&self, user_id: &str, trunk_id: &str, action: &str) -> Result<()> {
-        self.log_configuration_change(
-            Some(user_id),
-            "trunk",
-            trunk_id,
-            action,
-            None,
-            None,
-        ).await
+    pub async fn log_trunk_configuration(
+        &self,
+        user_id: &str,
+        trunk_id: &str,
+        action: &str,
+    ) -> Result<()> {
+        self.log_configuration_change(Some(user_id), "trunk", trunk_id, action, None, None)
+            .await
     }
 
     pub async fn log_emergency_call(&self, call_id: &str, from: &str, to: &str) -> Result<()> {
@@ -793,6 +838,7 @@ impl AuditLoggingService {
             error_message: None,
             compliance_tags: vec![ComplianceStandard::Calea],
             retention_category: RetentionCategory::Hot,
-        }).await
+        })
+        .await
     }
 }

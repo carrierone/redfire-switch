@@ -383,8 +383,11 @@ mod routing_integration_tests {
 
         for (number, expected_cc, description) in test_cases {
             let country_code = extract_country_code_from_international(number);
-            assert_eq!(country_code, expected_cc,
-                "Failed to extract country code from {} ({})", number, description);
+            assert_eq!(
+                country_code, expected_cc,
+                "Failed to extract country code from {} ({})",
+                number, description
+            );
         }
     }
 
@@ -445,12 +448,24 @@ mod routing_integration_tests {
         };
 
         // Validate EU-specific settings
-        assert!(plan.eea_routing_enabled, "EU plan should have EEA routing enabled");
-        assert!(plan.eea_priority_routing, "EU plan should prioritize EEA routes");
-        assert!(plan.eea_reduced_rates, "EU plan should have reduced EEA rates");
+        assert!(
+            plan.eea_routing_enabled,
+            "EU plan should have EEA routing enabled"
+        );
+        assert!(
+            plan.eea_priority_routing,
+            "EU plan should prioritize EEA routes"
+        );
+        assert!(
+            plan.eea_reduced_rates,
+            "EU plan should have reduced EEA rates"
+        );
         assert_eq!(plan.eea_rate_reduction, Decimal::from_str("0.15").unwrap());
         assert_eq!(plan.default_jurisdiction, InternationalJurisdiction::EEA);
-        assert!(!plan.allow_unknown_destinations, "EU plan should be strict about unknown destinations");
+        assert!(
+            !plan.allow_unknown_destinations,
+            "EU plan should be strict about unknown destinations"
+        );
     }
 
     #[test]
@@ -462,7 +477,7 @@ mod routing_integration_tests {
             ("ES", "Spain", 91),
             ("NL", "Netherlands", 96),
             ("SE", "Sweden", 93),
-            ("NO", "Norway", 89), // EEA but not EU
+            ("NO", "Norway", 89),  // EEA but not EU
             ("IS", "Iceland", 87), // EEA but not EU
         ];
 
@@ -481,8 +496,14 @@ mod routing_integration_tests {
             };
 
             assert_eq!(preference.jurisdiction, InternationalJurisdiction::EEA);
-            assert!(preference.quality_score >= 85, "EEA countries should have high quality scores");
-            assert!(preference.cost_multiplier < Decimal::ONE, "EEA should have cost reduction");
+            assert!(
+                preference.quality_score >= 85,
+                "EEA countries should have high quality scores"
+            );
+            assert!(
+                preference.cost_multiplier < Decimal::ONE,
+                "EEA should have cost reduction"
+            );
         }
     }
 
@@ -513,8 +534,14 @@ mod routing_integration_tests {
             };
 
             assert_eq!(preference.jurisdiction, InternationalJurisdiction::ROW);
-            assert!(preference.cost_multiplier > Decimal::ONE, "ROW should have cost premium");
-            assert!(preference.max_duration_minutes > 0, "ROW should have duration limits");
+            assert!(
+                preference.cost_multiplier > Decimal::ONE,
+                "ROW should have cost premium"
+            );
+            assert!(
+                preference.max_duration_minutes > 0,
+                "ROW should have duration limits"
+            );
         }
     }
 
@@ -522,18 +549,56 @@ mod routing_integration_tests {
     fn test_international_rate_structure_validation() {
         let rates = vec![
             // Premium destinations
-            ("44", Some("20".to_string()), "UK London", Decimal::from_str("0.008").unwrap()),
-            ("49", Some("30".to_string()), "Germany Berlin", Decimal::from_str("0.007").unwrap()),
-            ("33", Some("1".to_string()), "France Paris", Decimal::from_str("0.009").unwrap()),
-
+            (
+                "44",
+                Some("20".to_string()),
+                "UK London",
+                Decimal::from_str("0.008").unwrap(),
+            ),
+            (
+                "49",
+                Some("30".to_string()),
+                "Germany Berlin",
+                Decimal::from_str("0.007").unwrap(),
+            ),
+            (
+                "33",
+                Some("1".to_string()),
+                "France Paris",
+                Decimal::from_str("0.009").unwrap(),
+            ),
             // Standard destinations
-            ("39", None, "Italy Mobile", Decimal::from_str("0.015").unwrap()),
-            ("34", None, "Spain Mobile", Decimal::from_str("0.014").unwrap()),
-
+            (
+                "39",
+                None,
+                "Italy Mobile",
+                Decimal::from_str("0.015").unwrap(),
+            ),
+            (
+                "34",
+                None,
+                "Spain Mobile",
+                Decimal::from_str("0.014").unwrap(),
+            ),
             // ROW destinations (higher rates)
-            ("86", Some("10".to_string()), "China Beijing", Decimal::from_str("0.025").unwrap()),
-            ("91", Some("98".to_string()), "India Mumbai", Decimal::from_str("0.035").unwrap()),
-            ("55", Some("11".to_string()), "Brazil São Paulo", Decimal::from_str("0.045").unwrap()),
+            (
+                "86",
+                Some("10".to_string()),
+                "China Beijing",
+                Decimal::from_str("0.025").unwrap(),
+            ),
+            (
+                "91",
+                Some("98".to_string()),
+                "India Mumbai",
+                Decimal::from_str("0.035").unwrap(),
+            ),
+            (
+                "55",
+                Some("11".to_string()),
+                "Brazil São Paulo",
+                Decimal::from_str("0.045").unwrap(),
+            ),
         ];
 
         for (cc, dest_code, desc, rate) in rates {
@@ -543,7 +608,8 @@ mod routing_integration_tests {
                 country_code: cc.to_string(),
                 destination_code: dest_code,
                 destination_name: desc.to_string(),
-                jurisdiction: if cc == "44" || cc == "49" || cc == "33" || cc == "39" || cc == "34" {
+                jurisdiction: if cc == "44" || cc == "49" || cc == "33" || cc == "39" || cc == "34"
+                {
                     InternationalJurisdiction::EEA
                 } else {
                     InternationalJurisdiction::ROW
@@ -557,16 +623,26 @@ mod routing_integration_tests {
 
             // Validate rate structure
             assert!(int_rate.rate > Decimal::ZERO, "Rate must be positive");
-            assert!(int_rate.initial_increment >= 6, "Initial increment should be at least 6 seconds");
-            assert!(int_rate.subsequent_increment >= 1, "Subsequent increment should be at least 1 second");
+            assert!(
+                int_rate.initial_increment >= 6,
+                "Initial increment should be at least 6 seconds"
+            );
+            assert!(
+                int_rate.subsequent_increment >= 1,
+                "Subsequent increment should be at least 1 second"
+            );
 
             // EEA rates should be lower than ROW
             if int_rate.jurisdiction == InternationalJurisdiction::EEA {
-                assert!(int_rate.rate < Decimal::from_str("0.020").unwrap(),
-                    "EEA rates should be competitive");
+                assert!(
+                    int_rate.rate < Decimal::from_str("0.020").unwrap(),
+                    "EEA rates should be competitive"
+                );
             } else {
-                assert!(int_rate.rate >= Decimal::from_str("0.020").unwrap(),
-                    "ROW rates should reflect higher costs");
+                assert!(
+                    int_rate.rate >= Decimal::from_str("0.020").unwrap(),
+                    "ROW rates should reflect higher costs"
+                );
             }
         }
     }
@@ -581,7 +657,7 @@ mod routing_integration_tests {
         };
 
         let test_numbers = vec![
-            ("+442071234567", true, "UK"),   // Valid UK landline
+            ("+442071234567", true, "UK"),  // Valid UK landline
             ("+4915112345678", true, "DE"), // Valid German mobile
             ("+33142864200", true, "FR"),   // Valid French landline
             ("+39612345678", true, "IT"),   // Valid Italian landline
@@ -640,8 +716,14 @@ mod routing_integration_tests {
         // Verify the request is set up for EEA routing
         assert!(request.dnis.starts_with("+49"), "Should be German number");
         assert_eq!(request.route_type, RouteType::AZ);
-        assert!(request.routing_plan_id.is_some(), "Should have routing plan for international");
-        assert!(request.phone_validation.is_some(), "Should have phone validation enabled");
+        assert!(
+            request.routing_plan_id.is_some(),
+            "Should have routing plan for international"
+        );
+        assert!(
+            request.phone_validation.is_some(),
+            "Should have phone validation enabled"
+        );
     }
 
     #[test]
@@ -658,8 +740,11 @@ mod routing_integration_tests {
 
         for (number, expected_jurisdiction) in test_cases {
             let jurisdiction = determine_international_jurisdiction(number);
-            assert_eq!(jurisdiction, expected_jurisdiction,
-                "Wrong jurisdiction for {}", number);
+            assert_eq!(
+                jurisdiction, expected_jurisdiction,
+                "Wrong jurisdiction for {}",
+                number
+            );
         }
     }
 
@@ -675,7 +760,7 @@ mod routing_integration_tests {
             "44" | "49" | "33" | "39" | "34" | "31" | "46" | "47" | "354" => {
                 InternationalJurisdiction::EEA
             }
-            _ => InternationalJurisdiction::ROW
+            _ => InternationalJurisdiction::ROW,
         }
     }
 
@@ -714,23 +799,35 @@ mod routing_integration_tests {
 
         // EEA call cost calculation
         let eea_cost = calculate_international_call_cost(&eea_rate, call_duration);
-        let expected_eea_cost = eea_rate.setup_fee.unwrap() +
-            (eea_rate.rate * Decimal::from(call_duration) / Decimal::from(60));
+        let expected_eea_cost = eea_rate.setup_fee.unwrap()
+            + (eea_rate.rate * Decimal::from(call_duration) / Decimal::from(60));
 
-        assert_eq!(eea_cost, expected_eea_cost, "EEA cost calculation incorrect");
+        assert_eq!(
+            eea_cost, expected_eea_cost,
+            "EEA cost calculation incorrect"
+        );
 
         // ROW call cost calculation
         let row_cost = calculate_international_call_cost(&row_rate, call_duration);
-        let expected_row_cost = row_rate.setup_fee.unwrap() +
-            (row_rate.rate * Decimal::from(call_duration) / Decimal::from(60));
+        let expected_row_cost = row_rate.setup_fee.unwrap()
+            + (row_rate.rate * Decimal::from(call_duration) / Decimal::from(60));
 
-        assert_eq!(row_cost, expected_row_cost, "ROW cost calculation incorrect");
+        assert_eq!(
+            row_cost, expected_row_cost,
+            "ROW cost calculation incorrect"
+        );
 
         // ROW should be more expensive than EEA
-        assert!(row_cost > eea_cost, "ROW calls should cost more than EEA calls");
+        assert!(
+            row_cost > eea_cost,
+            "ROW calls should cost more than EEA calls"
+        );
     }
 
-    fn calculate_international_call_cost(rate: &InternationalRate, duration_seconds: u32) -> Decimal {
+    fn calculate_international_call_cost(
+        rate: &InternationalRate,
+        duration_seconds: u32,
+    ) -> Decimal {
         let setup_fee = rate.setup_fee.unwrap_or(Decimal::ZERO);
         let duration_minutes = Decimal::from(duration_seconds) / Decimal::from(60);
         let usage_cost = rate.rate * duration_minutes;
@@ -748,16 +845,30 @@ mod routing_integration_tests {
         ];
 
         // Verify priority ordering
-        assert_eq!(routes[0].priority, 1, "First route should have highest priority");
-        assert_eq!(routes[1].priority, 2, "Second route should have medium priority");
-        assert_eq!(routes[2].priority, 3, "Third route should have lowest priority");
+        assert_eq!(
+            routes[0].priority, 1,
+            "First route should have highest priority"
+        );
+        assert_eq!(
+            routes[1].priority, 2,
+            "Second route should have medium priority"
+        );
+        assert_eq!(
+            routes[2].priority, 3,
+            "Third route should have lowest priority"
+        );
 
         // Verify cost relationship (higher priority = lower cost)
         assert!(routes[0].cost_per_minute < routes[1].cost_per_minute);
         assert!(routes[1].cost_per_minute < routes[2].cost_per_minute);
     }
 
-    fn create_international_route(id: i32, priority: i32, country_code: &str, cost: Decimal) -> CallRoute {
+    fn create_international_route(
+        id: i32,
+        priority: i32,
+        country_code: &str,
+        cost: Decimal,
+    ) -> CallRoute {
         CallRoute {
             egress_trunk: EgressTrunk {
                 id,

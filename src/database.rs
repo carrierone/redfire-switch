@@ -59,7 +59,10 @@ struct DatabaseStatistics {
 
 impl DatabaseService {
     pub async fn new(config: DatabaseConfig) -> Result<Self> {
-        info!("Initializing database service with URL: {}", mask_database_url(&config.url));
+        info!(
+            "Initializing database service with URL: {}",
+            mask_database_url(&config.url)
+        );
 
         let pool = PgPoolOptions::new()
             .max_connections(config.max_connections)
@@ -108,7 +111,7 @@ impl DatabaseService {
                     version VARCHAR(100) NOT NULL UNIQUE,
                     applied_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
                 )
-                "#
+                "#,
             )
             .execute(&self.pool)
             .await?;
@@ -118,7 +121,7 @@ impl DatabaseService {
 
         // Check if initial schema has been applied
         let initial_migration_exists = sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = '001_initial_schema')"
+            "SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = '001_initial_schema')",
         )
         .fetch_one(&self.pool)
         .await?;
@@ -133,8 +136,12 @@ impl DatabaseService {
             for statement in migration_sql.split(';') {
                 let statement = statement.trim();
                 if !statement.is_empty() && !statement.starts_with("--") {
-                    sqlx::query(statement).execute(&mut *tx).await
-                        .map_err(|e| anyhow!("Migration failed at statement '{}': {}", statement, e))?;
+                    sqlx::query(statement)
+                        .execute(&mut *tx)
+                        .await
+                        .map_err(|e| {
+                            anyhow!("Migration failed at statement '{}': {}", statement, e)
+                        })?;
                 }
             }
 
@@ -166,8 +173,9 @@ impl DatabaseService {
         match result {
             Ok(_) => {
                 stats.successful_queries += 1;
-                stats.average_response_time_ms =
-                    (stats.average_response_time_ms * (stats.successful_queries - 1) as f64 + response_time_ms)
+                stats.average_response_time_ms = (stats.average_response_time_ms
+                    * (stats.successful_queries - 1) as f64
+                    + response_time_ms)
                     / stats.successful_queries as f64;
 
                 debug!("Database health check passed in {:.2}ms", response_time_ms);
@@ -227,11 +235,15 @@ impl DatabaseService {
         .execute(&self.pool)
         .await;
 
-        self.update_query_statistics(start_time, result.is_ok()).await;
+        self.update_query_statistics(start_time, result.is_ok())
+            .await;
 
         match result {
             Ok(_) => {
-                debug!("CDR record inserted successfully for call_id: {}", cdr.call_id);
+                debug!(
+                    "CDR record inserted successfully for call_id: {}",
+                    cdr.call_id
+                );
                 Ok(())
             }
             Err(e) => {
@@ -246,12 +258,13 @@ impl DatabaseService {
         let start_time = std::time::Instant::now();
 
         let result = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM active_sessions WHERE state IN ('Establishing', 'Active')"
+            "SELECT COUNT(*) FROM active_sessions WHERE state IN ('Establishing', 'Active')",
         )
         .fetch_one(&self.pool)
         .await;
 
-        self.update_query_statistics(start_time, result.is_ok()).await;
+        self.update_query_statistics(start_time, result.is_ok())
+            .await;
 
         match result {
             Ok(count) => Ok(count),
@@ -263,7 +276,10 @@ impl DatabaseService {
     }
 
     /// Insert active session
-    pub async fn insert_active_session(&self, session: &crate::call_control::CallSession) -> Result<()> {
+    pub async fn insert_active_session(
+        &self,
+        session: &crate::call_control::CallSession,
+    ) -> Result<()> {
         let start_time = std::time::Instant::now();
 
         let state_str = format!("{:?}", session.state);
@@ -278,21 +294,31 @@ impl DatabaseService {
             session.id,
             session.call_id,
             Some(session.id), // Using session.id as session_id
-            "unknown", // TODO: Extract from session
-            "unknown", // TODO: Extract from session
+            "unknown",        // TODO: Extract from session
+            "unknown",        // TODO: Extract from session
             Some(session.from_addr.to_string()),
             Some(session.to_addr.to_string()),
-            session.trunk_id.as_ref().and_then(|t| t.parse::<i32>().ok()),
+            session
+                .trunk_id
+                .as_ref()
+                .and_then(|t| t.parse::<i32>().ok()),
             session.start_time,
             session.last_activity,
             state_str,
-            session.codec_pair.as_ref().map(|(in_codec, _)| in_codec.as_str()),
-            session.codec_pair.as_ref().map(|(_, out_codec)| out_codec.as_str())
+            session
+                .codec_pair
+                .as_ref()
+                .map(|(in_codec, _)| in_codec.as_str()),
+            session
+                .codec_pair
+                .as_ref()
+                .map(|(_, out_codec)| out_codec.as_str())
         )
         .execute(&self.pool)
         .await;
 
-        self.update_query_statistics(start_time, result.is_ok()).await;
+        self.update_query_statistics(start_time, result.is_ok())
+            .await;
 
         match result {
             Ok(_) => {
@@ -314,7 +340,8 @@ impl DatabaseService {
             .execute(&self.pool)
             .await;
 
-        self.update_query_statistics(start_time, result.is_ok()).await;
+        self.update_query_statistics(start_time, result.is_ok())
+            .await;
 
         match result {
             Ok(_) => {
@@ -329,7 +356,12 @@ impl DatabaseService {
     }
 
     /// Get LCR routes for a given prefix
-    pub async fn get_lcr_routes(&self, prefix: &str, route_group: &str, limit: i32) -> Result<Vec<LcrRoute>> {
+    pub async fn get_lcr_routes(
+        &self,
+        prefix: &str,
+        route_group: &str,
+        limit: i32,
+    ) -> Result<Vec<LcrRoute>> {
         let start_time = std::time::Instant::now();
 
         let result = sqlx::query_as!(
@@ -357,11 +389,17 @@ impl DatabaseService {
         .fetch_all(&self.pool)
         .await;
 
-        self.update_query_statistics(start_time, result.is_ok()).await;
+        self.update_query_statistics(start_time, result.is_ok())
+            .await;
 
         match result {
             Ok(routes) => {
-                debug!("Found {} LCR routes for prefix '{}' in group '{}'", routes.len(), prefix, route_group);
+                debug!(
+                    "Found {} LCR routes for prefix '{}' in group '{}'",
+                    routes.len(),
+                    prefix,
+                    route_group
+                );
                 Ok(routes)
             }
             Err(e) => {
@@ -392,7 +430,8 @@ impl DatabaseService {
         .execute(&self.pool)
         .await;
 
-        self.update_query_statistics(start_time, result.is_ok()).await;
+        self.update_query_statistics(start_time, result.is_ok())
+            .await;
 
         match result {
             Ok(_) => {
@@ -424,11 +463,15 @@ impl DatabaseService {
         .execute(&self.pool)
         .await;
 
-        self.update_query_statistics(start_time, query_result.is_ok()).await;
+        self.update_query_statistics(start_time, query_result.is_ok())
+            .await;
 
         match query_result {
             Ok(_) => {
-                debug!("Health check result inserted for component: {}", result.component);
+                debug!(
+                    "Health check result inserted for component: {}",
+                    result.component
+                );
                 Ok(())
             }
             Err(e) => {
@@ -449,7 +492,8 @@ impl DatabaseService {
         .fetch_optional(&self.pool)
         .await;
 
-        self.update_query_statistics(start_time, result.is_ok()).await;
+        self.update_query_statistics(start_time, result.is_ok())
+            .await;
 
         match result {
             Ok(Some(row)) => Ok(Some(row.config_value)),
@@ -478,7 +522,8 @@ impl DatabaseService {
         .execute(&self.pool)
         .await;
 
-        self.update_query_statistics(start_time, result.is_ok()).await;
+        self.update_query_statistics(start_time, result.is_ok())
+            .await;
 
         match result {
             Ok(_) => {
@@ -514,7 +559,8 @@ impl DatabaseService {
             .execute(&self.pool)
             .await;
 
-        self.update_query_statistics(start_time, result.is_ok()).await;
+        self.update_query_statistics(start_time, result.is_ok())
+            .await;
 
         match result {
             Ok(_) => {
@@ -535,8 +581,9 @@ impl DatabaseService {
         stats.total_queries += 1;
         if success {
             stats.successful_queries += 1;
-            stats.average_response_time_ms =
-                (stats.average_response_time_ms * (stats.successful_queries - 1) as f64 + response_time_ms)
+            stats.average_response_time_ms = (stats.average_response_time_ms
+                * (stats.successful_queries - 1) as f64
+                + response_time_ms)
                 / stats.successful_queries as f64;
         } else {
             stats.failed_queries += 1;
