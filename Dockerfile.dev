@@ -61,25 +61,22 @@ HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
     CMD nc -zu localhost 5060 || exit 1
 
 # Debug script
-COPY <<'EOF' /usr/local/bin/debug-switch.sh
-#!/bin/bash
-echo "Starting Redfire Switch in debug mode..."
-echo "Debug options:"
-echo "  - GDB: gdb /usr/local/bin/redfire-switch"
-echo "  - Packet capture: tcpdump -i any -w /app/pcaps/capture.pcap port 5060"
-echo "  - SIP trace: tshark -i any -f 'port 5060' -Y sip"
-
-if [ "$1" = "gdb" ]; then
-    gdb /usr/local/bin/redfire-switch
-elif [ "$1" = "trace" ]; then
-    tshark -i any -f 'port 5060' -Y sip -T fields -e frame.time -e ip.src -e ip.dst -e sip.Method -e sip.Status-Code
-elif [ "$1" = "pcap" ]; then
-    tcpdump -i any -w /app/pcaps/capture-$(date +%Y%m%d-%H%M%S).pcap port 5060
-else
-    exec /usr/local/bin/redfire-switch "$@"
-fi
-EOF
-RUN chmod +x /usr/local/bin/debug-switch.sh
+RUN echo '#!/bin/bash\n\
+echo "Starting Redfire Switch in debug mode..."\n\
+echo "Debug options:"\n\
+echo "  - GDB: gdb /usr/local/bin/redfire-switch"\n\
+echo "  - Packet capture: tcpdump -i any -w /app/pcaps/capture.pcap port 5060"\n\
+echo "  - SIP trace: tshark -i any -f '\''port 5060'\'' -Y sip"\n\
+\n\
+if [ "$1" = "gdb" ]; then\n\
+    gdb /usr/local/bin/redfire-switch\n\
+elif [ "$1" = "trace" ]; then\n\
+    tshark -i any -f '\''port 5060'\'' -Y sip -T fields -e frame.time -e ip.src -e ip.dst -e sip.Method -e sip.Status-Code\n\
+elif [ "$1" = "pcap" ]; then\n\
+    tcpdump -i any -w /app/pcaps/capture-$(date +%Y%m%d-%H%M%S).pcap port 5060\n\
+else\n\
+    exec /usr/local/bin/redfire-switch "$@"\n\
+fi' > /usr/local/bin/debug-switch.sh && chmod +x /usr/local/bin/debug-switch.sh
 
 EXPOSE 5060/udp 5060/tcp 8080 9090
 

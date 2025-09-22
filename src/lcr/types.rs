@@ -2,6 +2,7 @@ use chrono::{DateTime, NaiveTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use std::fmt;
 use std::net::IpAddr;
 
 use crate::lcr::phone_validation::PhoneValidationConfig;
@@ -184,6 +185,12 @@ pub struct EgressTrunk {
     pub supports_international: bool,
 }
 
+impl fmt::Display for EgressTrunk {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} ({}:{})", self.name, self.host, self.port)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IngressTrunk {
     pub id: i32,
@@ -305,6 +312,7 @@ pub struct NanpaStatic {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallRoute {
     pub egress_trunk: EgressTrunk,
+    pub vendor: String,
     pub vendor_rate: Option<NanpaRate>,
     pub cost_per_minute: Decimal,
     pub selling_per_minute: Decimal,
@@ -409,6 +417,10 @@ pub struct RouteResponse {
     pub jurisdiction: CallJurisdiction,
     pub lrn: Option<String>,
     pub total_routes: usize,
+    pub ani: String,
+    pub dnis: String,
+    pub ingress_trunk: String,
+    pub routing_decision: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

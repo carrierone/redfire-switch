@@ -173,6 +173,7 @@ impl RoutingEngine {
                                 interval: 60,
                                 setup_fee: None,
                             }),
+                            vendor: "Unknown".to_string(),
                             cost_per_minute: cached_route.rate,
                             selling_per_minute: cached_route.rate,
                             profit_margin: rust_decimal::Decimal::from(0),
@@ -193,6 +194,10 @@ impl RoutingEngine {
                 jurisdiction: crate::lcr::types::CallJurisdiction::Inter,
                 lrn: None,
                 total_routes: cached_routes.len(),
+                ani: request.ani.to_string(),
+                dnis: request.dnis.to_string(),
+                ingress_trunk: request.ingress_trunk_id.to_string(),
+                routing_decision: "Normal".to_string(),
             };
 
             info!(
@@ -273,6 +278,10 @@ impl RoutingEngine {
             jurisdiction: crate::lcr::types::CallJurisdiction::Indeterminate,
             lrn: None,
             total_routes: 0,
+            ani: request.ani.to_string(),
+            dnis: request.dnis.to_string(),
+            ingress_trunk: request.ingress_trunk_id.to_string(),
+            routing_decision: "No routes found".to_string(),
         })
     }
 
