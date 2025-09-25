@@ -73,6 +73,7 @@
 
 pub mod authentication;
 pub mod compliance;
+pub mod core;
 pub mod debug_cli;
 pub mod interop;
 pub mod parser;
@@ -103,6 +104,8 @@ pub use transport::{
     ConnectionInfo, SipTransport, SipTransportManager, TlsConfig, TransportConfig, TransportEvent,
     TransportMessage,
 };
+
+pub use core::{ProcessorMessage, SipCallContext, SipCoreConfig, SipCoreEngine, SipRequestResult, ComplianceNotifier};
 
 
 pub use debug_cli::{
@@ -148,6 +151,12 @@ pub fn create_default_parser() -> SipParser {
     )
 }
 
+
+/// Create a default SIP core with basic configuration
+pub async fn create_default_core() -> anyhow::Result<SipCoreEngine> {
+    let config = SipCoreConfig::default();
+    SipCoreEngine::new(config).await
+}
 
 /// Create a SIP-T/SIP-I service with default configuration
 pub fn create_sipt_sipi_service() -> SipTSipIService {

@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anti-Fraud Monitoring - RedFire Switch</title>
+    <link rel="stylesheet" href="/static/css/base.css">
+    <link rel="stylesheet" href="/static/css/anti-fraud-monitoring.css">
+    <link rel="icon" href="/static/favicon.ico">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <img src="/static/images/redfire-logo.svg" alt="RedFire Switch" class="logo">
+                <h1>Anti-Fraud Monitoring</h1>
+            </div>
+            <div class="header-right">
+                <div class="user-info">
+                    <span id="current-user">Loading...</span>
+                    <a href="/logout" class="logout-link">Logout</a>
+                </div>
+            </div>
+        </header>
+
+        <!-- Navigation -->
+        <nav class="sidebar">
+            <ul class="nav-menu">
+                <li class="nav-item active" id="nav-dashboard">
+                    <i class="icon-dashboard"></i>
+                    <span>Dashboard</span>
+                </li>
+                <li class="nav-item" id="nav-recordings">
+                    <i class="icon-microphone"></i>
+                    <span>Recordings</span>
+                </li>
+                <li class="nav-item" id="nav-transcriptions">
+                    <i class="icon-document-text"></i>
+                    <span>Transcriptions</span>
+                </li>
+                <li class="nav-item" id="nav-alerts">
+                    <i class="icon-alert-triangle"></i>
+                    <span>Alerts</span>
+                    <span class="alert-badge" id="alert-count">0</span>
+                </li>
+                <li class="nav-item" id="nav-reports">
+                    <i class="icon-bar-chart"></i>
+                    <span>Reports</span>
+                </li>
+                <li class="nav-item" id="nav-settings">
+                    <i class="icon-settings"></i>
+                    <span>Settings</span>
+                </li>
+            </ul>
+
+            <!-- ECPA Compliance Indicator -->
+            <div class="compliance-status">
+                <div class="compliance-indicator active">
+                    <i class="icon-shield-check"></i>
+                    <div class="compliance-text">
+                        <div class="compliance-title">ECPA Compliant</div>
+                        <div class="compliance-subtitle">18 U.S.C. § 2511(2)(a)(i)</div>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <div id="main-content">
+                <!-- Content will be dynamically loaded here -->
+                <div class="loading-spinner">
+                    <div class="spinner"></div>
+                    <p>Loading...</p>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-content">
+                <div class="footer-left">
+                    <span>&copy; 2024 RedFire Switch - Anti-Fraud Monitoring System</span>
+                </div>
+                <div class="footer-right">
+                    <a href="/docs/ecpa-compliance" target="_blank">ECPA Compliance Guide</a>
+                    <a href="/docs/privacy-policy" target="_blank">Privacy Policy</a>
+                    <a href="/support" target="_blank">Support</a>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Legal Disclaimer Modal -->
+    <div id="legal-disclaimer-modal" class="modal" style="display: none;">
+        <div class="modal-content legal-modal">
+            <div class="modal-header">
+                <h3>Legal Notice - ECPA Compliance</h3>
+            </div>
+            <div class="modal-body">
+                <div class="legal-notice">
+                    <h4>Electronic Communications Privacy Act (ECPA) Compliance</h4>
+                    <p>
+                        This system operates under the provider exception specified in
+                        <strong>18 U.S.C. § 2511(2)(a)(i)</strong> for fraud prevention and network protection.
+                    </p>
+
+                    <h4>Authorized Use Only</h4>
+                    <ul>
+                        <li>Access is restricted to authorized personnel only</li>
+                        <li>All activities are logged and monitored</li>
+                        <li>Unauthorized access is prohibited and may result in criminal prosecution</li>
+                        <li>Data must be used solely for fraud detection and prevention purposes</li>
+                    </ul>
+
+                    <h4>Data Protection Requirements</h4>
+                    <ul>
+                        <li>Recordings in memory storage are for real-time fraud detection only</li>
+                        <li>Disk storage requires legal authorization or high-confidence fraud indicators</li>
+                        <li>Data minimization principles must be followed</li>
+                        <li>Retention periods must comply with established policies</li>
+                    </ul>
+
+                    <h4>Incident Reporting</h4>
+                    <p>
+                        Any suspected compliance violations, unauthorized access attempts, or
+                        security incidents must be immediately reported to the compliance team.
+                    </p>
+
+                    <div class="contact-info">
+                        <strong>Compliance Officer:</strong> compliance@example.com<br>
+                        <strong>Security Team:</strong> security@example.com<br>
+                        <strong>Emergency Hotline:</strong> +1-XXX-XXX-XXXX
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <label>
+                    <input type="checkbox" id="acknowledge-legal-terms">
+                    I acknowledge that I have read and understood these legal requirements
+                </label>
+                <button class="btn btn-primary" id="accept-legal-terms" disabled>Accept and Continue</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- Scripts -->
+    <script src="/static/js/anti-fraud-monitoring.js"></script>
+    <script>
+        // Show legal disclaimer on first visit
+        if (!localStorage.getItem('ecpa-compliance-acknowledged')) {
+            document.getElementById('legal-disclaimer-modal').style.display = 'block';
+
+            // Enable accept button when checkbox is checked
+            document.getElementById('acknowledge-legal-terms').addEventListener('change', function() {
+                document.getElementById('accept-legal-terms').disabled = !this.checked;
+            });
+
+            // Handle acceptance
+            document.getElementById('accept-legal-terms').addEventListener('click', function() {
+                localStorage.setItem('ecpa-compliance-acknowledged', 'true');
+                document.getElementById('legal-disclaimer-modal').style.display = 'none';
+            });
+        }
+
+        // Periodic compliance reminder (every 24 hours)
+        setInterval(() => {
+            const lastReminder = localStorage.getItem('last-compliance-reminder');
+            const now = Date.now();
+            const twentyFourHours = 24 * 60 * 60 * 1000;
+
+            if (!lastReminder || (now - parseInt(lastReminder)) > twentyFourHours) {
+                showToast('Reminder: Ensure all activities comply with ECPA regulations and company policies.', 'info', 10000);
+                localStorage.setItem('last-compliance-reminder', now.toString());
+            }
+        }, 60000); // Check every minute
+
+        function showToast(message, type = 'info', duration = 5000) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.innerHTML = `
+                <div class="toast-content">
+                    <span class="toast-message">${message}</span>
+                    <button class="toast-close">&times;</button>
+                </div>
+            `;
+
+            container.appendChild(toast);
+
+            // Auto-remove after duration
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.remove();
+                }
+            }, duration);
+
+            // Manual close
+            toast.querySelector('.toast-close').addEventListener('click', () => {
+                toast.remove();
+            });
+
+            // Animate in
+            setTimeout(() => {
+                toast.classList.add('toast-show');
+            }, 100);
+        }
+
+        // Log user activity for compliance audit
+        function logUserActivity(action, details = {}) {
+            fetch('/api/audit/log', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    action: action,
+                    details: details,
+                    timestamp: new Date().toISOString(),
+                    userAgent: navigator.userAgent,
+                    ipAddress: 'CLIENT_IP', // Will be filled by server
+                })
+            }).catch(error => {
+                console.error('Failed to log activity:', error);
+            });
+        }
+
+        // Log page access
+        logUserActivity('page_access', {
+            page: 'anti-fraud-monitoring',
+            url: window.location.href
+        });
+
+        // Log when user navigates away
+        window.addEventListener('beforeunload', () => {
+            logUserActivity('page_exit', {
+                page: 'anti-fraud-monitoring',
+                sessionDuration: Date.now() - performance.timing.navigationStart
+            });
+        });
+    </script>
+</body>
+</html>

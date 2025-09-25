@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{debug, info, warn};
 
-use crate::lcr::types::{CallRoute, RouteRequest};
+use crate::lcr::types::{CallRoute, RouteRequest, RouteType};
 use crate::lcr::LcrEngine;
 
 /// Termination routing plan configuration

@@ -1,0 +1,47 @@
+# Anti-Fraud Voice Monitoring Configuration
+# ECPA-compliant voice monitoring and analysis
+
+[monitoring]
+enabled = true
+ecpa_compliance_enabled = true
+purpose = "fraud_prevention"
+legal_basis = "18_USC_2511_2_a_i"
+
+[storage]
+memory_storage_path = "/dev/shm/redfire-fraud-detection"
+disk_storage_path = "/var/lib/redfire/recordings"
+max_memory_storage_gb = 10
+max_disk_storage_gb = 500
+memory_retention_hours = 24
+legal_retention_years = 7
+
+[vosk]
+model_path = "/opt/vosk-model"
+server_endpoint = "ws://localhost:2700"
+
+[fraud_detection]
+enable_keyword_detection = true
+batch_processing_interval_minutes = 2
+auto_disk_risk_threshold = 8.5
+auto_legal_hold_threshold = 9.0
+
+[database]
+pool_size = 10
+connection_timeout_seconds = 30
+
+[api]
+bind_address = "0.0.0.0"
+bind_port = 8080
+cors_enabled = true
+rate_limit_requests_per_minute = 100
+
+[compliance]
+audit_all_access = true
+require_legal_authorization_for_disk = true
+compliance_officer_email = "compliance@example.com"
+data_minimization_enabled = true
+
+[security]
+encrypt_recordings_at_rest = true
+secure_deletion_enabled = true
+access_log_retention_days = 365

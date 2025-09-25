@@ -1,0 +1,224 @@
+# Alert Rules for Anti-Fraud Monitoring System
+# ECPA Compliance and Operational Alerts
+
+groups:
+  - name: ecpa_compliance
+    interval: 30s
+    rules:
+      # Legal authorization missing for disk storage
+      - alert: LegalAuthorizationMissing
+        expr: antifraud_recordings_disk_total{legal_authorization=""} > 0
+        for: 1m
+        labels:
+          severity: critical
+          compliance: ecpa
+          category: legal
+        annotations:
+          summary: "Disk storage recording without legal authorization"
+          description: "{{ $value }} recordings stored to disk without legal authorization reference"
+          action: "Immediately review and either obtain legal authorization or move to memory storage"
+
+      # Memory storage retention exceeded
+      - alert: MemoryRetentionExceeded
+        expr: antifraud_recording_age_hours{storage="memory"} > 24
+        for: 5m
+        labels:
+          severity: warning
+          compliance: ecpa
+          category: retention
+        annotations:
+          summary: "Memory storage retention period exceeded"
+          description: "Recording {{ $labels.recording_id }} has been in memory for {{ $value }} hours (max: 24)"
+          action: "Trigger automatic cleanup process"
+
+      # High risk calls not escalated
+      - alert: HighRiskCallNotEscalated
+        expr: antifraud_risk_score > 8.5 and antifraud_storage_type == "memory"
+        for: 10m
+        labels:
+          severity: warning
+          compliance: ecpa
+          category: fraud
+        annotations:
+          summary: "High risk call not escalated to disk storage"
+          description: "Call {{ $labels.call_id }} has risk score {{ $value }} but remains in memory storage"
+          action: "Review call and escalate if appropriate"
+
+  - name: fraud_detection
+    interval: 30s
+    rules:
+      # Spike in fraud alerts
+      - alert: FraudAlertSpike
+        expr: rate(antifraud_alerts_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          category: fraud
+        annotations:
+          summary: "Unusual spike in fraud alerts"
+          description: "Fraud alert rate is {{ $value }} per minute (threshold: 10)"
+          action: "Investigate potential coordinated fraud attempt"
+
+      # Banned words detection rate high
+      - alert: HighBannedWordRate
+        expr: rate(antifraud_banned_words_detected_total[5m]) / rate(antifraud_calls_processed_total[5m]) > 0.2
+        for: 10m
+        labels:
+          severity: warning
+          category: fraud
+        annotations:
+          summary: "High rate of banned word detection"
+          description: "{{ $value | humanizePercentage }} of calls contain banned words"
+          action: "Review recent transcriptions for fraud patterns"
+
+      # Critical risk score calls
+      - alert: CriticalRiskScore
+        expr: antifraud_risk_score >= 9.0
+        for: 1m
+        labels:
+          severity: critical
+          category: fraud
+        annotations:
+          summary: "Critical risk score detected"
+          description: "Call {{ $labels.call_id }} has critical risk score of {{ $value }}"
+          action: "Immediate review required - potential active fraud"
+
+  - name: system_health
+    interval: 30s
+    rules:
+      # Vosk server down
+      - alert: VoskServerDown
+        expr: up{job="vosk-server"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          category: infrastructure
+        annotations:
+          summary: "Vosk ASR server is down"
+          description: "Speech recognition service has been unavailable for {{ $value }} minutes"
+          action: "Check Vosk server logs and restart if necessary"
+
+      # Database connection issues
+      - alert: DatabaseConnectionError
+        expr: antifraud_database_errors_total > 0
+        for: 5m
+        labels:
+          severity: critical
+          category: infrastructure
+        annotations:
+          summary: "Database connection errors detected"
+          description: "{{ $value }} database errors in the last 5 minutes"
+          action: "Check database connectivity and connection pool"
+
+      # Storage usage high
+      - alert: MemoryStorageHigh
+        expr: antifraud_storage_usage_bytes{type="memory"} / antifraud_storage_limit_bytes{type="memory"} > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          category: resources
+        annotations:
+          summary: "Memory storage usage high"
+          description: "Memory storage is {{ $value | humanizePercentage }} full"
+          action: "Trigger cleanup process or increase storage allocation"
+
+      - alert: DiskStorageHigh
+        expr: antifraud_storage_usage_bytes{type="disk"} / antifraud_storage_limit_bytes{type="disk"} > 0.8
+        for: 30m
+        labels:
+          severity: warning
+          category: resources
+        annotations:
+          summary: "Disk storage usage high"
+          description: "Disk storage is {{ $value | humanizePercentage }} full"
+          action: "Archive old recordings or increase storage capacity"
+
+      # Processing delays
+      - alert: TranscriptionBacklog
+        expr: antifraud_pending_transcriptions > 100
+        for: 15m
+        labels:
+          severity: warning
+          category: performance
+        annotations:
+          summary: "Large transcription backlog"
+          description: "{{ $value }} recordings awaiting transcription"
+          action: "Scale up batch processing workers"
+
+      # High latency
+      - alert: HighASRLatency
+        expr: histogram_quantile(0.95, antifraud_asr_processing_duration_seconds) > 5
+        for: 10m
+        labels:
+          severity: warning
+          category: performance
+        annotations:
+          summary: "High ASR processing latency"
+          description: "95th percentile ASR latency is {{ $value }}s (threshold: 5s)"
+          action: "Check Vosk server performance and model optimization"
+
+  - name: security
+    interval: 30s
+    rules:
+      # Unauthorized access attempts
+      - alert: UnauthorizedAccess
+        expr: antifraud_unauthorized_access_attempts_total > 0
+        for: 1m
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: "Unauthorized access attempts detected"
+          description: "{{ $value }} unauthorized access attempts in the last minute"
+          action: "Review security logs and block suspicious IPs"
+
+      # Audit log failures
+      - alert: AuditLogFailure
+        expr: antifraud_audit_log_failures_total > 0
+        for: 5m
+        labels:
+          severity: critical
+          category: compliance
+        annotations:
+          summary: "Audit logging failures"
+          description: "{{ $value }} audit log write failures"
+          action: "Critical: Audit trail compromised - investigate immediately"
+
+      # Data exfiltration attempt
+      - alert: PotentialDataExfiltration
+        expr: rate(antifraud_recordings_downloaded_bytes[5m]) > 1073741824
+        for: 5m
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: "Potential data exfiltration detected"
+          description: "Unusually high download rate: {{ $value | humanize }}B/s"
+          action: "Review access logs and suspend suspicious accounts"
+
+  - name: business_metrics
+    interval: 60s
+    rules:
+      # Low monitoring coverage
+      - alert: LowMonitoringCoverage
+        expr: antifraud_calls_monitored_total / antifraud_calls_total < 0.01
+        for: 1h
+        labels:
+          severity: info
+          category: coverage
+        annotations:
+          summary: "Low call monitoring coverage"
+          description: "Only {{ $value | humanizePercentage }} of calls are being monitored"
+          action: "Review trunk configuration and sampling rates"
+
+      # Cost optimization
+      - alert: HighStorageCost
+        expr: antifraud_estimated_storage_cost_usd > 1000
+        for: 1h
+        labels:
+          severity: info
+          category: cost
+        annotations:
+          summary: "High storage costs"
+          description: "Estimated monthly storage cost: ${{ $value }}"
+          action: "Review retention policies and archive old recordings"

@@ -1,0 +1,221 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database with Anti-Fraud Schema
+  postgres-antifraud:
+    image: postgres:15-alpine
+    container_name: redfire-antifraud-db
+    environment:
+      POSTGRES_DB: redfire_antifraud
+      POSTGRES_USER: redfire
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-securepassword}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    volumes:
+      - antifraud-db-data:/var/lib/postgresql/data
+      - ./migrations/add_anti_fraud_monitoring.sql:/docker-entrypoint-initdb.d/01-antifraud.sql:ro
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U redfire -d redfire_antifraud"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - antifraud-net
+
+  # Vosk Speech Recognition Server
+  vosk-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.vosk
+    container_name: redfire-vosk-server
+    environment:
+      VOSK_MODEL_PATH: /opt/vosk-model
+      VOSK_SERVER_PORT: 2700
+      VOSK_SAMPLE_RATE: 8000
+    volumes:
+      - vosk-model-data:/opt/vosk-model
+      - /dev/shm:/dev/shm:rw  # Shared memory for real-time processing
+    ports:
+      - "2700:2700"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:2700/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - antifraud-net
+    depends_on:
+      postgres-antifraud:
+        condition: service_healthy
+
+  # RedFire Anti-Fraud Monitoring Service
+  antifraud-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: antifraud
+    container_name: redfire-antifraud-service
+    environment:
+      DATABASE_URL: postgresql://redfire:${DB_PASSWORD:-securepassword}@postgres-antifraud:5432/redfire_antifraud
+      VOSK_SERVER_URL: ws://vosk-server:2700
+      RUST_LOG: info
+      MONITORING_ENABLED: "true"
+      ECPA_COMPLIANCE_MODE: "fraud_prevention"
+      LEGAL_BASIS: "18_USC_2511_2_a_i"
+      MEMORY_STORAGE_PATH: /dev/shm/redfire-recordings
+      DISK_STORAGE_PATH: /var/lib/redfire/recordings
+      MAX_MEMORY_STORAGE_GB: 10
+      MAX_DISK_STORAGE_GB: 100
+    volumes:
+      - /dev/shm:/dev/shm:rw  # Memory storage for fraud detection
+      - antifraud-recordings:/var/lib/redfire/recordings  # Disk storage for legal cases
+      - ./config/anti-fraud-monitoring.toml:/etc/redfire/anti-fraud.toml:ro
+      - ./config/banned-words.json:/etc/redfire/banned-words.json:ro
+    ports:
+      - "8081:8080"  # API endpoint
+      - "8082:9090"  # Metrics endpoint
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - antifraud-net
+    depends_on:
+      postgres-antifraud:
+        condition: service_healthy
+      vosk-server:
+        condition: service_healthy
+    cap_add:
+      - SYS_NICE  # For real-time audio processing priority
+    security_opt:
+      - no-new-privileges:true
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+
+  # Admin Web Interface
+  antifraud-web:
+    image: nginx:alpine
+    container_name: redfire-antifraud-web
+    volumes:
+      - ./web-ui:/usr/share/nginx/html:ro
+      - ./nginx/antifraud.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "8083:80"
+    networks:
+      - antifraud-net
+    depends_on:
+      - antifraud-service
+
+  # Batch Processing Worker
+  antifraud-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: worker
+    container_name: redfire-antifraud-worker
+    environment:
+      DATABASE_URL: postgresql://redfire:${DB_PASSWORD:-securepassword}@postgres-antifraud:5432/redfire_antifraud
+      VOSK_SERVER_URL: ws://vosk-server:2700
+      RUST_LOG: info
+      WORKER_TYPE: batch_processor
+      BATCH_INTERVAL_MINUTES: 2
+      PROCESSING_THREADS: 4
+    volumes:
+      - /dev/shm:/dev/shm:ro  # Read-only access to memory recordings
+      - antifraud-recordings:/var/lib/redfire/recordings:rw
+    networks:
+      - antifraud-net
+    depends_on:
+      postgres-antifraud:
+        condition: service_healthy
+      vosk-server:
+        condition: service_healthy
+
+  # Compliance Monitoring Dashboard
+  grafana:
+    image: grafana/grafana:latest
+    container_name: redfire-antifraud-grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_INSTALL_PLUGINS: grafana-piechart-panel
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3001:3000"
+    networks:
+      - antifraud-net
+    depends_on:
+      - prometheus
+
+  # Metrics Collection
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: redfire-antifraud-prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - "9091:9090"
+    networks:
+      - antifraud-net
+
+  # Log Aggregation
+  loki:
+    image: grafana/loki:latest
+    container_name: redfire-antifraud-loki
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    ports:
+      - "3100:3100"
+    networks:
+      - antifraud-net
+
+  # Log Shipper
+  promtail:
+    image: grafana/promtail:latest
+    container_name: redfire-antifraud-promtail
+    volumes:
+      - /var/log:/var/log:ro
+      - ./promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - antifraud-net
+    depends_on:
+      - loki
+
+networks:
+  antifraud-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  antifraud-db-data:
+    driver: local
+  vosk-model-data:
+    driver: local
+  antifraud-recordings:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${RECORDINGS_PATH:-/var/lib/redfire/recordings}
+  grafana-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  loki-data:
+    driver: local

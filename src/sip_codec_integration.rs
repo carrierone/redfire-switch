@@ -12,7 +12,7 @@ use tracing::{debug, error, info, warn};
 
 // Import SIP stack components
 use redfire_sip_stack::{
-    AuthResult, SipAuthenticator, SipMessage,
+    AuthResult, SipAuthenticator, SipCallContext, SipCoreConfig, SipCoreEngine, SipMessage,
     SipMethod, SipParser, SipStateConfig, SipStateManager, SipTransport, SipTransportManager,
     TransportConfig,
 };
@@ -32,6 +32,7 @@ pub struct SipCodecIntegration {
     // SIP Stack components
     sip_parser: Arc<SipParser>,
     sip_transport: Arc<SipTransportManager>,
+    sip_core: Arc<SipCoreEngine>,
     sip_state: Arc<SipStateManager>,
     sip_auth: Arc<Mutex<SipAuthenticator>>,
 
@@ -50,7 +51,7 @@ pub struct SipCodecIntegration {
 #[derive(Debug, Clone)]
 pub struct IntegratedSession {
     pub call_id: String,
-    pub sip_context: String, // Simplified since SipCallContext is not available
+    pub sip_context: SipCallContext,
     pub media_session: Option<MediaSession>,
     pub codec_session: Option<String>, // Codec session ID
     pub ingress_codec: AudioCodec,
@@ -61,6 +62,7 @@ pub struct IntegratedSession {
 impl SipCodecIntegration {
     /// Create new integrated service with full SIP stack and codec capabilities
     pub async fn new(
+        sip_config: SipCoreConfig,
         codec_config: CodecConfig,
         rtp_config: RtpProxyConfig,
     ) -> Result<Self> {
@@ -84,6 +86,7 @@ impl SipCodecIntegration {
         };
         let sip_transport = Arc::new(SipTransportManager::new(vec![transport_config])?);
 
+        let sip_core = Arc::new(SipCoreEngine::new(sip_config.clone()).await?);
 
         let state_config = SipStateConfig::default();
         let sip_state = Arc::new(SipStateManager::new(state_config));
@@ -117,6 +120,7 @@ impl SipCodecIntegration {
         Ok(Self {
             sip_parser,
             sip_transport,
+            sip_core,
             sip_state,
             sip_auth,
             codec_service,
@@ -243,8 +247,14 @@ impl SipCodecIntegration {
             );
         }
 
-        // Create simplified SIP call context (since SipCallContext is not available)
-        let sip_context = call_id.clone();
+        // Create SIP call context
+        let sip_context = SipCallContext::new(
+            call_id.clone(),
+            self.extract_from_uri(&message)?,
+            self.extract_to_uri(&message)?,
+            from_addr,
+            transport,
+        );
 
         // Setup RTP proxy session if media is present
         let media_session = if self.has_sdp(&message) {
@@ -521,8 +531,9 @@ impl SipCodecIntegration {
 
 /// Create integrated service with default configuration
 pub async fn create_integrated_service() -> Result<SipCodecIntegration> {
+    let sip_config = SipCoreConfig::default();
     let codec_config = CodecConfig::default();
     let rtp_config = RtpProxyConfig::default();
 
-    SipCodecIntegration::new(codec_config, rtp_config).await
+    SipCodecIntegration::new(sip_config, codec_config, rtp_config).await
 }

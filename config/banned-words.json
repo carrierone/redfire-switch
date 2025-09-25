@@ -1,0 +1,66 @@
+{
+  "categories": {
+    "financial_fraud": {
+      "weight": 8.0,
+      "patterns": [
+        "credit card",
+        "bank account",
+        "wire transfer",
+        "social security",
+        "bitcoin",
+        "urgent payment",
+        "verify your account",
+        "suspended account"
+      ]
+    },
+    "identity_theft": {
+      "weight": 9.0,
+      "patterns": [
+        "date of birth",
+        "mother's maiden",
+        "password",
+        "pin number",
+        "ssn",
+        "drivers license"
+      ]
+    },
+    "scams": {
+      "weight": 7.0,
+      "patterns": [
+        "you have won",
+        "final notice",
+        "urgent action required",
+        "irs owes you",
+        "press 1 to claim",
+        "congratulations",
+        "limited time offer"
+      ]
+    },
+    "threats": {
+      "weight": 10.0,
+      "patterns": [
+        "bomb",
+        "kill",
+        "hurt",
+        "violence",
+        "threat"
+      ]
+    },
+    "robocall_indicators": {
+      "weight": 6.0,
+      "patterns": [
+        "press 1",
+        "this is your final notice",
+        "auto warranty",
+        "student loans",
+        "do not hang up"
+      ]
+    }
+  },
+  "metadata": {
+    "version": "1.0",
+    "last_updated": "2024-11-01",
+    "compliance_reviewed": true,
+    "ecpa_compliant": true
+  }
+}

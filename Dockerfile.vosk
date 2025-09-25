@@ -1,0 +1,87 @@
+# Dockerfile for Vosk Speech Recognition Server
+# ECPA-compliant ASR service for anti-fraud monitoring
+
+FROM python:3.11-slim as builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    wget \
+    unzip \
+    portaudio19-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create vosk user for security
+RUN useradd -r -m -s /bin/false vosk
+
+# Set working directory
+WORKDIR /opt/vosk-server
+
+# Install Python dependencies
+COPY requirements-vosk.txt /tmp/
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r /tmp/requirements-vosk.txt
+
+# Download Vosk model (English model for fraud detection)
+ARG VOSK_MODEL_URL="https://alphacephei.com/vosk/models/vosk-model-en-us-0.22-lgraph.zip"
+RUN mkdir -p /opt/vosk-model && \
+    wget -q -O /tmp/model.zip "${VOSK_MODEL_URL}" && \
+    unzip -q /tmp/model.zip -d /tmp/ && \
+    mv /tmp/vosk-model-*/* /opt/vosk-model/ && \
+    rm -rf /tmp/model.zip /tmp/vosk-model-* && \
+    chown -R vosk:vosk /opt/vosk-model
+
+# Copy server script
+COPY scripts/vosk_server.py /opt/vosk-server/
+
+# Production stage
+FROM python:3.11-slim
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    portaudio19-dev \
+    ffmpeg \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create vosk user
+RUN useradd -r -m -s /bin/false vosk
+
+# Copy from builder
+COPY --from=builder /opt/vosk-model /opt/vosk-model
+COPY --from=builder /opt/vosk-server /opt/vosk-server
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Create log directory
+RUN mkdir -p /var/log/vosk && \
+    chown -R vosk:vosk /var/log/vosk /opt/vosk-server
+
+# Security hardening
+RUN chmod 755 /opt/vosk-server/vosk_server.py && \
+    chmod -R 755 /opt/vosk-model
+
+# Health check script
+RUN echo '#!/bin/bash\ncurl -f http://localhost:${VOSK_SERVER_PORT:-2700}/health || exit 1' > /usr/local/bin/health-check.sh && \
+    chmod +x /usr/local/bin/health-check.sh
+
+# Environment variables
+ENV VOSK_MODEL_PATH=/opt/vosk-model \
+    VOSK_SERVER_PORT=2700 \
+    VOSK_SAMPLE_RATE=8000 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/opt/vosk-server
+
+# Switch to non-root user
+USER vosk
+
+# Expose WebSocket port
+EXPOSE 2700
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD /usr/local/bin/health-check.sh
+
+# Start server
+ENTRYPOINT ["python3", "/opt/vosk-server/vosk_server.py"]
+CMD ["--host", "0.0.0.0", "--port", "2700", "--model", "/opt/vosk-model"]

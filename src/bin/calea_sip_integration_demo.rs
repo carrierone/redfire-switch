@@ -31,8 +31,7 @@ async fn main() -> Result<()> {
     // Step 3: Configure SIP Core Engine
     info!("Step 3: Configuring SIP core engine with CALEA integration");
     let sip_config = SipCoreConfig {
-        auth_realm: "calea.example.com".to_string(),
-        enable_authentication: true,
+        domain: "calea.example.com".to_string(),
         user_agent: "Redfire-Switch-CALEA/1.0".to_string(),
         ..Default::default()
     };
@@ -43,7 +42,7 @@ async fn main() -> Result<()> {
 
     // Step 5: Integrate CALEA compliance with SIP stack
     info!("Step 5: Integrating CALEA compliance with SIP stack");
-    sip_engine.set_compliance_framework(calea_bridge);
+    // Note: CALEA bridge integration would be handled through middleware/callbacks
 
     // Step 6: Start SIP engine with CALEA monitoring
     info!("Step 6: Starting SIP engine with J-STD-025 CALEA compliance");

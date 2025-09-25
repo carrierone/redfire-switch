@@ -13,28 +13,25 @@ use clap::{Arg, Command};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::process::Stdio;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::fs::OpenOptions;
-use tokio::io::{AsyncWriteExt, BufWriter};
-use tokio::process::Command as TokioCommand;
-use tokio::sync::{mpsc, RwLock};
+use tokio::io::BufWriter;
+use tokio::sync::RwLock;
 use tokio::time::sleep;
-use tracing::{debug, error, info, warn, Level};
-use tracing_subscriber::fmt;
+use tracing::{debug, error, info};
 use uuid::Uuid;
 
 // Import our modules
 use redfire_codec_engine::{
-    AudioCodec, CodecConfig as CodecEngineConfig, CodecService as CodecEngineService,
+    AudioCodec, CodecConfig as CodecEngineConfig,
 };
-use redfire_sip_stack::{SipCoreConfig, SipTransport};
+use redfire_sip_stack::SipCoreConfig;
 use redfire_switch::rtp_proxy_impl::RtpProxyConfig;
 use redfire_switch::sip_codec_integration::SipCodecIntegration;
 use redfire_switch::tdmoe_ni2_signaling::{
-    Ni2MessageType, TdmoeCodec, TdmoeConfig, TdmoeService, TdmoeTrunkPair,
+    TdmoeCodec, TdmoeTrunkPair,
 };
 
 /// Test configuration
@@ -219,15 +216,11 @@ impl SipTdmoeTestSuite {
 
         // Create SIP ingress service
         let sip_ingress_config = SipCoreConfig {
-            transports: vec![redfire_sip_stack::TransportConfig {
-                transport: redfire_sip_stack::SipTransport::UDP,
-                bind_address: format!("0.0.0.0:{}", config.sip_ingress_port).parse()?,
-                max_message_size: 8192,
-                connection_timeout: 30,
-                keep_alive_interval: Some(60),
-                tls_config: None,
-                enabled: true,
-            }],
+            domain: "sip-ingress.test".to_string(),
+            local_ip: "127.0.0.1".parse()?,
+            port: config.sip_ingress_port,
+            user_agent: "RedFire-SIP-Ingress/1.0".to_string(),
+            max_calls: 1000,
             ..SipCoreConfig::default()
         };
 
@@ -246,15 +239,11 @@ impl SipTdmoeTestSuite {
 
         // Create SIP egress service
         let sip_egress_config = SipCoreConfig {
-            transports: vec![redfire_sip_stack::TransportConfig {
-                transport: redfire_sip_stack::SipTransport::UDP,
-                bind_address: format!("0.0.0.0:{}", config.sip_egress_port).parse()?,
-                max_message_size: 8192,
-                connection_timeout: 30,
-                keep_alive_interval: Some(60),
-                tls_config: None,
-                enabled: true,
-            }],
+            domain: "sip-egress.test".to_string(),
+            local_ip: "127.0.0.1".parse()?,
+            port: config.sip_egress_port,
+            user_agent: "RedFire-SIP-Egress/1.0".to_string(),
+            max_calls: 1000,
             ..SipCoreConfig::default()
         };
 
