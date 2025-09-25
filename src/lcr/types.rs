@@ -33,8 +33,8 @@ impl std::fmt::Display for RouteType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CallJurisdiction {
-    Inter,
-    Intra,
+    Interstate,
+    Intrastate,
     Indeterminate,
     Local,
 }

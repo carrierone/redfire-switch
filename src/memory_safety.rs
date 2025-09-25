@@ -93,6 +93,7 @@ impl<T> std::ops::Deref for SafeArc<T> {
 pub struct SafeMutex<T> {
     inner: Mutex<T>,
     name: String,
+    #[allow(dead_code)]
     creation_time: Instant,
 }
 
@@ -145,6 +146,7 @@ impl<T> SafeMutex<T> {
 pub struct SafeRwLock<T> {
     inner: RwLock<T>,
     name: String,
+    #[allow(dead_code)]
     creation_time: Instant,
 }
 

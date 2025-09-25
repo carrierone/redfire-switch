@@ -368,6 +368,22 @@ fn bench_realtime_simulation(c: &mut Criterion) {
     group.finish();
 }
 
+/// Check SIMD support on the system
+fn check_simd_support() -> (bool, bool, bool) {
+    #[cfg(target_arch = "x86_64")]
+    {
+        use std::arch::x86_64::*;
+        let sse = is_x86_feature_detected!("sse");
+        let avx = is_x86_feature_detected!("avx");
+        let fma = is_x86_feature_detected!("fma");
+        (sse, avx, fma)
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        (false, false, false)
+    }
+}
+
 /// Print system information for benchmark context
 fn print_system_info() {
     println!("=== G.729 Benchmark System Information ===");

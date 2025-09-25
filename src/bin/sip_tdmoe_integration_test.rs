@@ -220,7 +220,7 @@ impl SipTdmoeTestSuite {
         // Create SIP ingress service
         let sip_ingress_config = SipCoreConfig {
             transports: vec![redfire_sip_stack::TransportConfig {
-                transport: redfire_sip_stack::SipTransport::Udp,
+                transport: redfire_sip_stack::SipTransport::UDP,
                 bind_address: format!("0.0.0.0:{}", config.sip_ingress_port).parse()?,
                 max_message_size: 8192,
                 connection_timeout: 30,
@@ -247,7 +247,7 @@ impl SipTdmoeTestSuite {
         // Create SIP egress service
         let sip_egress_config = SipCoreConfig {
             transports: vec![redfire_sip_stack::TransportConfig {
-                transport: redfire_sip_stack::SipTransport::Udp,
+                transport: redfire_sip_stack::SipTransport::UDP,
                 bind_address: format!("0.0.0.0:{}", config.sip_egress_port).parse()?,
                 max_message_size: 8192,
                 connection_timeout: 30,

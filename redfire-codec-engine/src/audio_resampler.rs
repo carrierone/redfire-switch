@@ -104,6 +104,7 @@ pub struct AudioResampler {
     /// Sinc interpolation table
     sinc_table: Vec<f64>,
     /// Filter coefficients for anti-aliasing
+    #[allow(dead_code)]
     lowpass_filter: Vec<f64>,
     /// DC blocker state per channel
     dc_blocker_state: Arc<RwLock<Vec<DcBlockerState>>>,

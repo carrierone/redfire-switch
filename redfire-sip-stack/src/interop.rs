@@ -925,6 +925,7 @@ pub struct SipInteropStats {
 
 /// RFC compliance checker
 pub struct RfcComplianceChecker {
+    #[allow(dead_code)]
     config: SipInteropConfig,
 }
 

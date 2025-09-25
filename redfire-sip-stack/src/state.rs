@@ -599,6 +599,7 @@ pub enum SipStateAction {
 
 /// Transaction timer manager
 pub struct TransactionTimerManager {
+    #[allow(dead_code)]
     config: SipStateConfig,
     transactions: Arc<DashMap<String, SipTransaction>>,
 }

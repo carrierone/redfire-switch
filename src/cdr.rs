@@ -23,6 +23,7 @@ impl Default for CdrConfig {
 }
 
 pub struct CdrService {
+    #[allow(dead_code)]
     config: CdrConfig,
 }
 

@@ -10,13 +10,13 @@
  * Sponsored by Carrier One Inc (https://www.carrierone.com)
  */
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use axum::{
     extract::{Json, Path, Query, State},
     http::StatusCode,
     response::Json as ResponseJson,
-    routing::{delete, get, post, put},
-    Router, ServiceExt,
+    routing::get,
+    Router,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -24,19 +24,19 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tower::ServiceBuilder;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
-use tracing::{error, info, warn};
+use tracing::info;
 use utoipa::{OpenApi, ToSchema};
 use utoipa_swagger_ui::SwaggerUi;
 use uuid::Uuid;
 
 // Import our authentication and configuration modules
 use crate::api::auth::{
-    AuthConfig, AuthState, AuthUser, LoginRequest, LoginResponse, Permission, UserInfo,
+    AuthConfig, AuthState, LoginRequest, LoginResponse, UserInfo,
 };
-use crate::api::config::{ApiServerConfig, NetworkListenerConfig};
+use crate::api::config::ApiServerConfig;
 
 // Import monitoring functionality
-use crate::monitor::{EndpointHealth, EndpointStatus, SipMonitor};
+use crate::monitor::SipMonitor;
 
 /// API response wrapper
 #[derive(Debug, Serialize, ToSchema)]
@@ -558,7 +558,7 @@ pub async fn list_active_calls(
 
     // Apply pagination
     let start = ((pagination.page - 1) * pagination.limit) as usize;
-    let end = (start + pagination.limit as usize).min(call_list.len());
+    let _end = (start + pagination.limit as usize).min(call_list.len());
 
     if start < call_list.len() {
         call_list.drain(0..start);

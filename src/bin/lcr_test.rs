@@ -94,19 +94,19 @@ async fn test_jurisdiction_logic() {
         (
             "12125551234",
             "14155555678",
-            CallJurisdiction::Inter,
+            CallJurisdiction::Interstate,
             "NYC to SF (Interstate)",
         ),
         (
             "12125551234",
             "12125556789",
-            CallJurisdiction::Intra,
+            CallJurisdiction::Intrastate,
             "NYC to NYC (Intrastate)",
         ),
         (
             "14155551234",
             "12135555678",
-            CallJurisdiction::Inter,
+            CallJurisdiction::Interstate,
             "SF to LA (Interstate)",
         ),
         (
@@ -267,7 +267,7 @@ fn mock_determine_jurisdiction(ani: &str, dnis: &str) -> CallJurisdiction {
                     return CallJurisdiction::Local;
                 }
             }
-            CallJurisdiction::Intra
+            CallJurisdiction::Intrastate
         } else {
             // Different area codes
             let state_map = [
@@ -291,8 +291,8 @@ fn mock_determine_jurisdiction(ani: &str, dnis: &str) -> CallJurisdiction {
                 .map(|(_, state)| *state);
 
             match (ani_state, dnis_state) {
-                (Some(ani_st), Some(dnis_st)) if ani_st == dnis_st => CallJurisdiction::Intra,
-                (Some(_), Some(_)) => CallJurisdiction::Inter,
+                (Some(ani_st), Some(dnis_st)) if ani_st == dnis_st => CallJurisdiction::Intrastate,
+                (Some(_), Some(_)) => CallJurisdiction::Interstate,
                 _ => CallJurisdiction::Indeterminate,
             }
         }

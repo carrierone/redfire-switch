@@ -4,19 +4,15 @@
  */
 
 use axum::{
-    extract::{Json, Path, Query, State},
+    extract::{Json, State},
     http::StatusCode,
     response::Json as ResponseJson,
     routing::{get, post},
     Router,
 };
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use chrono::Utc;
 use std::fs;
-use std::sync::Arc;
-use tokio::sync::RwLock;
-use utoipa::{OpenApi, ToSchema};
+use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
 // Re-use types from main API modules to avoid duplication

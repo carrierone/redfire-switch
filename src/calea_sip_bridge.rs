@@ -6,7 +6,7 @@
 
 use crate::compliance_framework::{CallEvent, CallEventType, ComplianceFramework};
 use chrono::Utc;
-use redfire_sip_stack::core::{ComplianceNotifier, SipCallContext};
+// TODO: Replace with available SIP stack types when core module is implemented
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -27,7 +27,8 @@ impl CaleaSipBridge {
     }
 }
 
-impl ComplianceNotifier for CaleaSipBridge {
+// TODO: Uncomment when SIP core module is available
+/*impl ComplianceNotifier for CaleaSipBridge {
     /// Notify of call attempt (INVITE received) - J-STD-025 compliance
     fn notify_call_attempt(&self, context: &SipCallContext, source_ip: IpAddr) {
         let mut sip_headers = HashMap::new();
@@ -175,4 +176,4 @@ impl ComplianceNotifier for CaleaSipBridge {
             );
         }
     }
-}
+}*/

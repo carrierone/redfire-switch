@@ -3,10 +3,10 @@
 //! Manages connection state, configuration, and session data
 //! for the interactive CLI interface.
 
-use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
+use anyhow::Result;
+use serde::Deserialize;
 use std::time::{Duration, SystemTime};
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 /// Standard API response wrapper
 #[derive(Debug, Deserialize)]

@@ -83,7 +83,7 @@ async fn test_routing_v2_basic_functionality() -> Result<()> {
     let database_url = setup_test_db().await?;
     let lcr = LcrEngine::new(&database_url).await?;
     let deck_loader = lcr.get_deck_loader();
-    let routing_v2 = lcr.get_routing_engine_v2();
+    let routing_v2 = lcr.get_routing_engine();
 
     // Load test vendor deck
     let vendor_request = DeckLoadRequest {
@@ -110,6 +110,8 @@ async fn test_routing_v2_basic_functionality() -> Result<()> {
         require_profit_protection: false,
         min_profit_margin: None,
         effective_time: None,
+        phone_validation: None,
+        routing_plan_id: None,
     };
 
     let response = routing_v2.find_routes(&route_request).await?;
@@ -136,7 +138,7 @@ async fn test_time_based_routing() -> Result<()> {
     let database_url = setup_test_db().await?;
     let lcr = LcrEngine::new(&database_url).await?;
     let deck_loader = lcr.get_deck_loader();
-    let routing_v2 = lcr.get_routing_engine_v2();
+    let routing_v2 = lcr.get_routing_engine();
 
     // Load current deck
     let current_rates = create_test_rates();
@@ -191,6 +193,8 @@ async fn test_time_based_routing() -> Result<()> {
         require_profit_protection: false,
         min_profit_margin: None,
         effective_time: None, // Current time
+        phone_validation: None,
+        routing_plan_id: None,
     };
 
     let current_response = routing_v2.find_routes(&route_request).await?;
@@ -239,7 +243,7 @@ async fn test_jurisdiction_detection() -> Result<()> {
     let database_url = setup_test_db().await?;
     let lcr = LcrEngine::new(&database_url).await?;
     let deck_loader = lcr.get_deck_loader();
-    let routing_v2 = lcr.get_routing_engine_v2();
+    let routing_v2 = lcr.get_routing_engine();
 
     // Load test deck
     let vendor_request = DeckLoadRequest {
@@ -272,6 +276,8 @@ async fn test_jurisdiction_detection() -> Result<()> {
             require_profit_protection: false,
             min_profit_margin: None,
             effective_time: None,
+            phone_validation: None,
+            routing_plan_id: None,
         };
 
         let response = routing_v2.find_routes(&route_request).await?;
@@ -296,7 +302,7 @@ async fn test_profit_protection() -> Result<()> {
     let database_url = setup_test_db().await?;
     let lcr = LcrEngine::new(&database_url).await?;
     let deck_loader = lcr.get_deck_loader();
-    let routing_v2 = lcr.get_routing_engine_v2();
+    let routing_v2 = lcr.get_routing_engine();
 
     // Load vendor deck with high costs
     let expensive_rates = vec![NanpaRate {
@@ -362,6 +368,8 @@ async fn test_profit_protection() -> Result<()> {
         require_profit_protection: false,
         min_profit_margin: None,
         effective_time: None,
+        phone_validation: None,
+        routing_plan_id: None,
     };
 
     let response_no_protection = routing_v2.find_routes(&route_request_no_protection).await?;
@@ -404,7 +412,7 @@ async fn test_routing_engine_comparison() -> Result<()> {
     let lcr = LcrEngine::new(&database_url).await?;
     let deck_loader = lcr.get_deck_loader();
     let routing_v1 = lcr.get_routing_engine();
-    let routing_v2 = lcr.get_routing_engine_v2();
+    let routing_v2 = lcr.get_routing_engine();
 
     // Load test data
     let vendor_request = DeckLoadRequest {
@@ -433,6 +441,8 @@ async fn test_routing_engine_comparison() -> Result<()> {
         require_profit_protection: false,
         min_profit_margin: None,
         effective_time: None, // Current time for V2
+        phone_validation: None,
+        routing_plan_id: None,
     };
 
     let response_v1 = routing_v1.find_routes(&route_request).await?;
@@ -493,7 +503,7 @@ async fn test_performance_comparison() -> Result<()> {
     let lcr = LcrEngine::new(&database_url).await?;
     let deck_loader = lcr.get_deck_loader();
     let routing_v1 = lcr.get_routing_engine();
-    let routing_v2 = lcr.get_routing_engine_v2();
+    let routing_v2 = lcr.get_routing_engine();
 
     // Load substantial test data
     let mut large_rate_set = Vec::new();
@@ -542,6 +552,8 @@ async fn test_performance_comparison() -> Result<()> {
         require_profit_protection: false,
         min_profit_margin: None,
         effective_time: None,
+        phone_validation: None,
+        routing_plan_id: None,
     };
 
     // Performance test V1

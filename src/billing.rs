@@ -16,9 +16,10 @@ use dashmap::DashMap;
 use parking_lot::RwLock;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
+use sqlx::{PgPool, Row};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 /// Billing service configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,6 +57,8 @@ impl Default for BillingConfig {
 /// Billing database configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BillingDatabaseConfig {
+    /// Whether database integration is enabled
+    pub enabled: bool,
     /// Database connection string
     pub connection_string: String,
     /// Connection pool size
@@ -69,6 +72,7 @@ pub struct BillingDatabaseConfig {
 impl Default for BillingDatabaseConfig {
     fn default() -> Self {
         Self {
+            enabled: true,
             connection_string: "postgresql://billing:password@localhost/billing".to_string(),
             pool_size: 10,
             query_timeout: 5,
@@ -332,6 +336,8 @@ pub struct BillingStats {
 /// Main billing service
 pub struct BillingService {
     config: BillingConfig,
+    /// Database connection pool
+    db_pool: Option<PgPool>,
     /// Cached account statuses
     account_cache: Arc<DashMap<String, CachedAccountStatus>>,
     /// Billing statistics
@@ -343,6 +349,7 @@ impl BillingService {
     pub fn new(config: BillingConfig) -> Result<Self> {
         let service = Self {
             config,
+            db_pool: None,
             account_cache: Arc::new(DashMap::new()),
             stats: Arc::new(RwLock::new(BillingStats::default())),
         };
@@ -355,6 +362,18 @@ impl BillingService {
 
         info!("Billing service initialized");
         Ok(service)
+    }
+
+    /// Initialize database connection
+    pub async fn connect_database(&mut self, database_url: &str) -> Result<()> {
+        if self.config.database_config.enabled {
+            info!("Connecting to billing database: {}", database_url);
+            let pool = PgPool::connect(database_url).await
+                .map_err(|e| anyhow!("Failed to connect to billing database: {}", e))?;
+            self.db_pool = Some(pool);
+            info!("Successfully connected to billing database");
+        }
+        Ok(())
     }
 
     /// Check if a call should be authorized based on billing status
@@ -556,34 +575,93 @@ impl BillingService {
         Ok(account)
     }
 
-    /// Fetch account from database (placeholder implementation)
+    /// Fetch account from database
     async fn fetch_account_from_database(&self, customer_id: &str) -> Result<CustomerAccount> {
-        // TODO: Implement actual database connectivity
-        // This is a placeholder that would connect to your billing database
-
         debug!("Fetching account {} from billing database", customer_id);
 
-        // Simulate database lookup
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        if let Some(pool) = &self.db_pool {
+            // Execute SQL query to fetch customer account
+            let row = sqlx::query(
+                r#"
+                SELECT
+                    customer_id,
+                    account_type,
+                    status,
+                    balance,
+                    credit_limit,
+                    low_balance_threshold,
+                    currency,
+                    created_at,
+                    last_payment_date,
+                    suspended_at,
+                    grace_period_end
+                FROM customer_accounts
+                WHERE customer_id = $1 AND active = true
+                "#,
+            )
+            .bind(customer_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| anyhow!("Database query failed: {}", e))?;
 
-        // Return a mock account for now
-        let account = CustomerAccount {
-            customer_id: customer_id.to_string(),
-            account_type: AccountType::Postpaid,
-            status: AccountStatus::Active,
-            balance: 50.0,
-            credit_limit: Some(1000.0),
-            low_balance_threshold: 10.0,
-            currency: "USD".to_string(),
-            created_at: Utc::now() - Duration::days(30),
-            last_payment_date: Some(Utc::now() - Duration::days(15)),
-            suspended_at: None,
-            grace_period_end: None,
-            billing_profile: BillingProfile::default(),
-            metadata: HashMap::new(),
-        };
+            if let Some(row) = row {
+                let account = CustomerAccount {
+                    customer_id: row.get("customer_id"),
+                    account_type: match row.get::<String, _>("account_type").as_str() {
+                        "prepaid" => AccountType::Prepaid,
+                        "postpaid" => AccountType::Postpaid,
+                        _ => AccountType::Postpaid, // default
+                    },
+                    status: match row.get::<String, _>("status").as_str() {
+                        "active" => AccountStatus::Active,
+                        "suspended" => AccountStatus::Suspended,
+                        "closed" => AccountStatus::Closed,
+                        "low_balance" => AccountStatus::LowBalance,
+                        "grace_period" => AccountStatus::GracePeriod,
+                        "under_review" => AccountStatus::UnderReview,
+                        _ => AccountStatus::Active, // default
+                    },
+                    balance: row.get::<Option<f64>, _>("balance").unwrap_or(0.0),
+                    credit_limit: row.get("credit_limit"),
+                    low_balance_threshold: row.get::<Option<f64>, _>("low_balance_threshold").unwrap_or(10.0),
+                    currency: row.get::<Option<String>, _>("currency").unwrap_or_else(|| "USD".to_string()),
+                    created_at: row.get::<Option<DateTime<Utc>>, _>("created_at").unwrap_or_else(|| Utc::now()),
+                    last_payment_date: row.get("last_payment_date"),
+                    suspended_at: row.get("suspended_at"),
+                    grace_period_end: row.get("grace_period_end"),
+                    billing_profile: BillingProfile::default(), // Would load from separate table
+                    metadata: HashMap::new(), // Would load from separate table
+                };
 
-        Ok(account)
+                debug!("Successfully fetched account for customer {}: status={:?}, balance={}",
+                       customer_id, account.status, account.balance);
+                Ok(account)
+            } else {
+                warn!("Customer account not found: {}", customer_id);
+                Err(anyhow!("Customer account not found: {}", customer_id))
+            }
+        } else {
+            // Fallback to mock data if database not connected
+            warn!("Database not connected, using mock account data for customer {}", customer_id);
+
+            let account = CustomerAccount {
+                customer_id: customer_id.to_string(),
+                account_type: AccountType::Postpaid,
+                status: AccountStatus::Active,
+                balance: 50.0,
+                credit_limit: Some(1000.0),
+                low_balance_threshold: 10.0,
+                currency: "USD".to_string(),
+                created_at: Utc::now() - Duration::days(30),
+                last_payment_date: Some(Utc::now() - Duration::days(15)),
+                suspended_at: None,
+                grace_period_end: None,
+                billing_profile: BillingProfile::default(),
+                metadata: HashMap::new(),
+            };
+
+            Ok(account)
+        }
     }
 
     /// Generate SIP 402 Payment Required response
@@ -694,6 +772,7 @@ impl Clone for BillingService {
     fn clone(&self) -> Self {
         Self {
             config: self.config.clone(),
+            db_pool: self.db_pool.clone(),
             account_cache: self.account_cache.clone(),
             stats: self.stats.clone(),
         }

@@ -41,6 +41,29 @@ pub enum TelecomEvent {
     ConfigChanged(ConfigChangedEvent),
     /// Custom plugin event
     PluginEvent(PluginEvent),
+    /// Legal authorization created
+    LegalAuthorizationCreated {
+        authorization_id: String,
+        authorization_type: String,
+        effective_date: DateTime<Utc>,
+        expiration_date: DateTime<Utc>,
+    },
+    /// Legal authorization status updated
+    LegalAuthorizationUpdated {
+        authorization_id: String,
+        previous_status: String,
+        new_status: String,
+        change_reason: String,
+    },
+    /// Voice integrity audit event
+    VoiceIntegrityAudit {
+        user_id: Option<String>,
+        action_type: String,
+        resource_type: String,
+        resource_id: String,
+        authorization_id: Option<i32>,
+        ecpa_compliant: bool,
+    },
 }
 
 /// Call initiation details
@@ -215,6 +238,9 @@ pub enum EventType {
     HealthStatus,
     ConfigChanged,
     PluginEvent,
+    LegalAuthorizationCreated,
+    LegalAuthorizationUpdated,
+    VoiceIntegrityAudit,
     All, // Special type for handlers that want all events
 }
 
@@ -230,6 +256,9 @@ impl From<&TelecomEvent> for EventType {
             TelecomEvent::HealthStatus(_) => EventType::HealthStatus,
             TelecomEvent::ConfigChanged(_) => EventType::ConfigChanged,
             TelecomEvent::PluginEvent(_) => EventType::PluginEvent,
+            TelecomEvent::LegalAuthorizationCreated { .. } => EventType::LegalAuthorizationCreated,
+            TelecomEvent::LegalAuthorizationUpdated { .. } => EventType::LegalAuthorizationUpdated,
+            TelecomEvent::VoiceIntegrityAudit { .. } => EventType::VoiceIntegrityAudit,
         }
     }
 }
@@ -336,6 +365,9 @@ impl EventFilter {
                 TelecomEvent::HealthStatus(e) => e.timestamp,
                 TelecomEvent::ConfigChanged(e) => e.timestamp,
                 TelecomEvent::PluginEvent(e) => e.timestamp,
+                TelecomEvent::LegalAuthorizationCreated { effective_date, .. } => *effective_date,
+                TelecomEvent::LegalAuthorizationUpdated { .. } => Utc::now(),
+                TelecomEvent::VoiceIntegrityAudit { .. } => Utc::now(),
             };
 
             if event_time < min_time {
@@ -437,6 +469,9 @@ impl TelecomEvent {
             TelecomEvent::HealthStatus(e) => e.timestamp,
             TelecomEvent::ConfigChanged(e) => e.timestamp,
             TelecomEvent::PluginEvent(e) => e.timestamp,
+            TelecomEvent::LegalAuthorizationCreated { effective_date, .. } => *effective_date,
+            TelecomEvent::LegalAuthorizationUpdated { .. } => Utc::now(),
+            TelecomEvent::VoiceIntegrityAudit { .. } => Utc::now(),
         }
     }
 }

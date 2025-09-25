@@ -16,9 +16,9 @@ impl JurisdictionCalculator {
             (Some(ani), Some(dnis)) => {
                 // Check if same state (intrastate)
                 if ani.state == dnis.state {
-                    CallJurisdiction::Intra
+                    CallJurisdiction::Intrastate
                 } else {
-                    CallJurisdiction::Inter
+                    CallJurisdiction::Interstate
                 }
             }
             _ => {

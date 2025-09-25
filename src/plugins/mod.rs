@@ -13,11 +13,9 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{info, warn};
 
-pub mod examples;
 pub mod loader;
 pub mod registry;
 
-pub use examples::*;
 pub use loader::*;
 pub use registry::*;
 

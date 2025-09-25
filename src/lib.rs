@@ -1,11 +1,5 @@
 // redfire-switch library modules - CLEANED UP
 
-// Allow common warnings for library code that may be used later
-#![allow(dead_code)]
-#![allow(unused_variables)]
-#![allow(unused_imports)]
-#![allow(unreachable_code)]
-
 // Re-export codec engine and SIP stack libraries
 pub use redfire_codec_engine as codec_engine;
 pub use redfire_sip_stack as sip_stack;
@@ -99,6 +93,8 @@ pub mod snmp_monitoring;
 
 // Audit and compliance
 pub mod audit_logging;
+
+// Anti-fraud voice monitoring services are included in the main services module
 
 // Compliance and regulatory framework
 pub mod calea_sip_bridge;

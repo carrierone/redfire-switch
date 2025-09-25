@@ -9,7 +9,7 @@ use std::net::IpAddr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::time::{Duration, Instant};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, warn};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DDoSProtectionConfig {
@@ -187,14 +187,14 @@ pub enum BlacklistReason {
 }
 
 #[derive(Debug, Default)]
-struct ProtectionStatistics {
-    total_requests: u64,
-    blocked_requests: u64,
-    rate_limited_requests: u64,
-    blacklisted_ips: u64,
-    anomalies_detected: u64,
-    concurrent_connections: u32,
-    bandwidth_usage_mbps: f64,
+pub struct ProtectionStatistics {
+    pub total_requests: u64,
+    pub blocked_requests: u64,
+    pub rate_limited_requests: u64,
+    pub blacklisted_ips: u64,
+    pub anomalies_detected: u64,
+    pub concurrent_connections: u32,
+    pub bandwidth_usage_mbps: f64,
 }
 
 impl DDoSProtectionService {

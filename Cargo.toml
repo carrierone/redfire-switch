@@ -91,6 +91,12 @@ rustls-pemfile = "2.1"
 # opus = "0.3"          # Optional Opus codec
 # speex-sys = "0.3"     # Optional Speex codec
 
+# Anti-fraud voice monitoring and ASR
+vosk = "0.3"
+hound = "3.5"          # WAV file handling
+tokio-cron-scheduler = "0.9"
+tokio-tungstenite = "0.20"  # WebSocket client for Vosk
+
 # Additional utilities
 thiserror = "1.0"
 derive_more = "0.99"

@@ -3,7 +3,7 @@
 //! This module handles the loading of plugins from various sources including
 //! built-in plugins and external plugin files.
 
-use super::{examples::*, B2BUAPlugin, PluginConfig, PluginMetadata};
+use super::{B2BUAPlugin, PluginConfig, PluginMetadata};
 use anyhow::Result;
 use std::path::Path;
 use tracing::{debug, info, warn};
@@ -73,35 +73,8 @@ impl PluginLoader {
 
     /// Register built-in plugins
     fn register_builtin_plugins(&mut self) {
-        // Register example plugins
-        self.builtin_plugins
-            .insert("default-b2bua".to_string(), || {
-                Box::new(DefaultB2BUAExample::new())
-            });
-
-        self.builtin_plugins
-            .insert("sip-authenticator".to_string(), || {
-                Box::new(SipAuthenticatorPlugin::new())
-            });
-
-        self.builtin_plugins.insert("call-limiter".to_string(), || {
-            Box::new(CallLimiterPlugin::new(100)) // Default limit of 100 calls
-        });
-
-        self.builtin_plugins
-            .insert("header-manipulator".to_string(), || {
-                Box::new(HeaderManipulatorPlugin::new())
-            });
-
-        self.builtin_plugins
-            .insert("fraud-detector".to_string(), || {
-                Box::new(FraudDetectorPlugin::new())
-            });
-
-        self.builtin_plugins
-            .insert("cdr-generator".to_string(), || {
-                Box::new(CdrGeneratorPlugin::new())
-            });
+        // No built-in plugins registered yet
+        // Example plugins can be added here once implemented
 
         info!("Registered {} built-in plugins", self.builtin_plugins.len());
     }

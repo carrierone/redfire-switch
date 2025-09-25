@@ -3,20 +3,18 @@
 //! Optimized for carrier-grade performance with lock-free data structures
 
 use ahash::AHasher;
-use anyhow::{anyhow, Result};
-use chrono::{DateTime, Utc};
+use anyhow::Result;
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use std::hash::BuildHasherDefault;
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-use std::sync::Arc;
-use tracing::{debug, info, warn};
+use tracing::info;
 use uuid::Uuid;
 
 use crate::performance::memory_pools::{pools, CallState, PooledCallSession};
 use crate::performance::string_interner::{
-    intern_phone_number, intern_trunk_id, resolve_trunk_id, Symbol,
+    intern_trunk_id, Symbol,
 };
 
 type FastHasher = BuildHasherDefault<AHasher>;

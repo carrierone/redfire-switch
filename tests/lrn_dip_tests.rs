@@ -139,6 +139,9 @@ async fn test_lrn_dip_302_redirect() {
         timeout_ms: 2000,
         max_redirects: 3,
         cache_timeout_sec: 300,
+        servers: Vec::new(),
+        backup_timeout_ms: Some(5000),
+        load_balancing: "priority".to_string(),
     };
 
     let service = LrnDipService::new(config);
@@ -187,6 +190,9 @@ async fn test_lrn_dip_200_ok_response() {
         timeout_ms: 2000,
         max_redirects: 3,
         cache_timeout_sec: 300,
+        servers: Vec::new(),
+        backup_timeout_ms: Some(5000),
+        load_balancing: "priority".to_string(),
     };
 
     let service = LrnDipService::new(config);
@@ -235,6 +241,9 @@ async fn test_lrn_dip_404_not_found() {
         timeout_ms: 2000,
         max_redirects: 3,
         cache_timeout_sec: 300,
+        servers: Vec::new(),
+        backup_timeout_ms: Some(5000),
+        load_balancing: "priority".to_string(),
     };
 
     let service = LrnDipService::new(config);
@@ -282,6 +291,9 @@ async fn test_lrn_dip_caching() {
         timeout_ms: 2000,
         max_redirects: 3,
         cache_timeout_sec: 300,
+        servers: Vec::new(),
+        backup_timeout_ms: Some(5000),
+        load_balancing: "priority".to_string(),
     };
 
     let service = LrnDipService::new(config);
@@ -425,6 +437,9 @@ async fn test_timeout_handling() {
         timeout_ms: 500, // Short timeout
         max_redirects: 3,
         cache_timeout_sec: 300,
+        servers: Vec::new(),
+        backup_timeout_ms: Some(5000),
+        load_balancing: "priority".to_string(),
     };
 
     let service = LrnDipService::new(config);
@@ -461,6 +476,9 @@ async fn test_lrn_integration_with_routing() {
         enabled: true,
         timeout_ms: 2000,
         cache_timeout_sec: 300,
+        servers: Vec::new(),
+        backup_timeout_ms: Some(5000),
+        load_balancing: "priority".to_string(),
         ..Default::default()
     };
 

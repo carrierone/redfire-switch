@@ -12,24 +12,17 @@
 
 use anyhow::{anyhow, Result};
 use axum::{
-    routing::{get, post},
     serve, Router,
 };
 use std::fs;
 use std::net::SocketAddr;
 use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
-use std::time::Duration;
 use tokio::net::{TcpListener, UnixListener as TokioUnixListener};
-use tower::ServiceBuilder;
-use tower_http::{
-    cors::CorsLayer, limit::RequestBodyLimitLayer, timeout::TimeoutLayer, trace::TraceLayer,
-};
 use tracing::{error, info, warn};
 
 use crate::api::config::{ApiServerConfig, HttpListener, HttpProtocol, UnixListener};
 use crate::api::endpoints::create_additional_routes;
-use crate::rest_api::{create_api_router, AppState};
+use crate::rest_api::AppState;
 
 pub struct ApiServer {
     config: ApiServerConfig,
@@ -167,7 +160,7 @@ impl ApiServer {
         );
 
         let listener_name = listener_config.name.clone();
-        let socket_path_str = socket_path.display().to_string();
+        let _socket_path_str = socket_path.display().to_string();
 
         let handle = tokio::spawn(async move {
             if let Err(e) = serve_unix(listener, router).await {
@@ -182,7 +175,7 @@ impl ApiServer {
 }
 
 // Helper function to serve on Unix socket (simplified for compilation)
-async fn serve_unix(listener: TokioUnixListener, router: Router) -> Result<()> {
+async fn serve_unix(_listener: TokioUnixListener, _router: Router) -> Result<()> {
     // TODO: Implement proper Unix socket serving
     // For now, just return Ok to allow compilation
     warn!("Unix socket serving not fully implemented yet");

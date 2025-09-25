@@ -5,7 +5,6 @@ use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, RwLock};
@@ -161,15 +160,15 @@ pub enum HealthStatus {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-struct SystemMetrics {
-    uptime_seconds: u64,
-    memory_usage_percentage: f64,
-    cpu_usage_percentage: f64,
-    disk_usage_percentage: f64,
-    active_connections: u32,
-    total_requests: u64,
-    error_rate_percentage: f64,
-    response_time_p95_ms: f64,
+pub struct SystemMetrics {
+    pub uptime_seconds: u64,
+    pub memory_usage_percentage: f64,
+    pub cpu_usage_percentage: f64,
+    pub disk_usage_percentage: f64,
+    pub active_connections: u32,
+    pub total_requests: u64,
+    pub error_rate_percentage: f64,
+    pub response_time_p95_ms: f64,
 }
 
 #[derive(Debug, Clone)]

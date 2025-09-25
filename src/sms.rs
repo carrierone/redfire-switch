@@ -20,6 +20,7 @@ impl Default for SmsConfig {
 }
 
 pub struct SmsService {
+    #[allow(dead_code)]
     config: SmsConfig,
 }
 

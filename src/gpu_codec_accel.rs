@@ -73,7 +73,7 @@ pub struct GpuBuffer {
 
 impl GpuBuffer {
     /// Allocate GPU buffer
-    pub async fn allocate(size: usize, backend: GpuBackend, device_id: u32) -> Result<Self> {
+    pub async fn allocate(_size: usize, backend: GpuBackend, _device_id: u32) -> Result<Self> {
         match backend {
             #[cfg(feature = "cuda")]
             GpuBackend::Cuda => {
@@ -118,19 +118,21 @@ impl GpuBuffer {
             #[cfg(feature = "cuda")]
             GpuBackend::Cuda => {
                 if let Some(ref ptr) = self.cuda_ptr {
-                    ptr.copy_from_host(data).await?;
+                    ptr.copy_from_host(data).await
+                } else {
+                    Ok(())
                 }
             }
             #[cfg(feature = "rocm")]
             GpuBackend::Rocm => {
                 if let Some(ref ptr) = self.rocm_ptr {
-                    ptr.copy_from_host(data)?;
+                    ptr.copy_from_host(data)
+                } else {
+                    Ok(())
                 }
             }
-            _ => return Err(anyhow!("Unsupported GPU backend")),
+            _ => Err(anyhow!("Unsupported GPU backend")),
         }
-
-        Ok(())
     }
 
     /// Copy data from GPU
@@ -147,19 +149,21 @@ impl GpuBuffer {
             #[cfg(feature = "cuda")]
             GpuBackend::Cuda => {
                 if let Some(ref ptr) = self.cuda_ptr {
-                    ptr.copy_to_host(data).await?;
+                    ptr.copy_to_host(data).await
+                } else {
+                    Ok(())
                 }
             }
             #[cfg(feature = "rocm")]
             GpuBackend::Rocm => {
                 if let Some(ref ptr) = self.rocm_ptr {
-                    ptr.copy_to_host(data)?;
+                    ptr.copy_to_host(data)
+                } else {
+                    Ok(())
                 }
             }
-            _ => return Err(anyhow!("Unsupported GPU backend")),
+            _ => Err(anyhow!("Unsupported GPU backend")),
         }
-
-        Ok(())
     }
 }
 
@@ -253,53 +257,56 @@ impl GpuCodecAccelerator {
         #[cfg(feature = "cuda")]
         let mut cuda_device = None;
         #[cfg(not(feature = "cuda"))]
-        let cuda_device: Option<Arc<()>> = None;
+        let _cuda_device: Option<Arc<()>> = None;
 
         #[cfg(feature = "rocm")]
         let mut rocm_device = None;
         #[cfg(not(feature = "rocm"))]
-        let rocm_device: Option<Arc<()>> = None;
+        let _rocm_device: Option<Arc<()>> = None;
 
-        match config.backend {
-            #[cfg(feature = "cuda")]
-            GpuBackend::Cuda => {
-                let device = Arc::new(CudaDevice::new(config.device_id as usize)?);
-                info!(
-                    "Initialized CUDA device {} for codec acceleration",
-                    config.device_id
-                );
-                cuda_device = Some(device);
-                rocm_device = None;
-            }
-            #[cfg(feature = "rocm")]
-            GpuBackend::Rocm => {
-                let device = Arc::new(HipDevice::new(config.device_id)?);
-                info!(
-                    "Initialized ROCm device {} for codec acceleration",
-                    config.device_id
-                );
-                cuda_device = None;
-                rocm_device = Some(device);
-            }
-            _ => {
-                return Err(anyhow!("GPU backend {:?} not supported", config.backend));
-            }
+        #[cfg(feature = "cuda")]
+        if let GpuBackend::Cuda = config.backend {
+            let device = Arc::new(CudaDevice::new(config.device_id as usize)?);
+            info!(
+                "Initialized CUDA device {} for codec acceleration",
+                config.device_id
+            );
+            cuda_device = Some(device);
         }
 
-        let mut accelerator = Self {
-            config,
-            #[cfg(feature = "cuda")]
-            cuda_device,
-            #[cfg(feature = "rocm")]
-            rocm_device,
-            memory_pool: Arc::new(RwLock::new(GpuMemoryPool::new(max_pool_size_mb))),
-            kernel_cache: Arc::new(RwLock::new(HashMap::new())),
-        };
+        #[cfg(feature = "rocm")]
+        if let GpuBackend::Rocm = config.backend {
+            let device = Arc::new(HipDevice::new(config.device_id)?);
+            info!(
+                "Initialized ROCm device {} for codec acceleration",
+                config.device_id
+            );
+            rocm_device = Some(device);
+        }
 
-        // Compile and cache GPU kernels
-        accelerator.compile_kernels().await?;
+        #[cfg(any(feature = "cuda", feature = "rocm"))]
+        {
+            let mut accelerator = Self {
+                config,
+                #[cfg(feature = "cuda")]
+                cuda_device,
+                #[cfg(feature = "rocm")]
+                rocm_device,
+                memory_pool: Arc::new(RwLock::new(GpuMemoryPool::new(max_pool_size_mb))),
+                kernel_cache: Arc::new(RwLock::new(HashMap::new())),
+            };
 
-        Ok(accelerator)
+            // Compile and cache GPU kernels
+            accelerator.compile_kernels().await?;
+
+            Ok(accelerator)
+        }
+
+        #[cfg(not(any(feature = "cuda", feature = "rocm")))]
+        Err(anyhow!(
+            "GPU backend {:?} not supported - no GPU features enabled",
+            config.backend
+        ))
     }
 
     /// Compile GPU kernels for various codec operations
@@ -307,16 +314,14 @@ impl GpuCodecAccelerator {
         match self.config.backend {
             #[cfg(feature = "cuda")]
             GpuBackend::Cuda => {
-                self.compile_cuda_kernels().await?;
+                self.compile_cuda_kernels().await
             }
             #[cfg(feature = "rocm")]
             GpuBackend::Rocm => {
-                self.compile_rocm_kernels().await?;
+                self.compile_rocm_kernels().await
             }
-            _ => return Err(anyhow!("Unsupported GPU backend")),
+            _ => Err(anyhow!("Unsupported GPU backend")),
         }
-
-        Ok(())
     }
 
     #[cfg(feature = "cuda")]

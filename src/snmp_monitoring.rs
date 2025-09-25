@@ -10,7 +10,7 @@ use std::sync::Arc;
 use tokio::net::UdpSocket;
 use tokio::sync::RwLock;
 use tokio::time::{interval, Duration};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SnmpConfig {
@@ -148,16 +148,16 @@ pub enum SnmpValue {
 }
 
 #[derive(Debug, Default)]
-struct SnmpStatistics {
-    total_requests: u64,
-    get_requests: u64,
-    set_requests: u64,
-    get_next_requests: u64,
-    walk_requests: u64,
-    successful_responses: u64,
-    error_responses: u64,
-    authentication_failures: u64,
-    traps_sent: u64,
+pub struct SnmpStatistics {
+    pub total_requests: u64,
+    pub get_requests: u64,
+    pub set_requests: u64,
+    pub get_next_requests: u64,
+    pub walk_requests: u64,
+    pub successful_responses: u64,
+    pub error_responses: u64,
+    pub authentication_failures: u64,
+    pub traps_sent: u64,
 }
 
 impl SnmpMonitoringService {

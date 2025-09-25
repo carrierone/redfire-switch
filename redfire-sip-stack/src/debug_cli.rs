@@ -209,6 +209,7 @@ pub struct SipDebugCli {
     /// Statistics
     statistics: Arc<RwLock<DebugStatistics>>,
     /// Export buffer
+    #[allow(dead_code)]
     export_buffer: Arc<RwLock<Vec<SipDebugMessage>>>,
 }
 

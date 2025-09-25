@@ -21,6 +21,7 @@ impl Default for CnamConfig {
 }
 
 pub struct CnamService {
+    #[allow(dead_code)]
     config: CnamConfig,
 }
 

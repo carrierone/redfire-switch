@@ -14,24 +14,19 @@ use axum::{
     extract::{Json, Path, Query, State},
     http::StatusCode,
     response::Json as ResponseJson,
-    routing::{delete, get, patch, post, put},
+    routing::{get, post},
     Router,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use std::io::Read;
-use std::sync::Arc;
-use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 use utoipa::ToSchema;
-use uuid::Uuid;
 
 use crate::api::auth::{AuthUser, LoginRequest, LoginResponse, Permission, UserInfo};
-use crate::api::config::ApiServerConfig;
-use crate::monitor::{EndpointHealth, EndpointStatus};
-use crate::rest_api::{ApiResponse, AppState, CallInfo, CallStatus, PaginationQuery};
+use crate::monitor::EndpointStatus;
+use crate::rest_api::{ApiResponse, AppState, CallStatus, PaginationQuery};
 
 // Configuration management endpoints
 
@@ -225,7 +220,7 @@ pub async fn get_live_calls(
 
     // Apply pagination
     let start = ((pagination.page - 1) * pagination.limit) as usize;
-    let end = (start + pagination.limit as usize).min(active_calls.len());
+    let _end = (start + pagination.limit as usize).min(active_calls.len());
 
     if start < active_calls.len() {
         active_calls.drain(0..start);

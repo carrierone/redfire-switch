@@ -2,13 +2,12 @@
 //! Comprehensive database integration with connection pooling, migrations, and monitoring
 
 use anyhow::{anyhow, Result};
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres, Row};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,14 +46,14 @@ pub struct DatabaseService {
 }
 
 #[derive(Debug, Default)]
-struct DatabaseStatistics {
-    total_queries: u64,
-    successful_queries: u64,
-    failed_queries: u64,
-    connection_errors: u64,
-    average_response_time_ms: f64,
-    active_connections: u32,
-    idle_connections: u32,
+pub struct DatabaseStatistics {
+    pub total_queries: u64,
+    pub successful_queries: u64,
+    pub failed_queries: u64,
+    pub connection_errors: u64,
+    pub average_response_time_ms: f64,
+    pub active_connections: u32,
+    pub idle_connections: u32,
 }
 
 impl DatabaseService {
@@ -629,6 +628,17 @@ impl DatabaseService {
     /// Get database pool for advanced operations
     pub fn get_pool(&self) -> &Pool<Postgres> {
         &self.pool
+    }
+
+    /// Shutdown the database service gracefully
+    pub async fn shutdown(&self) -> Result<()> {
+        info!("Shutting down database service");
+
+        // Close the connection pool
+        self.pool.close().await;
+
+        info!("Database service shutdown completed");
+        Ok(())
     }
 }
 

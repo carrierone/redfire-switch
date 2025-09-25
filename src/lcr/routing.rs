@@ -1,23 +1,20 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use chrono::{DateTime, Utc};
 use regex::Regex;
-use rust_decimal::Decimal;
-use sqlx::{PgPool, Row};
+use sqlx::PgPool;
 use std::sync::Arc;
 use tracing::{info, warn};
 
 use crate::performance::database_cache::{
     CallJurisdiction as CacheJurisdiction, DatabaseCache, RouteType as CacheRouteType,
 };
-use crate::performance::memory_pools::{pools, PooledRouteRequest, PooledRouteResponse};
+use crate::performance::memory_pools::{pools, PooledRouteRequest};
 use crate::performance::string_interner::{
-    intern_phone_number, resolve_phone_number, resolve_trunk_id,
+    resolve_phone_number, resolve_trunk_id,
 };
 
 use crate::lcr::cache::LcrCache;
-use crate::lcr::jurisdiction::JurisdictionCalculator;
 use crate::lcr::lrn_dip::LrnDipService;
-use crate::lcr::phone_validation::{PhoneValidationConfig, PhoneValidator};
 use crate::lcr::timers::TimerManager;
 use crate::lcr::trunk_manager::TrunkManager;
 use crate::lcr::types::*;
@@ -191,7 +188,7 @@ impl RoutingEngine {
             // Build response
             let response = RouteResponse {
                 routes: response_routes,
-                jurisdiction: crate::lcr::types::CallJurisdiction::Inter,
+                jurisdiction: crate::lcr::types::CallJurisdiction::Interstate,
                 lrn: None,
                 total_routes: cached_routes.len(),
                 ani: request.ani.to_string(),

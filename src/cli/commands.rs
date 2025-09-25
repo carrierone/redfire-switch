@@ -3,14 +3,13 @@
 //! Defines all available commands and their execution logic,
 //! providing the core functionality for the interactive CLI.
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use serde_json::Value;
-use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
-use super::session::{CliSession, SystemStats};
+use super::session::CliSession;
 use crate::class4_b2bua::Class4B2BUA;
 use crate::lcr::LcrEngine;
 use crate::services::ServiceRegistry;

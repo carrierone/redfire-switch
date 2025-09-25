@@ -576,8 +576,8 @@ impl DatabasePool {
                 lata: e.get("lata"),
                 state: e.get("state"),
                 jurisdiction: jurisdiction_str.map(|j| match j.as_str() {
-                    "inter" => CallJurisdiction::Inter,
-                    "intra" => CallJurisdiction::Intra,
+                    "inter" => CallJurisdiction::Interstate,
+                    "intra" => CallJurisdiction::Intrastate,
                     "local" => CallJurisdiction::Local,
                     _ => CallJurisdiction::Indeterminate,
                 }),
@@ -593,8 +593,8 @@ impl DatabasePool {
 
     pub async fn update_lrn_cache(&self, entry: &LrnCacheEntry) -> Result<()> {
         let jurisdiction_str = entry.jurisdiction.map(|j| match j {
-            CallJurisdiction::Inter => "inter",
-            CallJurisdiction::Intra => "intra",
+            CallJurisdiction::Interstate => "inter",
+            CallJurisdiction::Intrastate => "intra",
             CallJurisdiction::Local => "local",
             CallJurisdiction::Indeterminate => "indeterminate",
         });

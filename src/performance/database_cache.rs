@@ -6,7 +6,6 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use moka::future::Cache;
-use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};
 use std::hash::BuildHasherDefault;
 use std::sync::Arc;
@@ -479,8 +478,8 @@ impl DatabaseCache {
     async fn query_routes_from_database(
         &self,
         dnis: &str,
-        route_type: RouteType,
-        jurisdiction: CallJurisdiction,
+        _route_type: RouteType,
+        _jurisdiction: CallJurisdiction,
     ) -> Result<Option<Vec<CachedRoute>>> {
         // Simplified database query - implement actual LCR logic
         let rows = sqlx::query(

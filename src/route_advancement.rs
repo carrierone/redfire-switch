@@ -453,6 +453,7 @@ mod tests {
                 tech_prefix: None,
                 supports_international: true,
             },
+            vendor: format!("vendor_{}", id),
             vendor_rate: None,
             cost_per_minute: Decimal::from_str("0.005").unwrap(),
             selling_per_minute: Decimal::from_str("0.008").unwrap(),

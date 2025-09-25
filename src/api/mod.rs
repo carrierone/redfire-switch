@@ -10,6 +10,7 @@
  * Sponsored by Carrier One Inc (https://www.carrierone.com)
  */
 
+pub mod anti_fraud_endpoints;
 pub mod auth;
 pub mod config;
 pub mod endpoints;

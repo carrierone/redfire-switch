@@ -184,6 +184,7 @@ mod routing_integration_tests {
 
         let call_route = CallRoute {
             egress_trunk: egress_trunk.clone(),
+            vendor: "test_vendor".to_string(),
             vendor_rate: None,
             cost_per_minute: Decimal::from_str("0.01").unwrap(),
             selling_per_minute: Decimal::from_str("0.02").unwrap(),
@@ -199,6 +200,10 @@ mod routing_integration_tests {
             jurisdiction: CallJurisdiction::Indeterminate,
             lrn: None,
             total_routes: 1,
+            ani: "+15551234567".to_string(),
+            dnis: "+15559876543".to_string(),
+            ingress_trunk: "test_ingress".to_string(),
+            routing_decision: "test_decision".to_string(),
         };
 
         assert_eq!(response.routes.len(), 1);
@@ -322,8 +327,8 @@ mod routing_integration_tests {
     #[test]
     fn test_call_jurisdiction_enum() {
         let jurisdictions = vec![
-            CallJurisdiction::Inter,
-            CallJurisdiction::Intra,
+            CallJurisdiction::Interstate,
+            CallJurisdiction::Intrastate,
             CallJurisdiction::Local,
             CallJurisdiction::Indeterminate,
         ];
@@ -885,6 +890,7 @@ mod routing_integration_tests {
                 tech_prefix: Some(format!("011{}", country_code)),
                 supports_international: true,
             },
+            vendor: format!("intl_vendor_{}", country_code),
             vendor_rate: None,
             cost_per_minute: cost,
             selling_per_minute: cost * Decimal::from_str("1.25").unwrap(), // 25% markup

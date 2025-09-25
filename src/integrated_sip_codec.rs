@@ -87,7 +87,7 @@ impl IntegratedService {
     ) -> Result<codec::TranscodedFrame> {
         let audio_frame = codec::AudioFrame {
             data: frame_data.to_vec(),
-            codec: codec,
+            codec,
             sample_rate: 8000,
             channels: 1,
             timestamp: 0,

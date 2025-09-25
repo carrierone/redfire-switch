@@ -3,11 +3,12 @@
 
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::net::IpAddr;
 use std::sync::Arc;
-use tokio::fs::{File, OpenOptions};
+use tokio::fs::OpenOptions;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::{interval, Duration};
@@ -138,6 +139,7 @@ pub struct AuditLoggingService {
     sender: mpsc::UnboundedSender<AuditLogEntry>,
     database_service: Option<Arc<crate::database::DatabaseService>>,
     statistics: Arc<Mutex<AuditStatistics>>,
+    http_client: Client,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -205,14 +207,14 @@ pub enum RetentionCategory {
 }
 
 #[derive(Debug, Default)]
-struct AuditStatistics {
-    total_events_logged: u64,
-    events_by_type: std::collections::HashMap<String, u64>,
-    events_by_severity: std::collections::HashMap<String, u64>,
-    failed_writes: u64,
-    storage_errors: u64,
-    compliance_events: u64,
-    retention_actions: u64,
+pub struct AuditStatistics {
+    pub total_events_logged: u64,
+    pub events_by_type: std::collections::HashMap<String, u64>,
+    pub events_by_severity: std::collections::HashMap<String, u64>,
+    pub failed_writes: u64,
+    pub storage_errors: u64,
+    pub compliance_events: u64,
+    pub retention_actions: u64,
 }
 
 impl AuditLoggingService {
@@ -228,6 +230,7 @@ impl AuditLoggingService {
             sender,
             database_service,
             statistics: Arc::new(Mutex::new(AuditStatistics::default())),
+            http_client: Client::new(),
         };
 
         // Start background processing task
@@ -451,6 +454,7 @@ impl AuditLoggingService {
         let log_buffer = self.log_buffer.clone();
         let database_service = self.database_service.clone();
         let statistics = self.statistics.clone();
+        let http_client = self.http_client.clone();
 
         tokio::spawn(async move {
             let mut flush_interval = interval(Duration::from_secs(config.flush_interval_seconds));
@@ -477,7 +481,7 @@ impl AuditLoggingService {
                                 let entries: Vec<_> = buffer.drain(..).collect();
                                 drop(buffer);
 
-                                if let Err(e) = Self::flush_entries(&config, &entries, &database_service).await {
+                                if let Err(e) = Self::flush_entries(&config, &http_client, &entries, &database_service).await {
                                     error!("Failed to flush audit log entries: {}", e);
                                     let mut stats = statistics.lock().await;
                                     stats.storage_errors += 1;
@@ -491,7 +495,7 @@ impl AuditLoggingService {
                             let entries: Vec<_> = buffer.drain(..).collect();
                             drop(buffer);
 
-                            if let Err(e) = Self::flush_entries(&config, &entries, &database_service).await {
+                            if let Err(e) = Self::flush_entries(&config, &http_client, &entries, &database_service).await {
                                 error!("Failed to flush audit log entries: {}", e);
                                 let mut stats = statistics.lock().await;
                                 stats.storage_errors += 1;
@@ -505,6 +509,7 @@ impl AuditLoggingService {
 
     async fn flush_entries(
         config: &AuditConfig,
+        http_client: &Client,
         entries: &[AuditLogEntry],
         database_service: &Option<Arc<crate::database::DatabaseService>>,
     ) -> Result<()> {
@@ -515,11 +520,11 @@ impl AuditLoggingService {
         debug!("Flushing {} audit log entries", entries.len());
 
         // Write to primary storage
-        Self::write_to_storage(&config.storage_config.primary_storage, entries).await?;
+        Self::write_to_storage(http_client, &config.storage_config.primary_storage, entries).await?;
 
         // Write to backup storage if configured
         if let Some(backup_storage) = &config.storage_config.backup_storage {
-            if let Err(e) = Self::write_to_storage(backup_storage, entries).await {
+            if let Err(e) = Self::write_to_storage(http_client, backup_storage, entries).await {
                 warn!("Failed to write to backup storage: {}", e);
             }
         }
@@ -537,7 +542,7 @@ impl AuditLoggingService {
         Ok(())
     }
 
-    async fn write_to_storage(storage: &StorageBackend, entries: &[AuditLogEntry]) -> Result<()> {
+    async fn write_to_storage(http_client: &Client, storage: &StorageBackend, entries: &[AuditLogEntry]) -> Result<()> {
         match storage {
             StorageBackend::File {
                 base_path,
@@ -582,16 +587,96 @@ impl AuditLoggingService {
                 endpoints,
                 index_pattern,
             } => {
-                // TODO: Implement Elasticsearch writing
-                debug!(
-                    "Would write {} entries to Elasticsearch: {:?}",
-                    entries.len(),
-                    endpoints
-                );
+                Self::write_to_elasticsearch(http_client, entries, endpoints, index_pattern)
+                    .await?;
             }
         }
 
         Ok(())
+    }
+
+    async fn write_to_elasticsearch(
+        client: &Client,
+        entries: &[AuditLogEntry],
+        endpoints: &[String],
+        index_pattern: &str,
+    ) -> Result<()> {
+        // Generate index name with current date
+        let index_name = index_pattern.replace(
+            "{date}",
+            &chrono::Utc::now().format("%Y.%m.%d").to_string(),
+        );
+
+        // Prepare bulk request body
+        let mut bulk_body = String::new();
+        for entry in entries {
+            // Index operation metadata
+            let index_op = serde_json::json!({
+                "index": {
+                    "_index": index_name,
+                    "_id": entry.id.to_string()
+                }
+            });
+            bulk_body.push_str(&format!("{}\n", index_op.to_string()));
+
+            // Document data
+            let doc = serde_json::to_string(entry)
+                .map_err(|e| anyhow!("Failed to serialize audit entry: {}", e))?;
+            bulk_body.push_str(&format!("{}\n", doc));
+        }
+
+        // Try each endpoint until one succeeds
+        let mut last_error = None;
+        for endpoint in endpoints {
+            let url = format!("{}/_bulk", endpoint.trim_end_matches('/'));
+
+            match client
+                .post(&url)
+                .header("Content-Type", "application/x-ndjson")
+                .body(bulk_body.clone())
+                .send()
+                .await
+            {
+                Ok(response) => {
+                    let status = response.status();
+                    if status.is_success() {
+                        let response_text = response.text().await
+                            .unwrap_or_else(|_| "Unknown response".to_string());
+
+                        // Check for indexing errors in response
+                        if let Ok(bulk_response) = serde_json::from_str::<serde_json::Value>(&response_text) {
+                            if let Some(errors) = bulk_response.get("errors") {
+                                if errors.as_bool().unwrap_or(false) {
+                                    warn!("Some Elasticsearch indexing errors occurred: {}", response_text);
+                                } else {
+                                    debug!("Successfully wrote {} entries to Elasticsearch {}", entries.len(), endpoint);
+                                }
+                            }
+                        }
+                        return Ok(());
+                    } else {
+                        let error_text = response.text().await
+                            .unwrap_or_else(|_| "Unknown error".to_string());
+                        last_error = Some(anyhow!(
+                            "Elasticsearch endpoint {} returned status {}: {}",
+                            endpoint,
+                            status,
+                            error_text
+                        ));
+                    }
+                }
+                Err(e) => {
+                    last_error = Some(anyhow!(
+                        "Failed to connect to Elasticsearch endpoint {}: {}",
+                        endpoint,
+                        e
+                    ));
+                }
+            }
+        }
+
+        // If we get here, all endpoints failed
+        Err(last_error.unwrap_or_else(|| anyhow!("All Elasticsearch endpoints failed")))
     }
 
     async fn write_to_database(

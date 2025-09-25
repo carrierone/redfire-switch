@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{debug, info, warn};
 
-use crate::lcr::types::{CallRoute, RouteRequest, RouteType};
+use crate::lcr::types::{CallRoute, RouteRequest};
 use crate::lcr::LcrEngine;
 
 /// Termination routing plan configuration
@@ -985,6 +985,7 @@ mod tests {
                 tech_prefix: None,
                 supports_international: true,
             },
+            vendor: "unprofitable_vendor".to_string(),
             vendor_rate: None,
             cost_per_minute: Decimal::from_str("0.020").unwrap(), // 2 cents cost
             selling_per_minute: Decimal::from_str("0.015").unwrap(), // 1.5 cents selling (LOSS!)
@@ -1032,6 +1033,7 @@ mod tests {
                 tech_prefix: None,
                 supports_international: true,
             },
+            vendor: "profitable_vendor".to_string(),
             vendor_rate: None,
             cost_per_minute: Decimal::from_str("0.010").unwrap(), // 1 cent cost
             selling_per_minute: Decimal::from_str("0.015").unwrap(), // 1.5 cents selling (PROFIT!)

@@ -3,21 +3,47 @@
 //! This module provides the microservices architecture with focused,
 //! loosely-coupled services that communicate through events.
 
+pub mod anti_fraud_monitoring;
+pub mod audio_recording;
+pub mod batch_transcoding_service;
 pub mod control;
+pub mod disk_monitoring;
+pub mod lawful_intercept_compliance;
+pub mod legal_authorization;
 pub mod media;
+pub mod memory_management;
 pub mod routing;
+pub mod rtp_recording_bridge;
 pub mod signaling;
+pub mod voice_integrity_coordinator;
+pub mod voice_integrity_database;
+pub mod vosk_client;
 
+pub use anti_fraud_monitoring::*;
+pub use audio_recording::{
+    AudioRecording, AudioRecordingConfig, AudioRecordingService, RecordingCodec,
+    RtpAudioPacket, WavRecordingSession,
+    StorageType as AudioStorageType, // Renamed to avoid conflict
+};
+pub use batch_transcoding_service::*;
 pub use control::*;
+pub use disk_monitoring::*;
+pub use lawful_intercept_compliance::*;
+pub use legal_authorization::*;
 pub use media::*;
+pub use memory_management::*;
 pub use routing::*;
+pub use rtp_recording_bridge::*;
 pub use signaling::*;
+pub use voice_integrity_coordinator::*;
+pub use voice_integrity_database::*;
+pub use vosk_client::*;
 
 use crate::events::EventBus;
 use anyhow::Result;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 /// Service registry for managing all microservices
 pub struct ServiceRegistry {
@@ -29,6 +55,10 @@ pub struct ServiceRegistry {
     pub signaling_service: Option<Arc<SignalingService>>,
     /// Control service instance
     pub control_service: Option<Arc<ControlService>>,
+    /// Anti-fraud monitoring service instance
+    pub anti_fraud_service: Option<Arc<AntiFraudMonitoringService>>,
+    /// Database service instance
+    pub database_service: Option<Arc<crate::database::DatabaseService>>,
     /// Shared event bus
     pub event_bus: Arc<EventBus>,
     /// Service health status
@@ -43,6 +73,8 @@ impl ServiceRegistry {
             media_service: None,
             signaling_service: None,
             control_service: None,
+            anti_fraud_service: None,
+            database_service: None,
             event_bus,
             service_health: Arc::new(RwLock::new(std::collections::HashMap::new())),
         }
@@ -51,6 +83,10 @@ impl ServiceRegistry {
     /// Initialize all services with default configurations
     pub async fn initialize_all(&mut self) -> Result<()> {
         info!("Initializing all microservices");
+
+        // Initialize database service first (required by other services)
+        self.initialize_database_service(crate::database::DatabaseConfig::default())
+            .await?;
 
         // Initialize control service first (for configuration management)
         self.initialize_control_service(ControlConfig::default())
@@ -61,6 +97,8 @@ impl ServiceRegistry {
         self.initialize_media_service(MediaConfig::default())
             .await?;
         self.initialize_signaling_service(SignalingConfig::default())
+            .await?;
+        self.initialize_anti_fraud_service(AntiFraudConfig::default())
             .await?;
 
         info!("All microservices initialized successfully");
@@ -142,6 +180,38 @@ impl ServiceRegistry {
         Ok(())
     }
 
+    /// Initialize the database service
+    pub async fn initialize_database_service(&mut self, config: crate::database::DatabaseConfig) -> Result<()> {
+        if self.database_service.is_some() {
+            return Ok(()); // Already initialized
+        }
+
+        let service = Arc::new(crate::database::DatabaseService::new(config).await?);
+        self.database_service = Some(service);
+        self.mark_service_healthy("database").await;
+        info!("Database service initialized");
+        Ok(())
+    }
+
+    /// Initialize the anti-fraud monitoring service
+    pub async fn initialize_anti_fraud_service(&mut self, config: AntiFraudConfig) -> Result<()> {
+        if self.anti_fraud_service.is_some() {
+            return Ok(()); // Already initialized
+        }
+
+        // Get database service (required for anti-fraud)
+        let database_service = self.database_service.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Database service must be initialized before anti-fraud service"))?;
+
+        let database_pool = Arc::new(database_service.get_pool().clone());
+
+        let service = Arc::new(AntiFraudMonitoringService::new(config, self.event_bus.clone(), database_pool).await?);
+        self.anti_fraud_service = Some(service);
+        self.mark_service_healthy("anti_fraud").await;
+        info!("Anti-fraud monitoring service initialized");
+        Ok(())
+    }
+
     /// Get routing service reference
     pub fn routing(&self) -> Option<Arc<RoutingService>> {
         self.routing_service.clone()
@@ -162,10 +232,20 @@ impl ServiceRegistry {
         self.control_service.clone()
     }
 
+    /// Get anti-fraud monitoring service reference
+    pub fn anti_fraud(&self) -> Option<Arc<AntiFraudMonitoringService>> {
+        self.anti_fraud_service.clone()
+    }
+
+    /// Get database service reference
+    pub fn database(&self) -> Option<Arc<crate::database::DatabaseService>> {
+        self.database_service.clone()
+    }
+
     /// Check if all services are healthy
     pub async fn are_all_services_healthy(&self) -> bool {
         let health = self.service_health.read().await;
-        health.values().all(|&is_healthy| is_healthy) && health.len() >= 4
+        health.values().all(|&is_healthy| is_healthy) && health.len() >= 6
     }
 
     /// Get list of unhealthy services
@@ -200,6 +280,11 @@ impl ServiceRegistry {
         info!("Shutting down all microservices");
 
         // Shutdown in reverse order of initialization
+        if let Some(anti_fraud) = &self.anti_fraud_service {
+            // TODO: Call shutdown when trait is implemented
+            debug!("Anti-fraud service will be shutdown when process exits");
+        }
+
         if let Some(signaling) = &self.signaling_service {
             if let Err(e) = signaling.shutdown().await {
                 error!("Failed to shutdown signaling service: {}", e);
@@ -221,6 +306,12 @@ impl ServiceRegistry {
         if let Some(control) = &self.control_service {
             if let Err(e) = control.shutdown().await {
                 error!("Failed to shutdown control service: {}", e);
+            }
+        }
+
+        if let Some(database) = &self.database_service {
+            if let Err(e) = database.shutdown().await {
+                error!("Failed to shutdown database service: {}", e);
             }
         }
 
@@ -254,6 +345,18 @@ impl ServiceRegistry {
         if self.control_service.is_some() {
             // TODO: Implement actual health check
             results.insert("control".to_string(), true);
+        }
+
+        // Check anti-fraud service
+        if self.anti_fraud_service.is_some() {
+            // TODO: Implement actual health check
+            results.insert("anti_fraud".to_string(), true);
+        }
+
+        // Check database service
+        if self.database_service.is_some() {
+            // TODO: Implement actual health check
+            results.insert("database".to_string(), true);
         }
 
         // Update internal health tracking

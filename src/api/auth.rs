@@ -12,10 +12,8 @@
 
 use anyhow::{anyhow, Result};
 use axum::{
-    extract::{FromRequestParts, State},
+    extract::FromRequestParts,
     http::{request::Parts, StatusCode},
-    response::{Json as ResponseJson, Response},
-    RequestPartsExt,
 };
 use axum_extra::{
     headers::{authorization::Bearer, Authorization},
@@ -29,7 +27,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, error, warn};
+use tracing::{debug, warn};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -88,6 +86,20 @@ pub enum Permission {
     ApiRead,
     ApiWrite,
     ApiAdmin,
+
+    // Voice Integrity and Lawful Intercept
+    VoiceIntegrityRead,
+    VoiceIntegrityWrite,
+    VoiceIntegrityAdmin,
+    LawfulInterceptManage,
+    LegalAuthorizationIssue,
+    LegalAuthorizationReview,
+    RecordingAccess,
+    RecordingDownload,
+    RecordingLegalHold,
+    TranscriptionAccess,
+    ComplianceReportGenerate,
+    ComplianceAuditAccess,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -235,6 +247,16 @@ impl AuthState {
                 Permission::BillingAdmin,
                 Permission::SecurityAdmin,
                 Permission::ApiAdmin,
+                Permission::VoiceIntegrityAdmin,
+                Permission::LawfulInterceptManage,
+                Permission::LegalAuthorizationIssue,
+                Permission::LegalAuthorizationReview,
+                Permission::RecordingAccess,
+                Permission::RecordingDownload,
+                Permission::RecordingLegalHold,
+                Permission::TranscriptionAccess,
+                Permission::ComplianceReportGenerate,
+                Permission::ComplianceAuditAccess,
             ],
             created_at: Utc::now(),
             updated_at: Utc::now(),
@@ -259,6 +281,48 @@ impl AuthState {
             updated_at: Utc::now(),
         };
 
+        // Voice Integrity Officer role - specialized legal/compliance role
+        let voice_integrity_role = Role {
+            id: "voice_integrity_officer".to_string(),
+            name: "Voice Integrity Officer".to_string(),
+            description: "Legal authorization and lawful intercept management".to_string(),
+            permissions: vec![
+                Permission::SystemRead,
+                Permission::MonitoringRead,
+                Permission::VoiceIntegrityAdmin,
+                Permission::LawfulInterceptManage,
+                Permission::LegalAuthorizationIssue,
+                Permission::LegalAuthorizationReview,
+                Permission::RecordingAccess,
+                Permission::RecordingDownload,
+                Permission::RecordingLegalHold,
+                Permission::TranscriptionAccess,
+                Permission::ComplianceReportGenerate,
+                Permission::ComplianceAuditAccess,
+            ],
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        // Compliance Officer role - audit and oversight
+        let compliance_officer_role = Role {
+            id: "compliance_officer".to_string(),
+            name: "Compliance Officer".to_string(),
+            description: "Compliance monitoring and audit oversight".to_string(),
+            permissions: vec![
+                Permission::SystemRead,
+                Permission::MonitoringRead,
+                Permission::VoiceIntegrityRead,
+                Permission::LegalAuthorizationReview,
+                Permission::RecordingAccess,
+                Permission::TranscriptionAccess,
+                Permission::ComplianceReportGenerate,
+                Permission::ComplianceAuditAccess,
+            ],
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
         // Read-only role - monitoring and reporting
         let readonly_role = Role {
             id: "readonly".to_string(),
@@ -274,6 +338,9 @@ impl AuthState {
                 Permission::RoutingRead,
                 Permission::BillingRead,
                 Permission::ApiRead,
+                Permission::VoiceIntegrityRead,
+                Permission::RecordingAccess,
+                Permission::TranscriptionAccess,
             ],
             created_at: Utc::now(),
             updated_at: Utc::now(),
@@ -281,6 +348,8 @@ impl AuthState {
 
         roles.insert("admin".to_string(), admin_role);
         roles.insert("operator".to_string(), operator_role);
+        roles.insert("voice_integrity_officer".to_string(), voice_integrity_role);
+        roles.insert("compliance_officer".to_string(), compliance_officer_role);
         roles.insert("readonly".to_string(), readonly_role);
 
         Ok(())

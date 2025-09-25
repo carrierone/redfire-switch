@@ -542,6 +542,7 @@ impl CudaCodecProcessor {
 /// Opus codec placeholder (requires external Opus library)
 pub struct OpusCodec {
     sample_rate: u32,
+    #[allow(dead_code)]
     channels: u8,
 }
 
@@ -863,6 +864,7 @@ impl CodecService {
     }
 
     /// Check if GPU acceleration is available for transcoding
+    #[allow(dead_code)]
     fn can_use_gpu_for_transcoding(&self, from_codec: AudioCodec, to_codec: AudioCodec) -> bool {
         // GPU supports direct transcoding between all supported codecs
         match (from_codec, to_codec) {

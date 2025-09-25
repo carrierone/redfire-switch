@@ -33,6 +33,7 @@ pub enum AttestationLevel {
 }
 
 pub struct StirShakenService {
+    #[allow(dead_code)]
     config: Arc<StirShakenConfig>,
 }
 

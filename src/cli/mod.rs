@@ -6,18 +6,17 @@
 use anyhow::{Context, Result};
 use colored::*;
 use rustyline::error::ReadlineError;
-use rustyline::{DefaultEditor, Editor};
-use std::collections::HashMap;
+use rustyline::Editor;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
+use tracing::error;
 
 pub mod commands;
 pub mod completion;
 pub mod help;
 pub mod session;
 
-use commands::{Command, CommandExecutor, CommandResult};
+use commands::{CommandExecutor, CommandResult};
 use completion::RedFireCompleter;
 use help::HelpSystem;
 use session::CliSession;

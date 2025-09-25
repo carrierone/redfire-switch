@@ -471,6 +471,7 @@ mod end_to_end_tests {
     ) -> CallRoute {
         CallRoute {
             egress_trunk: trunk,
+            vendor: "default_vendor".to_string(),
             vendor_rate: None,
             cost_per_minute: cost,
             selling_per_minute: selling,

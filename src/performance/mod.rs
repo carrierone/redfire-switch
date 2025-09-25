@@ -17,6 +17,9 @@
 pub mod database_cache;
 pub mod memory_pools;
 pub mod string_interner;
+pub mod profiler;
+pub mod database_optimizer;
+pub mod memory_optimizer;
 
 // Re-export commonly used types
 pub use memory_pools::{
@@ -32,6 +35,22 @@ pub use string_interner::{
 
 pub use database_cache::{
     CacheStatistics, CachedClientRate, CachedRoute, CachedTrunk, DatabaseCache,
+};
+
+pub use profiler::{
+    PerformanceProfiler, ProfilerConfig, SystemPerformanceSnapshot,
+    CodecPerformanceMetrics, DatabasePerformanceMetrics, MemoryPoolMetrics,
+    PerformanceAnalyzer, OptimizationRecommendation,
+};
+
+pub use database_optimizer::{
+    DatabaseOptimizer, DatabaseOptimizerConfig, BulkOperationOptimizer,
+    DatabaseOptimization, QueryMetrics, ConnectionPoolStats,
+};
+
+pub use memory_optimizer::{
+    MemoryOptimizer, MemoryOptimizerConfig, OptimizedPool, PoolMetrics,
+    MemoryOptimizationRecommendation, MemoryPressure,
 };
 
 /// Performance monitoring and statistics

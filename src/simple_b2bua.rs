@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::UdpSocket;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
 /// Simple call leg representation
@@ -137,7 +137,7 @@ impl SimpleB2BUA {
         // Create B-leg (termination side)
         let b_leg = CallLeg {
             call_id: call_id.clone(),
-            from_tag: from_tag,
+            from_tag,
             to_tag: None,
             local_addr: self.socket.local_addr()?,
             remote_addr: term_addr,
@@ -167,8 +167,8 @@ impl SimpleB2BUA {
         Ok(())
     }
 
-    async fn handle_response(&self, message: &str, from: SocketAddr) -> Result<()> {
-        info!("Handling SIP response from {}", from);
+    async fn handle_response(&self, _message: &str, _from: SocketAddr) -> Result<()> {
+        info!("Handling SIP response from {}", _from);
 
         // For now, just forward responses back to origination
         // In a full implementation, we'd track call legs and forward appropriately

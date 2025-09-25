@@ -286,12 +286,12 @@ impl G729AnnexGpuProcessor {
         #[cfg(feature = "cuda")]
         let mut cuda_device = None;
         #[cfg(not(feature = "cuda"))]
-        let cuda_device: Option<Arc<()>> = None;
+        let _cuda_device: Option<Arc<()>> = None;
 
         #[cfg(feature = "rocm")]
         let mut rocm_device = None;
         #[cfg(not(feature = "rocm"))]
-        let rocm_device: Option<Arc<()>> = None;
+        let _rocm_device: Option<Arc<()>> = None;
 
         match config.gpu_config.backend {
             #[cfg(feature = "cuda")]
@@ -315,10 +315,7 @@ impl G729AnnexGpuProcessor {
                 rocm_device = Some(device);
             }
             _ => {
-                return Err(anyhow!(
-                    "GPU backend {:?} not supported",
-                    config.gpu_config.backend
-                ));
+                // Continue with CPU fallback
             }
         }
 
@@ -354,15 +351,14 @@ impl G729AnnexGpuProcessor {
         match self.config.gpu_config.backend {
             #[cfg(feature = "cuda")]
             GpuBackend::Cuda => {
-                self.compile_cuda_kernels().await?;
+                self.compile_cuda_kernels().await
             }
             #[cfg(feature = "rocm")]
             GpuBackend::Rocm => {
-                self.compile_rocm_kernels().await?;
+                self.compile_rocm_kernels().await
             }
-            _ => return Err(anyhow!("Unsupported GPU backend")),
+            _ => Err(anyhow!("Unsupported GPU backend")),
         }
-        Ok(())
     }
 
     #[cfg(feature = "cuda")]
@@ -614,18 +610,18 @@ impl G729AnnexGpuProcessor {
     /// GPU-accelerated Voice Activity Detection
     async fn gpu_voice_activity_detection(
         &self,
-        audio_samples: &[f32],
-        vad_state: &mut VadState,
+        _audio_samples: &[f32],
+        _vad_state: &mut VadState,
     ) -> Result<VadResult> {
         match self.config.gpu_config.backend {
             #[cfg(feature = "cuda")]
             GpuBackend::Cuda => {
-                self.cuda_voice_activity_detection(audio_samples, vad_state)
+                self.cuda_voice_activity_detection(_audio_samples, _vad_state)
                     .await
             }
             #[cfg(feature = "rocm")]
             GpuBackend::Rocm => {
-                self.rocm_voice_activity_detection(audio_samples, vad_state)
+                self.rocm_voice_activity_detection(_audio_samples, _vad_state)
                     .await
             }
             _ => Err(anyhow!("Unsupported GPU backend for VAD")),

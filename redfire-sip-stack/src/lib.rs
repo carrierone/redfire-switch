@@ -73,7 +73,6 @@
 
 pub mod authentication;
 pub mod compliance;
-pub mod core;
 pub mod debug_cli;
 pub mod interop;
 pub mod parser;
@@ -105,7 +104,6 @@ pub use transport::{
     TransportMessage,
 };
 
-pub use core::{ProcessorMessage, SipCallContext, SipCoreConfig, SipCoreEngine, SipRequestResult};
 
 pub use debug_cli::{
     CallInfo, ColorScheme, ExportFormat, MessageDirection, MessageTiming, SipDebugConfig,
@@ -150,11 +148,6 @@ pub fn create_default_parser() -> SipParser {
     )
 }
 
-/// Create a default SIP core with basic configuration
-pub async fn create_default_core() -> anyhow::Result<SipCoreEngine> {
-    let config = SipCoreConfig::default();
-    SipCoreEngine::new(config).await
-}
 
 /// Create a SIP-T/SIP-I service with default configuration
 pub fn create_sipt_sipi_service() -> SipTSipIService {
@@ -222,10 +215,10 @@ pub mod utils {
     /// Get default port for transport type
     pub fn default_port_for_transport(transport: &crate::transport::SipTransport) -> u16 {
         match transport {
-            crate::transport::SipTransport::Udp | crate::transport::SipTransport::Tcp => {
+            crate::transport::SipTransport::UDP | crate::transport::SipTransport::TCP => {
                 DEFAULT_SIP_PORT
             }
-            crate::transport::SipTransport::Tls | crate::transport::SipTransport::Wss => {
+            crate::transport::SipTransport::TLS | crate::transport::SipTransport::WSS => {
                 DEFAULT_SIPS_PORT
             }
         }
@@ -273,11 +266,11 @@ mod tests {
         );
 
         assert_eq!(
-            utils::default_port_for_transport(&crate::transport::SipTransport::Udp),
+            utils::default_port_for_transport(&crate::transport::SipTransport::UDP),
             5060
         );
         assert_eq!(
-            utils::default_port_for_transport(&crate::transport::SipTransport::Tls),
+            utils::default_port_for_transport(&crate::transport::SipTransport::TLS),
             5061
         );
     }

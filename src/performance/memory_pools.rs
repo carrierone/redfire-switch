@@ -7,7 +7,6 @@ use once_cell::sync::Lazy;
 use smallstr::SmallString;
 use smallvec::SmallVec;
 use std::net::IpAddr;
-use std::sync::Arc;
 use uuid::Uuid;
 
 /// Small string optimized for phone numbers and identifiers

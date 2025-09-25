@@ -25,33 +25,33 @@ use tracing::{debug, error, info, instrument, warn};
 /// SIP transport types
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SipTransport {
-    Udp,
-    Tcp,
-    Tls,
-    Wss, // WebSocket Secure
+    UDP,
+    TCP,
+    TLS,
+    WSS, // WebSocket Secure
 }
 
 impl SipTransport {
     /// Get default port for transport
     pub fn default_port(&self) -> u16 {
         match self {
-            SipTransport::Udp => 5060,
-            SipTransport::Tcp => 5060,
-            SipTransport::Tls => 5061,
-            SipTransport::Wss => 443,
+            SipTransport::UDP => 5060,
+            SipTransport::TCP => 5060,
+            SipTransport::TLS => 5061,
+            SipTransport::WSS => 443,
         }
     }
 
     /// Check if transport is secure
     pub fn is_secure(&self) -> bool {
-        matches!(self, SipTransport::Tls | SipTransport::Wss)
+        matches!(self, SipTransport::TLS | SipTransport::WSS)
     }
 
     /// Check if transport is connection-oriented
     pub fn is_connection_oriented(&self) -> bool {
         matches!(
             self,
-            SipTransport::Tcp | SipTransport::Tls | SipTransport::Wss
+            SipTransport::TCP | SipTransport::TLS | SipTransport::WSS
         )
     }
 }
@@ -149,7 +149,7 @@ pub enum TransportEvent {
         reason: String,
     },
     /// Message received
-    MessageReceived { message: TransportMessage },
+    MessageReceived { message: Box<TransportMessage> },
     /// Message sent
     MessageSent {
         destination: SocketAddr,
@@ -174,6 +174,7 @@ pub struct SipTransportManager {
     /// Event receiver
     event_receiver: Arc<RwLock<mpsc::UnboundedReceiver<TransportEvent>>>,
     /// Message sender for outbound messages
+    #[allow(dead_code)]
     outbound_sender: mpsc::UnboundedSender<(TransportMessage, SocketAddr)>,
     /// TLS acceptor for TLS transport
     tls_acceptor: Option<TlsAcceptor>,
@@ -213,10 +214,10 @@ impl SipTransportManager {
             }
 
             match config.transport {
-                SipTransport::Udp => self.start_udp_transport(config).await?,
-                SipTransport::Tcp => self.start_tcp_transport(config).await?,
-                SipTransport::Tls => self.start_tls_transport(config).await?,
-                SipTransport::Wss => self.start_wss_transport(config).await?,
+                SipTransport::UDP => self.start_udp_transport(config).await?,
+                SipTransport::TCP => self.start_tcp_transport(config).await?,
+                SipTransport::TLS => self.start_tls_transport(config).await?,
+                SipTransport::WSS => self.start_wss_transport(config).await?,
             }
         }
 
@@ -254,13 +255,13 @@ impl SipTransportManager {
                                     message,
                                     source,
                                     destination: bind_address,
-                                    transport: SipTransport::Udp,
+                                    transport: SipTransport::UDP,
                                     received_at: chrono::Utc::now(),
                                     connection_id: None,
                                 };
 
                                 if let Err(e) = event_sender.send(TransportEvent::MessageReceived {
-                                    message: transport_msg,
+                                    message: Box::new(transport_msg),
                                 }) {
                                     error!("Failed to send UDP message event: {}", e);
                                 }
@@ -273,7 +274,7 @@ impl SipTransportManager {
                     Err(e) => {
                         error!("UDP socket error: {}", e);
                         let _ = event_sender.send(TransportEvent::TransportError {
-                            transport: SipTransport::Udp,
+                            transport: SipTransport::UDP,
                             error: e.to_string(),
                         });
                     }
@@ -314,7 +315,7 @@ impl SipTransportManager {
                             id: connection_id.clone(),
                             remote_addr,
                             local_addr,
-                            transport: SipTransport::Tcp,
+                            transport: SipTransport::TCP,
                             established_at: chrono::Utc::now(),
                             last_activity: chrono::Utc::now(),
                             bytes_sent: 0,
@@ -331,7 +332,7 @@ impl SipTransportManager {
                         let _ = event_sender.send(TransportEvent::ConnectionEstablished {
                             connection_id: connection_id.clone(),
                             remote_addr,
-                            transport: SipTransport::Tcp,
+                            transport: SipTransport::TCP,
                         });
 
                         // Handle connection in separate task
@@ -364,7 +365,7 @@ impl SipTransportManager {
                     Err(e) => {
                         error!("TCP accept error: {}", e);
                         let _ = event_sender.send(TransportEvent::TransportError {
-                            transport: SipTransport::Tcp,
+                            transport: SipTransport::TCP,
                             error: e.to_string(),
                         });
                     }
@@ -418,7 +419,7 @@ impl SipTransportManager {
                                         id: connection_id.clone(),
                                         remote_addr,
                                         local_addr,
-                                        transport: SipTransport::Tls,
+                                        transport: SipTransport::TLS,
                                         established_at: chrono::Utc::now(),
                                         last_activity: chrono::Utc::now(),
                                         bytes_sent: 0,
@@ -436,7 +437,7 @@ impl SipTransportManager {
                                         event_sender.send(TransportEvent::ConnectionEstablished {
                                             connection_id: connection_id.clone(),
                                             remote_addr,
-                                            transport: SipTransport::Tls,
+                                            transport: SipTransport::TLS,
                                         });
 
                                     // Handle TLS connection
@@ -471,7 +472,7 @@ impl SipTransportManager {
                     Err(e) => {
                         error!("TLS accept error: {}", e);
                         let _ = event_sender.send(TransportEvent::TransportError {
-                            transport: SipTransport::Tls,
+                            transport: SipTransport::TLS,
                             error: e.to_string(),
                         });
                     }
@@ -529,13 +530,13 @@ impl SipTransportManager {
                                 message,
                                 source: remote_addr,
                                 destination: local_addr,
-                                transport: SipTransport::Tcp,
+                                transport: SipTransport::TCP,
                                 received_at: chrono::Utc::now(),
                                 connection_id: Some(connection_id.clone()),
                             };
 
                             if let Err(e) = event_sender.send(TransportEvent::MessageReceived {
-                                message: transport_msg,
+                                message: Box::new(transport_msg),
                             }) {
                                 error!("Failed to send TCP message event: {}", e);
                             }
@@ -597,13 +598,13 @@ impl SipTransportManager {
                                 message,
                                 source: remote_addr,
                                 destination: local_addr,
-                                transport: SipTransport::Tls,
+                                transport: SipTransport::TLS,
                                 received_at: chrono::Utc::now(),
                                 connection_id: Some(connection_id.clone()),
                             };
 
                             if let Err(e) = event_sender.send(TransportEvent::MessageReceived {
-                                message: transport_msg,
+                                message: Box::new(transport_msg),
                             }) {
                                 error!("Failed to send TLS message event: {}", e);
                             }
@@ -644,7 +645,7 @@ impl SipTransportManager {
 
         // Find TLS configuration
         for config in configs {
-            if matches!(config.transport, SipTransport::Tls | SipTransport::Wss) {
+            if matches!(config.transport, SipTransport::TLS | SipTransport::WSS) {
                 if let Some(tls_config) = &config.tls_config {
                     // Setup server configuration (acceptor)
                     let certs = Self::load_certs(&tls_config.cert_file)?;
@@ -720,7 +721,7 @@ impl SipTransportManager {
         let message_bytes = message.to_string().as_bytes().to_vec();
 
         match transport {
-            SipTransport::Udp => {
+            SipTransport::UDP => {
                 // Find UDP socket for sending
                 // In production, this would maintain UDP sockets per transport config
                 let socket = UdpSocket::bind("0.0.0.0:0").await?;
@@ -732,7 +733,7 @@ impl SipTransportManager {
                     size: message_bytes.len(),
                 });
             }
-            SipTransport::Tcp => {
+            SipTransport::TCP => {
                 // For TCP, we would reuse existing connections or create new ones
                 // This is a simplified implementation
                 let mut stream = TcpStream::connect(destination).await?;
@@ -745,7 +746,7 @@ impl SipTransportManager {
                     size: message_bytes.len(),
                 });
             }
-            SipTransport::Tls => {
+            SipTransport::TLS => {
                 if let Some(connector) = &self.tls_connector {
                     let stream = TcpStream::connect(destination).await?;
                     let domain =
@@ -765,7 +766,7 @@ impl SipTransportManager {
                     return Err(anyhow!("TLS connector not configured"));
                 }
             }
-            SipTransport::Wss => {
+            SipTransport::WSS => {
                 return Err(anyhow!("WebSocket transport not implemented"));
             }
         }

@@ -84,6 +84,7 @@ pub struct SipIB2BUA {
     sipi_service: Arc<SipTSipIService>,
     // CIC management
     used_cics: Arc<RwLock<Vec<u16>>>,
+    #[allow(dead_code)]
     trunk_group_id: String,
     // Compliance framework integration
     compliance_framework: Arc<ComplianceFramework>,
