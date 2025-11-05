@@ -7,11 +7,13 @@ pub mod metrics;
 pub mod health;
 pub mod alerts;
 pub mod dashboard;
+pub mod prometheus;
 
 pub use metrics::*;
 pub use health::*;
 pub use alerts::*;
 pub use dashboard::*;
+pub use prometheus::*;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};

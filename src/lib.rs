@@ -88,6 +88,7 @@ pub mod security_utils;
 pub mod database;
 
 // Monitoring and observability
+pub mod monitoring;  // Comprehensive monitoring system with Prometheus support
 pub mod health_monitoring;
 pub mod snmp_monitoring;
 

@@ -111,6 +111,10 @@ utoipa-swagger-ui = { version = "8.0", features = ["axum"] }
 hyper = { version = "1.5", features = ["full"] }
 hyper-util = { version = "0.1", features = ["full"] }
 http-body-util = "0.1"
+
+# Prometheus metrics
+prometheus = "0.13"
+prometheus-static-metric = "0.5"
 tokio-util = { version = "0.7", features = ["codec"] }
 regex = "1.10"
 rand = "0.8"
@@ -218,6 +222,14 @@ path = "src/bin/redfire_cli.rs"
 [[bin]]
 name = "redfire-web-ui"
 path = "src/bin/redfire_web_ui.rs"
+
+[[bin]]
+name = "prometheus-metrics-server"
+path = "src/bin/prometheus_metrics_server.rs"
+
+[[bin]]
+name = "standalone-api-server"
+path = "src/bin/standalone_api_server.rs"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

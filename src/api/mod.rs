@@ -14,6 +14,7 @@ pub mod anti_fraud_endpoints;
 pub mod auth;
 pub mod config;
 pub mod endpoints;
+pub mod metrics_endpoints;
 pub mod server;
 pub mod simplified_server;
 
