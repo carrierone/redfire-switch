@@ -8,7 +8,12 @@ mod lcr_tests {
     async fn setup_test_engine() -> Arc<LcrEngine> {
         // Use test database or in-memory cache
         let database_url = std::env::var("TEST_DATABASE_URL")
-            .unwrap_or_else(|_| "postgresql://user:pass@localhost/lcr_test".to_string());
+            .unwrap_or_else(|_| "postgresql://redfire:password@localhost/redfire_switch".to_string());
+
+        // Ensure the full schema (core + LCR) is present before the engine loads.
+        redfire_switch::database::DatabaseService::provision_schema(&database_url)
+            .await
+            .expect("Failed to provision test schema");
 
         Arc::new(
             LcrEngine::new(&database_url)

@@ -549,17 +549,21 @@ impl AntiFraudMonitoringService {
     pub async fn determine_storage_type(&self, trunk_id: i32, risk_score: Option<f32>) -> StorageType {
         let configs = self.trunk_configs.read().await;
 
+        // Per-trunk overrides: force disk when configured or when a legal
+        // authorization reference is present for this trunk.
         if let Some(config) = configs.get(&trunk_id) {
-            // Force disk storage if legal authorization exists
             if config.force_disk_storage || config.legal_authorization_reference.is_some() {
                 return StorageType::Disk;
             }
+        }
 
-            // Auto disk storage for high-risk calls
-            if let Some(score) = risk_score {
-                if score >= self.config.auto_disk_risk_threshold {
-                    return StorageType::Disk;
-                }
+        // Global policy: high-risk calls always escalate to disk, regardless of
+        // whether a per-trunk config has been loaded. Applying this only when a
+        // trunk config existed meant high-risk calls on unconfigured trunks
+        // silently stayed in memory.
+        if let Some(score) = risk_score {
+            if score >= self.config.auto_disk_risk_threshold {
+                return StorageType::Disk;
             }
         }
 

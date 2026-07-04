@@ -9,32 +9,20 @@ mod tests {
     use redfire_switch::events::EventBus;
     use std::sync::Arc;
     use tempfile::TempDir;
-    use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
+    use sqlx::{Pool, Postgres};
 
     /// Test database setup
     async fn setup_test_db() -> Pool<Postgres> {
         let database_url = std::env::var("TEST_DATABASE_URL")
-            .unwrap_or_else(|_| "postgres://test:test@localhost/redfire_test".to_string());
+            .unwrap_or_else(|_| "postgresql://redfire:password@localhost/redfire_switch".to_string());
 
-        let pool = PgPoolOptions::new()
-            .max_connections(5)
-            .connect(&database_url)
+        // Apply the full schema (migrations 001 core + 002 LCR + 003 anti-fraud)
+        // via the canonical provisioning entry point. It is idempotent and
+        // serialized with a Postgres advisory lock, so parallel test tasks share
+        // one database safely.
+        redfire_switch::database::DatabaseService::provision_schema(&database_url)
             .await
-            .expect("Failed to connect to test database");
-
-        // Apply the schema files this suite needs. We execute the raw SQL at
-        // runtime instead of using `sqlx::migrate!`, because the repo keeps
-        // unversioned, script-applied migration files (referenced by name from
-        // deploy scripts) that do not fit sqlx's integer-prefix convention.
-        for path in ["./migrations/001_initial_schema.sql", "./migrations/add_anti_fraud_monitoring.sql"] {
-            if let Ok(sql) = std::fs::read_to_string(path) {
-                // Best-effort: ignore "already exists" style errors so the
-                // suite is idempotent across runs.
-                let _ = sqlx::raw_sql(&sql).execute(&pool).await;
-            }
-        }
-
-        pool
+            .expect("Failed to provision test schema")
     }
 
     /// Create test configuration

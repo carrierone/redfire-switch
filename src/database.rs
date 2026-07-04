@@ -101,9 +101,54 @@ impl DatabaseService {
         Ok(service)
     }
 
+    /// Ensure the full schema (all migrations) is applied to the database at
+    /// `url`, returning a live pool. This is the canonical entry point for
+    /// integration tests that talk to a shared PostgreSQL instance: it applies
+    /// migrations 001 (core) and 002 (LCR) idempotently, so a fresh or partially
+    /// provisioned database ends up with every table the code expects.
+    pub async fn provision_schema(url: &str) -> Result<Pool<Postgres>> {
+        let config = DatabaseConfig {
+            url: url.to_string(),
+            // Keep the pool small; tests just need the schema in place.
+            max_connections: 5,
+            min_connections: 1,
+            auto_migrate: true,
+            ..DatabaseConfig::default()
+        };
+        let service = Self::new(config).await?;
+        Ok(service.pool().clone())
+    }
+
     async fn run_migrations(&self) -> Result<()> {
         info!("Running database migrations...");
 
+        // Serialize migration application across processes/connections with a
+        // Postgres advisory lock. Without this, multiple switch instances (or
+        // parallel integration tests) racing to CREATE the same types/tables hit
+        // duplicate-key errors on the system catalogs. The lock key is an
+        // arbitrary constant shared by all redfire instances.
+        //
+        // Advisory session locks are per-connection, so we hold one dedicated
+        // connection for the entire migration sequence and lock/unlock on it.
+        const MIGRATION_LOCK_KEY: i64 = 0x5245_4446_4952_4501; // "REDFIRE\x01"
+        let mut lock_conn = self.pool.acquire().await?;
+        sqlx::query("SELECT pg_advisory_lock($1)")
+            .bind(MIGRATION_LOCK_KEY)
+            .execute(&mut *lock_conn)
+            .await?;
+
+        let result = self.run_migrations_locked().await;
+
+        // Always release the lock on the same connection, even on failure.
+        let _ = sqlx::query("SELECT pg_advisory_unlock($1)")
+            .bind(MIGRATION_LOCK_KEY)
+            .execute(&mut *lock_conn)
+            .await;
+
+        result
+    }
+
+    async fn run_migrations_locked(&self) -> Result<()> {
         // Check if migrations table exists
         let migration_table_exists = sqlx::query_scalar::<_, bool>(
             "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'schema_migrations')"
@@ -139,6 +184,10 @@ impl DatabaseService {
             (
                 "002_lcr_schema",
                 include_str!("../migrations/002_lcr_schema.sql"),
+            ),
+            (
+                "003_anti_fraud_monitoring",
+                include_str!("../migrations/003_anti_fraud_monitoring.sql"),
             ),
         ];
 

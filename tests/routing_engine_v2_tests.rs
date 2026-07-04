@@ -12,7 +12,10 @@ use tokio;
 // Test database setup
 async fn setup_test_db() -> Result<String> {
     let database_url = std::env::var("TEST_DATABASE_URL")
-        .unwrap_or_else(|_| "postgresql://test:test@localhost:5432/lcr_test".to_string());
+        .unwrap_or_else(|_| "postgresql://redfire:password@localhost/redfire_switch".to_string());
+
+    // Ensure the full schema (core + LCR) is present before we touch it.
+    redfire_switch::database::DatabaseService::provision_schema(&database_url).await?;
 
     // Run migrations
     let pool = PgPool::connect(&database_url).await?;
