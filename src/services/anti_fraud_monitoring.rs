@@ -225,6 +225,7 @@ enum MonitoringMessage {
 }
 
 /// Anti-fraud monitoring service
+#[derive(Clone)]
 pub struct AntiFraudMonitoringService {
     config: AntiFraudConfig,
     event_bus: Arc<EventBus>,

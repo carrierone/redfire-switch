@@ -135,6 +135,7 @@ pub struct RtpStatistics {
 }
 
 /// Compliance Framework - Main Integration Point
+#[derive(Clone)]
 pub struct ComplianceFramework {
     /// Configuration
     config: ComplianceConfig,

@@ -207,7 +207,7 @@ async fn test_high_throughput_cdr_generation() -> Result<()> {
     while start_time.elapsed().as_secs() < test_config.test_duration_seconds {
         let loop_start = Instant::now();
         let permit = semaphore.clone().acquire_owned().await?;
-        let framework_clone = Arc::new(framework);
+        let framework_clone = framework.clone();
         let metrics_clone = metrics.clone();
         let current_call_id = call_id;
         call_id += 1;
@@ -495,7 +495,7 @@ async fn test_stress_with_li_enabled() -> Result<()> {
     let mut join_set = JoinSet::new();
 
     for call_id in 0..stress_calls {
-        let framework_clone = Arc::new(framework);
+        let framework_clone = framework.clone();
         let metrics_clone = metrics.clone();
 
         join_set.spawn(async move {

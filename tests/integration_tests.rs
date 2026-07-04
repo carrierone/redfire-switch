@@ -17,7 +17,8 @@
 
 use anyhow::Result;
 use redfire_codec_engine::{AudioCodec, CodecConfig, CodecService};
-use redfire_sip_stack::{SipMessage, SipParser, SipTransport};
+use redfire_sip_stack::parser::SipTransport;
+use redfire_sip_stack::{SipMessage, SipParser};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 /// Test basic codec engine functionality

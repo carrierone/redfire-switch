@@ -435,8 +435,10 @@ Content-Length: 0
             let message = invite_message.clone();
             async move {
                 // b2bua.process_message(...) - method does not exist
-                Ok(())
+                let _ = (&b2bua, &message);
+                Ok::<(), anyhow::Error>(())
             }
+        });
 
         session_handles.push(handle);
     }

@@ -595,18 +595,4 @@ async fn test_performance_comparison() -> Result<()> {
     Ok(())
 }
 
-// Helper function for running all tests
-pub async fn run_all_routing_v2_tests() -> Result<()> {
-    println!("🧪 Running RoutingEngineV2 Test Suite");
-    println!("=====================================");
-
-    test_routing_v2_basic_functionality().await?;
-    test_time_based_routing().await?;
-    test_jurisdiction_detection().await?;
-    test_profit_protection().await?;
-    test_routing_engine_comparison().await?;
-    test_performance_comparison().await?;
-
-    println!("\n✅ All RoutingEngineV2 tests passed!");
-    Ok(())
-}
+// Note: each test above is an independent `#[tokio::test]`; the harness runs them directly.

@@ -66,7 +66,7 @@ pub enum VadResult {
 }
 
 /// G.729 frame types for Annex A/B
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum G729FrameType {
     /// Normal speech frame (10 bytes)
     Speech,

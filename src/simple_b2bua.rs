@@ -31,6 +31,7 @@ pub enum CallState {
 }
 
 /// Simple B2BUA that forwards SIP messages between two legs
+#[derive(Clone)]
 pub struct SimpleB2BUA {
     socket: Arc<UdpSocket>,
     calls: Arc<RwLock<HashMap<String, (CallLeg, CallLeg)>>>,
