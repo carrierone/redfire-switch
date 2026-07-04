@@ -24,6 +24,10 @@
       "items": { "type": "string", "pattern": "^[*+]?[0-9]{3,6}$" }
     },
     "rate_limit_cps": { "type": ["integer", "null"], "minimum": 0 },
-    "enabled": { "type": "boolean" }
+    "enabled": { "type": "boolean" },
+    "gpu_transcode_at_carrier": {
+      "type": "boolean",
+      "description": "Opt-in per-trunk flag. When true, the switch advertises GPU Opus<->G.711 transcode for WebRTC-to-PSTN calls, so the UCaaS side offers Opus toward the switch instead of transcoding in FreeSWITCH. Requires real Opus support on the switch (currently a stub); the UCaaS side must fall back to FreeSWITCH transcode when false or when the GPU pool is saturated."
+    }
   }
 }

@@ -5,5 +5,6 @@
   "tech_prefix": "1001",
   "optional_tech_prefixes": ["1002"],
   "rate_limit_cps": 100,
-  "enabled": true
+  "enabled": true,
+  "gpu_transcode_at_carrier": true
 }
