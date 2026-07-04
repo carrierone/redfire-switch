@@ -43,19 +43,54 @@ impl MockLrnServer {
             let (len, addr) = self.socket.recv_from(&mut buf).await?;
             let request = String::from_utf8_lossy(&buf[..len]);
 
+            // A real SIP endpoint echoes the request's Call-ID (and Via/CSeq) in
+            // its response so the client can correlate it. Do the same here so the
+            // service's response matching works against this mock.
+            let call_id = extract_call_id_from_request(&request);
+
             // Parse the SIP request to extract the number
             if let Some(to_number) = extract_number_from_request(&request) {
                 if let Some(response) = self.responses.get(&to_number) {
+                    let response = inject_call_id(response, call_id.as_deref());
                     self.socket.send_to(response.as_bytes(), addr).await?;
                 } else {
                     // Default 404 response
-                    let default_response = "SIP/2.0 404 Not Found\r\nContent-Length: 0\r\n\r\n";
+                    let default_response = inject_call_id(
+                        "SIP/2.0 404 Not Found\r\nContent-Length: 0\r\n\r\n",
+                        call_id.as_deref(),
+                    );
                     self.socket
                         .send_to(default_response.as_bytes(), addr)
                         .await?;
                 }
             }
         }
+    }
+}
+
+/// Extract the Call-ID header value from a SIP request.
+fn extract_call_id_from_request(request: &str) -> Option<String> {
+    for line in request.lines() {
+        let lower = line.to_ascii_lowercase();
+        if lower.starts_with("call-id:") {
+            return line.splitn(2, ':').nth(1).map(|v| v.trim().to_string());
+        }
+    }
+    None
+}
+
+/// Insert a Call-ID header into a SIP response (just after the status line) so a
+/// correlating client can match it, mirroring real SIP server behavior.
+fn inject_call_id(response: &str, call_id: Option<&str>) -> String {
+    let call_id = match call_id {
+        Some(id) if !id.is_empty() => id,
+        _ => return response.to_string(),
+    };
+    if let Some(idx) = response.find("\r\n") {
+        let (status_line, rest) = response.split_at(idx);
+        format!("{status_line}\r\nCall-ID: {call_id}{rest}")
+    } else {
+        response.to_string()
     }
 }
 

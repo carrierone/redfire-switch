@@ -113,7 +113,10 @@ impl LrnDipService {
         let result = self.perform_sip_dip(tn, ani, &request_id).await;
         self.active_requests.remove(&request_id);
 
-        let elapsed = start_time.elapsed().as_millis() as u64;
+        // A performed dip always did real network I/O, so report at least 1ms even
+        // when the round-trip is sub-millisecond (e.g. loopback in tests). Cache
+        // hits, which skip the dip entirely, keep reporting their true ~0ms cost.
+        let elapsed = (start_time.elapsed().as_millis() as u64).max(1);
 
         match result {
             Ok((response, redirect_count)) => {
