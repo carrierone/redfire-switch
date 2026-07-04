@@ -128,39 +128,57 @@ impl DatabaseService {
             info!("Created schema_migrations table");
         }
 
-        // Check if initial schema has been applied
-        let initial_migration_exists = sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = '001_initial_schema')",
-        )
-        .fetch_one(&self.pool)
-        .await?;
+        // Apply migrations in order. Each entry is (version, sql). Adding a new
+        // migration is a matter of appending to this list; already-applied
+        // versions are skipped via the schema_migrations bookkeeping table.
+        const MIGRATIONS: &[(&str, &str)] = &[
+            (
+                "001_initial_schema",
+                include_str!("../migrations/001_initial_schema.sql"),
+            ),
+            (
+                "002_lcr_schema",
+                include_str!("../migrations/002_lcr_schema.sql"),
+            ),
+        ];
 
-        if !initial_migration_exists {
-            // Read and execute initial schema migration
-            let migration_sql = include_str!("../migrations/001_initial_schema.sql");
+        for (version, migration_sql) in MIGRATIONS {
+            let already_applied = sqlx::query_scalar::<_, bool>(
+                "SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = $1)",
+            )
+            .bind(version)
+            .fetch_one(&self.pool)
+            .await?;
 
-            // Execute the migration in a transaction
+            if already_applied {
+                continue;
+            }
+
+            // Execute the migration in a transaction so a failure leaves no
+            // partially-applied schema behind.
             let mut tx = self.pool.begin().await?;
 
             for statement in split_sql_statements(migration_sql) {
                 let statement = statement.trim();
                 if !statement.is_empty() && !statement.starts_with("--") {
-                    sqlx::query(statement)
-                        .execute(&mut *tx)
-                        .await
-                        .map_err(|e| {
-                            anyhow!("Migration failed at statement '{}': {}", statement, e)
-                        })?;
+                    sqlx::query(statement).execute(&mut *tx).await.map_err(|e| {
+                        anyhow!(
+                            "Migration {} failed at statement '{}': {}",
+                            version,
+                            statement,
+                            e
+                        )
+                    })?;
                 }
             }
 
-            // Record the migration
-            sqlx::query("INSERT INTO schema_migrations (version) VALUES ('001_initial_schema')")
+            sqlx::query("INSERT INTO schema_migrations (version) VALUES ($1)")
+                .bind(version)
                 .execute(&mut *tx)
                 .await?;
 
             tx.commit().await?;
-            info!("Applied initial schema migration");
+            info!("Applied migration {}", version);
         }
 
         Ok(())
@@ -367,77 +385,6 @@ impl DatabaseService {
             Err(e) => {
                 error!("Failed to remove active session: {}", e);
                 Err(anyhow!("Database delete failed: {}", e))
-            }
-        }
-    }
-
-    /// Get LCR routes for a given prefix
-    pub async fn get_lcr_routes(
-        &self,
-        prefix: &str,
-        route_group: &str,
-        limit: i32,
-    ) -> Result<Vec<LcrRoute>> {
-        let start_time = std::time::Instant::now();
-
-        let rows = sqlx::query(
-            r#"
-            SELECT
-                r.id, r.prefix, r.description, r.trunk_id, r.priority,
-                r.cost_per_minute, r.quality_score, r.max_call_duration,
-                t.name as trunk_name
-            FROM lcr_routes r
-            JOIN trunks t ON r.trunk_id = t.id
-            WHERE r.route_group = $1
-                AND $2 LIKE (r.prefix || '%')
-                AND r.enabled = true
-                AND t.enabled = true
-                AND (r.effective_date IS NULL OR r.effective_date <= NOW())
-                AND (r.expiry_date IS NULL OR r.expiry_date > NOW())
-            ORDER BY LENGTH(r.prefix) DESC, r.priority ASC, r.cost_per_minute ASC
-            LIMIT $3
-            "#,
-        )
-        .bind(route_group)
-        .bind(prefix)
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await;
-
-        let result = rows.map(|rows| {
-            rows.into_iter()
-                .filter_map(|row| {
-                    Some(LcrRoute {
-                        id: row.try_get("id").ok()?,
-                        prefix: row.try_get("prefix").ok()?,
-                        description: row.try_get("description").ok(),
-                        trunk_id: row.try_get("trunk_id").ok(),
-                        priority: row.try_get("priority").ok(),
-                        cost_per_minute: row.try_get("cost_per_minute").ok(),
-                        quality_score: row.try_get("quality_score").ok(),
-                        max_call_duration: row.try_get("max_call_duration").ok(),
-                        trunk_name: row.try_get("trunk_name").ok(),
-                    })
-                })
-                .collect::<Vec<_>>()
-        });
-
-        self.update_query_statistics(start_time, result.is_ok())
-            .await;
-
-        match result {
-            Ok(routes) => {
-                debug!(
-                    "Found {} LCR routes for prefix '{}' in group '{}'",
-                    routes.len(),
-                    prefix,
-                    route_group
-                );
-                Ok(routes)
-            }
-            Err(e) => {
-                error!("Failed to get LCR routes: {}", e);
-                Err(anyhow!("Database query failed: {}", e))
             }
         }
     }
@@ -658,19 +605,6 @@ pub struct DatabaseHealthStatus {
     pub response_time_ms: f64,
     pub active_connections: u32,
     pub error: Option<String>,
-}
-
-#[derive(Debug, Clone, sqlx::FromRow)]
-pub struct LcrRoute {
-    pub id: i32,
-    pub prefix: String,
-    pub description: Option<String>,
-    pub trunk_id: Option<i32>,
-    pub priority: Option<i32>,
-    pub cost_per_minute: Option<rust_decimal::Decimal>,
-    pub quality_score: Option<i32>,
-    pub max_call_duration: Option<i32>,
-    pub trunk_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

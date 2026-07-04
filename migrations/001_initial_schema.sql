@@ -155,29 +155,11 @@ CREATE TABLE vendors_customers (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- LCR Routes table
-CREATE TABLE lcr_routes (
-    id SERIAL PRIMARY KEY,
-    route_group VARCHAR(50) NOT NULL,
-    prefix VARCHAR(20) NOT NULL,
-    description TEXT,
-    trunk_id INTEGER REFERENCES trunks(id),
-    priority INTEGER DEFAULT 50,
-    cost_per_minute DECIMAL(10,6),
-    effective_date TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    expiry_date TIMESTAMP WITH TIME ZONE,
-    quality_score INTEGER DEFAULT 50,
-    max_call_duration INTEGER DEFAULT 7200,
-    enabled BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- Create indexes for LCR routes
-CREATE INDEX idx_lcr_routes_prefix ON lcr_routes(prefix);
-CREATE INDEX idx_lcr_routes_group ON lcr_routes(route_group);
-CREATE INDEX idx_lcr_routes_priority ON lcr_routes(priority);
-CREATE INDEX idx_lcr_routes_cost ON lcr_routes(cost_per_minute);
+-- NOTE: the LCR routing tables (lcr_routes, vendor_rate_decks, trunks-as-egress,
+-- etc.) are owned by migration 002_lcr_schema.sql, which matches the schema the
+-- `lcr` module actually reads. An earlier, unused `lcr_routes` definition lived
+-- here with a completely different shape (route_group/prefix/trunk_id); it has
+-- been removed to avoid a table-name collision with the real LCR schema.
 
 -- Active Sessions table (for call tracking)
 CREATE TABLE active_sessions (
@@ -189,7 +171,6 @@ CREATE TABLE active_sessions (
     from_ip INET,
     to_ip INET,
     trunk_id INTEGER REFERENCES trunks(id),
-    route_id INTEGER REFERENCES lcr_routes(id),
     start_time TIMESTAMP WITH TIME ZONE NOT NULL,
     last_activity TIMESTAMP WITH TIME ZONE NOT NULL,
     state VARCHAR(20) NOT NULL,
@@ -338,9 +319,6 @@ CREATE TRIGGER update_trunks_updated_at BEFORE UPDATE ON trunks
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_vendors_customers_updated_at BEFORE UPDATE ON vendors_customers
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_lcr_routes_updated_at BEFORE UPDATE ON lcr_routes
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_active_sessions_updated_at BEFORE UPDATE ON active_sessions
