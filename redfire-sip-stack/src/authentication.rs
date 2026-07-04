@@ -557,53 +557,21 @@ impl SipAuthenticator {
     }
 
     /// Extract tech prefix from request URI
-    fn extract_tech_prefix(&self, _uri: &rsip::Uri) -> Result<Option<String>> {
-        // TODO: Implement tech prefix extraction from URI
-        // if let Some(user_info) = &uri.user_info {
-        //     let user = &user_info.user;
-
-        // Check for common tech prefix patterns:
-        // - 4-6 digit prefixes: 1001, 10001, 100001
-        // - Star-based prefixes: *1001, *10001
-        // - Plus-based prefixes: +1001
-
-        // Pattern 1: Digits followed by '*' separator
-        /*if let Some(pos) = user.find('*') {
-            if pos >= 3 && pos <= 6 {
-                let prefix = &user[..pos];
-                if prefix.chars().all(|c| c.is_ascii_digit()) {
-                    debug!("Extracted tech prefix: {}", prefix);
-                    return Ok(Some(prefix.to_string()));
-                }
-            }
+    fn extract_tech_prefix(&self, uri: &rsip::Uri) -> Result<Option<String>> {
+        // Decode the canonical PREFIX*E164 wire format from the Request-URI user
+        // part. The tech prefix identifies the originating PBX tenant on the
+        // shared Class 4 trunk. Canonical form and golden cases live in the
+        // cross-project contract hub (contracts/techprefix/cases.json); the
+        // pure decoder below is round-tripped against those cases in CI.
+        let user = match uri.user() {
+            Some(user) => user,
+            None => return Ok(None),
+        };
+        let (prefix, _dialed) = decode_ruri_user(user);
+        if let Some(ref p) = prefix {
+            debug!("Extracted tech prefix: {} from user {}", p, user);
         }
-
-        // Pattern 2: Leading '*' or '+' followed by digits
-        if user.starts_with('*') || user.starts_with('+') {
-            let digits = &user[1..];
-            if digits.len() >= 3 && digits.len() <= 6 && digits.chars().all(|c| c.is_ascii_digit()) {
-                debug!("Extracted tech prefix: {}", user);
-                return Ok(Some(user.to_string()));
-            }
-        }
-
-        // Pattern 3: Pure numeric prefix (3-6 digits) at start
-        for len in (3..=6).rev() {
-            if user.len() > len {
-                let potential_prefix = &user[..len];
-                if potential_prefix.chars().all(|c| c.is_ascii_digit()) {
-                    // Check if remaining part looks like a phone number
-                    let remaining = &user[len..];
-                    if remaining.len() >= 7 && remaining.chars().all(|c| c.is_ascii_digit()) {
-                        debug!("Extracted tech prefix: {}", potential_prefix);
-                        return Ok(Some(potential_prefix.to_string()));
-                    }
-                }
-            }
-        }*/
-        // }
-
-        Ok(None)
+        Ok(prefix)
     }
 
     /// Extract authorization header from SIP message
@@ -749,5 +717,124 @@ impl SipAuthenticator {
 
         self.record_sip_failure(ip, failure_type, None, &method.to_string(), reason)
             .await;
+    }
+}
+
+/// Decode the canonical `PREFIX*E164` tech-prefix wire format from a
+/// Request-URI user part into `(tech_prefix, dialed_number)`.
+///
+/// This is the switch-side counterpart to the PBX egress encoder. Both sides
+/// share the golden cases in the cross-project contract hub
+/// (`contracts/techprefix/cases.json`); the `techprefix_golden_cases` test
+/// round-trips every documented case through this function so the two repos
+/// can never silently drift.
+///
+/// Rules (see the contract's `canonical_form` = `PREFIX*E164`):
+/// - No `*` in the user part means no tech prefix; the whole value is dialed.
+/// - A star-led prefix such as `*1001*15551234567` uses the LAST `*` as the
+///   separator, so the prefix keeps its leading `*`.
+/// - Otherwise the FIRST `*` is the separator.
+pub fn decode_ruri_user(ruri_user: &str) -> (Option<String>, String) {
+    if !ruri_user.contains('*') {
+        return (None, ruri_user.to_string());
+    }
+    let idx = if ruri_user.starts_with('*') {
+        ruri_user.rfind('*').unwrap()
+    } else {
+        ruri_user.find('*').unwrap()
+    };
+    let prefix = &ruri_user[..idx];
+    let dialed = &ruri_user[idx + 1..];
+    (Some(prefix.to_string()), dialed.to_string())
+}
+
+/// Encode a `(tech_prefix, dialed_e164)` pair into the canonical Request-URI
+/// user part. `None` prefix yields a bare passthrough number.
+pub fn encode_ruri_user(tech_prefix: Option<&str>, dialed_e164: &str) -> String {
+    match tech_prefix {
+        Some(p) => format!("{}*{}", p, dialed_e164),
+        None => dialed_e164.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod techprefix_tests {
+    use super::{decode_ruri_user, encode_ruri_user};
+
+    /// Path to the vendored contract hub golden cases, relative to this crate.
+    const CASES_JSON: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../contracts/techprefix/cases.json"
+    );
+
+    #[test]
+    fn techprefix_golden_cases() {
+        let raw = std::fs::read_to_string(CASES_JSON).unwrap_or_else(|e| {
+            panic!("cannot read contract golden cases at {}: {}", CASES_JSON, e)
+        });
+        let cases: serde_json::Value =
+            serde_json::from_str(&raw).expect("golden cases are valid JSON");
+
+        // Encode cases: (tech_prefix, dialed) -> ruri_user
+        let mut checked = 0usize;
+        for c in cases["encode_cases"]
+            .as_array()
+            .expect("encode_cases array")
+        {
+            let tp = c["tech_prefix"].as_str();
+            let dialed = c["dialed_e164"].as_str().expect("dialed_e164");
+            let expected = c["ruri_user"].as_str().expect("ruri_user");
+            let got = encode_ruri_user(tp, dialed);
+            assert_eq!(
+                got, expected,
+                "encode case {}: got {:?} expected {:?}",
+                c["name"], got, expected
+            );
+            checked += 1;
+        }
+
+        // Decode cases: ruri_user -> (tech_prefix, dialed)
+        for c in cases["decode_cases"]
+            .as_array()
+            .expect("decode_cases array")
+        {
+            let ruri = c["ruri_user"].as_str().expect("ruri_user");
+            let expect_tp = c["expect_tech_prefix"].as_str();
+            let expect_dialed = c["expect_dialed"].as_str().expect("expect_dialed");
+            let (tp, dialed) = decode_ruri_user(ruri);
+            assert_eq!(
+                tp.as_deref(),
+                expect_tp,
+                "decode case {} prefix mismatch",
+                c["name"]
+            );
+            assert_eq!(
+                dialed, expect_dialed,
+                "decode case {} dialed mismatch",
+                c["name"]
+            );
+            checked += 1;
+        }
+
+        assert!(
+            checked >= 7,
+            "expected at least 7 golden cases, ran {checked}"
+        );
+    }
+
+    #[test]
+    fn techprefix_round_trip_is_stable() {
+        // Any (prefix, dialed) we encode must decode back to the same pair.
+        for (tp, dialed) in [
+            (Some("1001"), "15551234567"),
+            (Some("100042"), "14155550100"),
+            (Some("*1001"), "15551234567"),
+            (None, "15551234567"),
+        ] {
+            let encoded = encode_ruri_user(tp, dialed);
+            let (dtp, ddialed) = decode_ruri_user(&encoded);
+            assert_eq!(dtp.as_deref(), tp, "round-trip prefix for {encoded}");
+            assert_eq!(ddialed, dialed, "round-trip dialed for {encoded}");
+        }
     }
 }

@@ -1,0 +1,15 @@
+{
+  "boss_account_id": "acct_01H8XYZ",
+  "boss_reseller_id": "rsl_alpha",
+  "action": "create",
+  "domain": "acme.pbx.example.com",
+  "company_name": "Acme Corporation",
+  "tech_prefix": "1001",
+  "plan_limits": {
+    "max_extensions": 50,
+    "max_queues": 5,
+    "max_voicemail_boxes": 50,
+    "max_conferences": 3,
+    "max_concurrent_calls": 30
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "boss_account_id": "acct_01H8XYZ",
+  "boss_did_id": "did_55501",
+  "e164": "+15551234567",
+  "action": "assign",
+  "inbound_destination": { "type": "ivr", "ref": "main_ivr" },
+  "features": { "cnam": true, "e911": true, "sms": false }
+}

@@ -1,0 +1,7 @@
+{
+  "boss_account_id": "acct_01H8XYZ",
+  "boss_did_id": "did_55501",
+  "e164": "555",
+  "action": "assign",
+  "_invalid_reason": "e164 fails pattern (too short / not E.164)"
+}

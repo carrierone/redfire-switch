@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://redfire/contracts/pbx_switch.trunk_auth.json",
+  "title": "PBX <-> Switch: trunk auth / tenant identification",
+  "description": "Mirror of redfire-switch IpAuthConfig for the PBX platform interconnect. The PBX egresses from source_networks; each tenant is identified by a tech_prefix that resolves to a switch customer_id (== boss voice_accounts.switchAccountId). Keep this in sync with redfire-switch authentication.rs IpAuthConfig.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["trunk_id", "customer_id", "source_networks", "tech_prefix"],
+  "properties": {
+    "trunk_id": { "type": "string", "minLength": 1 },
+    "customer_id": { "type": "string", "minLength": 1, "description": "== boss voice_accounts.switchAccountId" },
+    "source_networks": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "description": "CIDR (v4 or v6)" }
+    },
+    "tech_prefix": {
+      "type": "string",
+      "pattern": "^[*+]?[0-9]{3,6}$",
+      "description": "Per-tenant account key; matches techprefix contract"
+    },
+    "optional_tech_prefixes": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[*+]?[0-9]{3,6}$" }
+    },
+    "rate_limit_cps": { "type": ["integer", "null"], "minimum": 0 },
+    "enabled": { "type": "boolean" }
+  }
+}

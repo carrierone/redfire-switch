@@ -1,0 +1,80 @@
+{
+  "contract": "techprefix",
+  "version": "1.0.0",
+  "description": "Canonical tech-prefix wire format for PBX -> Carrier One Class 4 (redfire-switch) outbound trunk. The PBX encodes (tech_prefix, dialed_e164) into the SIP Request-URI user part on egress. redfire-switch extract_tech_prefix decodes the same user part back into (tech_prefix, dialed_number). Both sides MUST round-trip every case below. Canonical form is PREFIX*E164 with an explicit '*' separator.",
+  "canonical_form": "PREFIX*E164",
+  "rules": {
+    "prefix_min_digits": 3,
+    "prefix_max_digits": 6,
+    "prefix_charset": "digits, optional leading '*' or '+'",
+    "separator": "*",
+    "separator_required_for_canonical": true,
+    "assignment_range_recommended": "4-6 numeric digits"
+  },
+  "encode_cases": [
+    {
+      "name": "canonical_numeric_prefix",
+      "tech_prefix": "1001",
+      "dialed_e164": "15551234567",
+      "ruri_user": "1001*15551234567",
+      "canonical": true
+    },
+    {
+      "name": "canonical_six_digit_prefix",
+      "tech_prefix": "100042",
+      "dialed_e164": "14155550100",
+      "ruri_user": "100042*14155550100",
+      "canonical": true
+    },
+    {
+      "name": "star_led_prefix",
+      "tech_prefix": "*1001",
+      "dialed_e164": "15551234567",
+      "ruri_user": "*1001*15551234567",
+      "canonical": false
+    }
+  ],
+  "decode_cases": [
+    {
+      "name": "canonical_numeric_prefix",
+      "ruri_user": "1001*15551234567",
+      "expect_tech_prefix": "1001",
+      "expect_dialed": "15551234567"
+    },
+    {
+      "name": "canonical_six_digit_prefix",
+      "ruri_user": "100042*14155550100",
+      "expect_tech_prefix": "100042",
+      "expect_dialed": "14155550100"
+    },
+    {
+      "name": "star_led_prefix",
+      "ruri_user": "*1001*15551234567",
+      "expect_tech_prefix": "*1001",
+      "expect_dialed": "15551234567"
+    },
+    {
+      "name": "no_prefix_passthrough",
+      "ruri_user": "15551234567",
+      "expect_tech_prefix": null,
+      "expect_dialed": "15551234567"
+    }
+  ],
+  "reject_cases": [
+    {
+      "name": "prefix_too_short",
+      "tech_prefix": "12",
+      "reason": "prefix shorter than 3 digits is outside the accepted window"
+    },
+    {
+      "name": "prefix_too_long",
+      "tech_prefix": "1234567",
+      "reason": "prefix longer than 6 digits is outside the accepted window"
+    },
+    {
+      "name": "non_numeric_prefix",
+      "tech_prefix": "10AB",
+      "reason": "prefix must be digits (optionally *-led)"
+    }
+  ]
+}

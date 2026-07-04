@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://redfire/contracts/boss_to_pbx.assign_did.json",
+  "title": "BOSS -> PBX: assign/unassign DID",
+  "description": "B/OSS owns DID inventory. On assignment it tells the PBX to build the inbound route to the tenant. Auto-trunking to Carrier One is triggered from this.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["boss_account_id", "boss_did_id", "e164", "action"],
+  "properties": {
+    "boss_account_id": { "type": "string", "minLength": 1 },
+    "boss_did_id": { "type": "string", "minLength": 1 },
+    "e164": { "type": "string", "pattern": "^\\+?[1-9][0-9]{6,14}$" },
+    "action": { "type": "string", "enum": ["assign", "unassign", "update_routing"] },
+    "inbound_destination": {
+      "type": ["object", "null"],
+      "description": "Optional initial routing target inside the PBX",
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string", "enum": ["extension", "ring_group", "ivr", "queue", "voicemail"] },
+        "ref": { "type": "string" }
+      }
+    },
+    "features": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "cnam": { "type": "boolean" },
+        "e911": { "type": "boolean" },
+        "sms": { "type": "boolean" }
+      }
+    }
+  }
+}

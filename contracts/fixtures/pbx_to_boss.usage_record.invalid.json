@@ -1,0 +1,9 @@
+{
+  "external_id": "call_9f2a-1",
+  "boss_account_id": "acct_01H8XYZ",
+  "pbx_tenant_id": "tnt_acme",
+  "direction": "sideways",
+  "billable_seconds": -5,
+  "usage_sequence": 42,
+  "_invalid_reason": "direction not in enum; billable_seconds negative"
+}

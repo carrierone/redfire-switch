@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://redfire/contracts/pbx_to_boss.usage_record.json",
+  "title": "PBX -> BOSS: billable usage record",
+  "description": "Output of PBX CDR mediation. One per completed call. B/OSS rates/taxes/invoices from these. external_id is the idempotency key so retries are safe. This is the revenue interface.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["external_id", "boss_account_id", "pbx_tenant_id", "direction", "billable_seconds", "usage_sequence"],
+  "properties": {
+    "external_id": { "type": "string", "minLength": 1, "description": "Idempotency key, call-UUID based" },
+    "boss_account_id": { "type": "string", "minLength": 1 },
+    "pbx_tenant_id": { "type": "string", "minLength": 1 },
+    "tech_prefix": { "type": ["string", "null"], "description": "Class 4 account key used for this call; must reconcile with boss_account_id" },
+    "call_id": { "type": "string" },
+    "direction": { "type": "string", "enum": ["inbound", "outbound", "internal"] },
+    "from": { "type": "string" },
+    "to": { "type": "string" },
+    "start_time": { "type": "string", "format": "date-time" },
+    "answer_time": { "type": ["string", "null"], "format": "date-time" },
+    "end_time": { "type": "string", "format": "date-time" },
+    "billable_seconds": { "type": "integer", "minimum": 0 },
+    "disposition": { "type": "string", "enum": ["answered", "no_answer", "busy", "failed", "canceled"] },
+    "trunk_or_did": { "type": ["string", "null"] },
+    "attestation_level": { "type": ["string", "null"], "enum": ["A", "B", "C", null] },
+    "inbound_verstat": { "type": ["string", "null"], "enum": ["passed", "failed", "not_verified", null] },
+    "usage_sequence": { "type": "integer", "minimum": 0, "description": "Per-tenant monotonic; gaps signal loss" },
+    "mediation_ruleset_version": { "type": ["string", "null"] }
+  }
+}

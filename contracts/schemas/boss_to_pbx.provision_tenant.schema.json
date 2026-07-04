@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://redfire/contracts/boss_to_pbx.provision_tenant.json",
+  "title": "BOSS -> PBX: provision/update tenant",
+  "description": "Replaces the legacy VitalPBX createTenant/updateResources integration. B/OSS calls the PBX adapter with this payload. Field names are the cross-project contract.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["boss_account_id", "action", "plan_limits"],
+  "properties": {
+    "boss_account_id": { "type": "string", "minLength": 1 },
+    "boss_reseller_id": { "type": ["string", "null"] },
+    "action": { "type": "string", "enum": ["create", "update", "suspend", "unsuspend", "terminate"] },
+    "domain": { "type": ["string", "null"], "description": "SIP/registration domain; PBX may derive if null" },
+    "company_name": { "type": ["string", "null"] },
+    "tech_prefix": {
+      "type": ["string", "null"],
+      "description": "Per-tenant Class 4 account key. If null on create, PBX allocates and returns it. Must match techprefix contract rules.",
+      "pattern": "^[*+]?[0-9]{3,6}$"
+    },
+    "plan_limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_extensions"],
+      "properties": {
+        "max_extensions": { "type": "integer", "minimum": 0 },
+        "max_queues": { "type": "integer", "minimum": 0 },
+        "max_voicemail_boxes": { "type": "integer", "minimum": 0 },
+        "max_conferences": { "type": "integer", "minimum": 0 },
+        "max_concurrent_calls": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

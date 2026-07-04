@@ -10,6 +10,23 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  contracts:
+    name: Cross-project contracts
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.x"
+
+    - name: Validate vendored contract schemas, fixtures, and tech-prefix goldens
+      run: python3 contracts/tools/contract_check.py
+
+    - name: Assert vendored contracts match the manifest (no drift from source hub)
+      run: python3 contracts/tools/manifest.py --check
+
   test:
     name: Test Suite
     runs-on: ubuntu-latest

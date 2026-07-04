@@ -1,0 +1,9 @@
+{
+  "trunk_id": "pbx_platform_interconnect",
+  "customer_id": "switch_acct_acme",
+  "source_networks": ["10.20.0.0/24", "2001:db8:20::/64"],
+  "tech_prefix": "1001",
+  "optional_tech_prefixes": ["1002"],
+  "rate_limit_cps": 100,
+  "enabled": true
+}

@@ -1,0 +1,9 @@
+{
+  "boss_account_id": "acct_01H8XYZ",
+  "action": "create",
+  "tech_prefix": "10AB",
+  "plan_limits": {
+    "max_queues": 5
+  },
+  "_invalid_reason": "tech_prefix not numeric window; plan_limits missing required max_extensions"
+}

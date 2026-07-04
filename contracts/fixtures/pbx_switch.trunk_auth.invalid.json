@@ -1,0 +1,8 @@
+{
+  "trunk_id": "pbx_platform_interconnect",
+  "customer_id": "switch_acct_acme",
+  "source_networks": [],
+  "tech_prefix": "12",
+  "enabled": true,
+  "_invalid_reason": "source_networks empty (minItems 1); tech_prefix below 3 digits"
+}
