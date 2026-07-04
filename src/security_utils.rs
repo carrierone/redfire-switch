@@ -116,6 +116,8 @@ pub fn validate_message_size(message: &str) -> Result<()> {
 
 /// Validate SIP header size and content
 pub fn validate_header(header_name: &str, header_value: &str) -> Result<()> {
+    // Ensure the security regexes are compiled (idempotent).
+    init_security();
     // Validate header name format
     let name_regex = HEADER_NAME_REGEX.get().expect("Security not initialized");
     if !name_regex.is_match(header_name) {
@@ -146,6 +148,8 @@ pub fn validate_header(header_name: &str, header_value: &str) -> Result<()> {
 
 /// Validate and sanitize phone number
 pub fn validate_phone_number(number: &str) -> Result<String> {
+    // Ensure the security regexes are compiled (idempotent).
+    init_security();
     if number.len() > MAX_PHONE_NUMBER_LENGTH {
         return Err(anyhow!("Phone number exceeds maximum length"));
     }
@@ -167,6 +171,8 @@ pub fn validate_phone_number(number: &str) -> Result<String> {
 
 /// Validate SIP URI format
 pub fn validate_sip_uri(uri: &str) -> Result<()> {
+    // Ensure the security regexes are compiled (idempotent).
+    init_security();
     let regex = SIP_URI_REGEX.get().expect("Security not initialized");
 
     if uri.len() > 256 {
@@ -182,6 +188,8 @@ pub fn validate_sip_uri(uri: &str) -> Result<()> {
 
 /// Secure hex string validation and decoding
 pub fn validate_and_decode_hex(hex_input: &str) -> Result<Vec<u8>> {
+    // Ensure the security regexes are compiled (idempotent).
+    init_security();
     // Input size validation
     if hex_input.len() > MAX_HEX_INPUT_SIZE {
         error!("Hex input exceeds maximum size: {} chars", hex_input.len());
