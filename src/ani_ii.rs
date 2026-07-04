@@ -210,14 +210,19 @@ impl fmt::Display for AniIISource {
 pub mod toll_free {
     /// Check if a DNIS (called number) is a toll-free number
     pub fn is_toll_free(dnis: &str) -> bool {
-        // Remove any '+1' prefix and non-digit characters
-        let clean_number = dnis
-            .trim_start_matches("+1")
+        // Keep only digits (drops '+', spaces, dashes, etc.).
+        let mut clean_number = dnis
             .chars()
             .filter(|c| c.is_ascii_digit())
             .collect::<String>();
 
-        // Check if it starts with known toll-free prefixes
+        // Strip a leading NANP country code so 11-digit numbers
+        // (e.g. "18005551234") are treated like their 10-digit form.
+        if clean_number.len() == 11 && clean_number.starts_with('1') {
+            clean_number.remove(0);
+        }
+
+        // Check if it starts with a known toll-free area code.
         if clean_number.len() >= 3 {
             let prefix = &clean_number[..3];
             matches!(

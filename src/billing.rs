@@ -354,11 +354,15 @@ impl BillingService {
             stats: Arc::new(RwLock::new(BillingStats::default())),
         };
 
-        // Start cache cleanup task
-        let cleanup_service = service.clone();
-        tokio::spawn(async move {
-            cleanup_service.run_cache_cleanup().await;
-        });
+        // Start cache cleanup task when a Tokio runtime is available. Guarding
+        // on the current handle keeps `new` usable from synchronous contexts
+        // (e.g. unit tests) instead of panicking with "no reactor running".
+        if tokio::runtime::Handle::try_current().is_ok() {
+            let cleanup_service = service.clone();
+            tokio::spawn(async move {
+                cleanup_service.run_cache_cleanup().await;
+            });
+        }
 
         info!("Billing service initialized");
         Ok(service)

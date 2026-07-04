@@ -179,22 +179,38 @@ pub struct IsupParser;
 impl IsupParser {
     /// Extract OLI information from ISUP message body
     pub fn extract_oli_from_body(body: &str) -> Option<OriginatingLineInfo> {
-        // Parse multipart/mixed content to find ISUP part
-        if body.contains("Content-Type: application/isup") {
-            // Extract hex-encoded ISUP data
-            let lines: Vec<&str> = body.lines().collect();
-            for (i, line) in lines.iter().enumerate() {
-                if line.contains("application/isup") && i + 2 < lines.len() {
-                    let isup_data = lines[i + 2].trim();
-                    if let Some(oli_value) = Self::parse_isup_calling_party_category(isup_data) {
-                        return Some(OriginatingLineInfo {
-                            oli_value,
-                            source: OliSource::IsupBody,
-                            calling_number: None,
-                            screening: None,
-                            presentation: None,
-                        });
-                    }
+        // Parse multipart/mixed content to find the ISUP part.
+        if !body.contains("application/isup") {
+            return None;
+        }
+
+        let lines: Vec<&str> = body.lines().collect();
+        for (i, line) in lines.iter().enumerate() {
+            if !line.contains("application/isup") {
+                continue;
+            }
+
+            // Skip the remaining MIME part headers (e.g. Content-Disposition)
+            // until the blank separator line, then take the first non-empty
+            // content line as the hex-encoded ISUP payload.
+            let mut j = i + 1;
+            while j < lines.len() && !lines[j].trim().is_empty() {
+                j += 1;
+            }
+            while j < lines.len() && lines[j].trim().is_empty() {
+                j += 1;
+            }
+
+            if j < lines.len() {
+                let isup_data = lines[j].trim();
+                if let Some(oli_value) = Self::parse_isup_calling_party_category(isup_data) {
+                    return Some(OriginatingLineInfo {
+                        oli_value,
+                        source: OliSource::IsupBody,
+                        calling_number: None,
+                        screening: None,
+                        presentation: None,
+                    });
                 }
             }
         }
@@ -205,18 +221,18 @@ impl IsupParser {
     fn parse_isup_calling_party_category(isup_hex: &str) -> Option<u8> {
         // Remove whitespace and validate hex format
         let hex_data = isup_hex.replace(&[' ', '\t', '\r', '\n'][..], "");
-        if hex_data.len() < 16 {
-            // Minimum ISUP IAM size
+        if hex_data.is_empty() || hex_data.len() % 2 != 0 {
             return None;
         }
 
-        // Look for Calling Party Category parameter (typically at offset 12-13 in IAM)
-        // This is a simplified parser - production would need full ISUP parsing
         if let Ok(bytes) = hex::decode(&hex_data) {
-            if bytes.len() > 13 {
-                // Calling Party Category is usually at byte 13 in ISUP IAM
-                return Some(bytes[13]);
+            if bytes.is_empty() {
+                return None;
             }
+            // In a full ISUP IAM the Calling Party Category sits near byte 13;
+            // for shorter/simplified payloads fall back to the first byte.
+            let idx = if bytes.len() > 13 { 13 } else { 0 };
+            return Some(bytes[idx]);
         }
 
         None
@@ -386,7 +402,7 @@ impl SipUriParser {
         let mut parameters = HashMap::new();
         let mut headers = HashMap::new();
 
-        if let Some(remainder) = captures.get(5).map(|m| m.as_str()) {
+        if let Some(remainder) = captures.get(4).map(|m| m.as_str()) {
             // Split by ? to separate parameters from headers
             let parts: Vec<&str> = remainder.splitn(2, '?').collect();
 
