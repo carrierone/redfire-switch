@@ -494,7 +494,7 @@ mod tests {
     #[tokio::test]
     async fn test_routing_service_creation() {
         let config = RoutingConfig::default();
-        let lcr_engine = Arc::new(LcrEngine::new("test://").await.unwrap());
+        let lcr_engine = Arc::new(LcrEngine::new_for_test());
         let origination_routes = Arc::new(tokio::sync::Mutex::new(OriginationRoutingEngine::new(
             Default::default(),
         )));
@@ -515,7 +515,7 @@ mod tests {
     #[tokio::test]
     async fn test_routing_request() {
         let config = RoutingConfig::default();
-        let lcr_engine = Arc::new(LcrEngine::new("test://").await.unwrap());
+        let lcr_engine = Arc::new(LcrEngine::new_for_test());
         let origination_routes = Arc::new(tokio::sync::Mutex::new(OriginationRoutingEngine::new(
             Default::default(),
         )));

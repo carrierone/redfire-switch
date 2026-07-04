@@ -54,6 +54,43 @@ impl LcrEngine {
         Self::new_with_lrn_config(database_url, LrnDipConfig::default()).await
     }
 
+    /// Build an engine backed by a lazily-connected pool and empty caches,
+    /// without performing any database I/O. Intended for unit tests that only
+    /// exercise in-memory routing logic. LRN dip is disabled.
+    #[cfg(test)]
+    pub fn new_for_test() -> Self {
+        let db_pool = Arc::new(DatabasePool::new_lazy_for_test());
+        let pool = db_pool.pool.clone();
+        let cache = Arc::new(LcrCache::new());
+        let trunk_manager = Arc::new(TrunkManager::new());
+        let timer_manager = Arc::new(TimerManager::new());
+
+        let lrn_dip_service = Arc::new(LrnDipService::new(LrnDipConfig::default()));
+
+        let routing_engine = Arc::new(RoutingEngine::new(
+            cache.clone(),
+            trunk_manager.clone(),
+            timer_manager.clone(),
+            pool.clone(),
+        ));
+
+        let deck_loader = Arc::new(DeckLoader::with_cache_and_db(
+            pool,
+            cache.clone(),
+            db_pool.clone(),
+        ));
+
+        Self {
+            db_pool,
+            cache,
+            routing_engine,
+            deck_loader,
+            trunk_manager,
+            timer_manager,
+            lrn_dip_service,
+        }
+    }
+
     pub async fn new_with_lrn_config(database_url: &str, lrn_config: LrnDipConfig) -> Result<Self> {
         let db_pool = Arc::new(DatabasePool::new(database_url).await?);
         let pool = db_pool.pool.clone(); // Get the underlying PgPool

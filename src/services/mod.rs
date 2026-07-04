@@ -536,13 +536,17 @@ mod tests {
 
         // Test service health tracking functionality
         registry.mark_service_healthy("test_service").await;
-        let health = registry.service_health.read().await;
-        assert_eq!(health.get("test_service"), Some(&true));
+        {
+            let health = registry.service_health.read().await;
+            assert_eq!(health.get("test_service"), Some(&true));
+        } // drop the read guard before taking the write lock below
 
         // Test unhealthy service tracking
         registry.mark_service_unhealthy("failing_service").await;
-        let health = registry.service_health.read().await;
-        assert_eq!(health.get("failing_service"), Some(&false));
+        {
+            let health = registry.service_health.read().await;
+            assert_eq!(health.get("failing_service"), Some(&false));
+        }
 
         // Test event bus integration
         assert!(Arc::strong_count(&event_bus) >= 2); // Registry should hold a reference

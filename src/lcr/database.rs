@@ -21,6 +21,18 @@ impl DatabasePool {
         Ok(Self { pool })
     }
 
+    /// Create a pool that connects lazily and does not touch the database until
+    /// the first query. Intended for unit tests that exercise in-memory logic
+    /// without a live PostgreSQL server.
+    #[cfg(test)]
+    pub fn new_lazy_for_test() -> Self {
+        let pool = PgPoolOptions::new()
+            .max_connections(1)
+            .connect_lazy("postgres://redfire:redfire@127.0.0.1/redfire_test")
+            .expect("failed to build lazy test pool");
+        Self { pool }
+    }
+
     pub async fn load_vendor_rate_decks(&self) -> Result<Vec<RateDeck>> {
         let rows = sqlx::query(
             r#"

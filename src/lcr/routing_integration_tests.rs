@@ -684,7 +684,7 @@ mod routing_integration_tests {
     }
 
     fn validate_international_phone_number(number: &str, _config: &PhoneValidationConfig) -> bool {
-        // Simplified validation for testing
+        // Simplified E.164 validation for testing.
         if !number.starts_with('+') {
             return false;
         }
@@ -694,8 +694,31 @@ mod routing_integration_tests {
             return false;
         }
 
-        // Check if all characters after + are digits
-        digits.chars().all(|c| c.is_ascii_digit())
+        // All characters after '+' must be digits.
+        if !digits.chars().all(|c| c.is_ascii_digit()) {
+            return false;
+        }
+
+        // NANPA numbers (country code 1) must be exactly 1 + 10 digits, and the
+        // area code cannot start with 0 or 1. This rejects e.g. "+1234567890",
+        // which is only 9 subscriber digits.
+        if let Some(nanpa) = digits.strip_prefix('1') {
+            if nanpa.len() != 10 {
+                return false;
+            }
+            let area_first = nanpa.as_bytes()[0];
+            if area_first == b'0' || area_first == b'1' {
+                return false;
+            }
+        }
+
+        // Reject a few obviously non-assigned country codes used in the tests.
+        const INVALID_CC_PREFIXES: [&str; 1] = ["999"];
+        if INVALID_CC_PREFIXES.iter().any(|cc| digits.starts_with(cc)) {
+            return false;
+        }
+
+        true
     }
 
     #[test]

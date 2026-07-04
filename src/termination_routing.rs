@@ -935,7 +935,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_termination_routing_no_routes() {
-        let lcr_engine = Arc::new(crate::lcr::LcrEngine::new("test://").await.unwrap());
+        let lcr_engine = Arc::new(crate::lcr::LcrEngine::new_for_test());
         let mut service = TerminationRoutingService::new(lcr_engine);
 
         let route_request = RouteRequest {

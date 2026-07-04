@@ -197,8 +197,14 @@ impl RouteAdvancementEngine {
 
         match advancement_decision {
             RouteAdvanceDecision::CompleteCall => {
-                // Call completed (success or permanent failure)
-                Ok(self.complete_call_routing(call_id, response_code, response_reason)?)
+                // A definitive final response was received (2xx success or a
+                // non-retryable final such as 3xx/6xx). Complete the call.
+                Ok(self.complete_call_routing(
+                    call_id,
+                    response_code,
+                    response_reason,
+                    AdvancementAction::CompleteCall,
+                )?)
             }
             RouteAdvanceDecision::AdvanceToNextRoute => {
                 // Try to advance to next route
@@ -224,6 +230,7 @@ impl RouteAdvancementEngine {
                 call_id,
                 last_response_code,
                 "Maximum route attempts exceeded",
+                AdvancementAction::RejectCall,
             );
         }
 
@@ -277,6 +284,7 @@ impl RouteAdvancementEngine {
                     call_id,
                     last_response_code,
                     "No more untried routes available",
+                    AdvancementAction::RejectCall,
                 );
             } else {
                 routing_response
@@ -313,27 +321,30 @@ impl RouteAdvancementEngine {
             })
         } else {
             // No more routes available
-            self.complete_call_routing(call_id, last_response_code, &routing_response.reason)
+            self.complete_call_routing(
+                call_id,
+                last_response_code,
+                &routing_response.reason,
+                AdvancementAction::RejectCall,
+            )
         }
     }
 
-    /// Complete call routing (success or final failure)
+    /// Complete call routing (success or final failure).
+    ///
+    /// `action` distinguishes a definitive final response received from the
+    /// endpoint (`CompleteCall`) from routing being exhausted (`RejectCall`).
     fn complete_call_routing(
         &mut self,
         call_id: &str,
         final_response_code: u16,
         reason: &str,
+        action: AdvancementAction,
     ) -> Result<RouteAdvancementResult> {
         let routing_state = self
             .active_calls
             .remove(call_id)
             .ok_or_else(|| anyhow!("Call routing state not found for call_id: {}", call_id))?;
-
-        let action = if final_response_code < 300 {
-            AdvancementAction::CompleteCall
-        } else {
-            AdvancementAction::RejectCall
-        };
 
         info!(
             "Completed call routing for {}: {} {} (total attempts: {})",
@@ -481,7 +492,7 @@ mod tests {
     }
 
     async fn create_test_engine() -> RouteAdvancementEngine {
-        let lcr_engine = Arc::new(crate::lcr::LcrEngine::new("sqlite::memory:").await.unwrap());
+        let lcr_engine = Arc::new(crate::lcr::LcrEngine::new_for_test());
         let termination_service = Arc::new(Mutex::new(TerminationRoutingService::new(lcr_engine)));
         RouteAdvancementEngine::new(termination_service, 3)
     }
