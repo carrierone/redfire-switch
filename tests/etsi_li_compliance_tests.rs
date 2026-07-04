@@ -78,36 +78,37 @@ fn create_expired_warrant() -> LiWarrant {
 /// Create future warrant
 fn create_future_warrant() -> LiWarrant {
     let mut warrant = create_valid_warrant();
-    warrant.start_date = Utc::now() + Duration::days(1);
-    warrant.end_date = Utc::now() + Duration::days(31);
+    warrant.start_time = Utc::now() + Duration::days(1);
+    warrant.end_time = Utc::now() + Duration::days(31);
     warrant
 }
 
-/// Create emergency warrant
+/// Create emergency warrant (short-duration warrant, <= 72h)
 fn create_emergency_warrant() -> LiWarrant {
     let mut warrant = create_valid_warrant();
-    warrant.emergency_warrant = true;
-    warrant.issuing_authority = "Emergency Services".to_string();
-    warrant.end_date = Utc::now() + Duration::hours(72); // 72 hour emergency limit
+    warrant.issuing_lea = "Emergency Services".to_string();
+    warrant.start_time = Utc::now();
+    warrant.end_time = Utc::now() + Duration::hours(72); // 72 hour emergency limit
     warrant
 }
 
 #[tokio::test]
 async fn test_warrant_validation_compliance() -> Result<()> {
     let config = create_test_li_config().await?;
-    let mut controller = EtsiLiController::new(config);
+    let controller = EtsiLiController::new(config);
 
     // Test valid warrant
     let valid_warrant = create_valid_warrant();
-    assert!(controller.validate_warrant(&valid_warrant).is_ok());
+    assert!(controller.validate_warrant_sync(&valid_warrant).is_ok());
 
     // Test expired warrant
     let expired_warrant = create_expired_warrant();
-    assert!(controller.validate_warrant(&expired_warrant).is_err());
+    assert!(controller.validate_warrant_sync(&expired_warrant).is_err());
 
-    // Test future warrant (should be valid but not active yet)
+    // Test future warrant (validation only checks duration/expiry, so a
+    // future-but-unexpired warrant validates OK).
     let future_warrant = create_future_warrant();
-    let validation_result = controller.validate_warrant(&future_warrant);
+    let validation_result = controller.validate_warrant_sync(&future_warrant);
     assert!(
         validation_result.is_ok()
             || validation_result
@@ -117,20 +118,20 @@ async fn test_warrant_validation_compliance() -> Result<()> {
                 .contains("not yet active")
     );
 
-    // Test warrant with invalid authority (empty)
+    // Test warrant with invalid court reference (empty)
     let mut invalid_warrant = create_valid_warrant();
-    invalid_warrant.issuing_authority = "".to_string();
-    assert!(controller.validate_warrant(&invalid_warrant).is_err());
+    invalid_warrant.court_reference = "".to_string();
+    assert!(controller.validate_warrant_sync(&invalid_warrant).is_err());
 
-    // Test warrant with invalid case reference (empty)
+    // Test warrant with no authorized officers
     let mut invalid_warrant = create_valid_warrant();
-    invalid_warrant.case_reference = "".to_string();
-    assert!(controller.validate_warrant(&invalid_warrant).is_err());
+    invalid_warrant.authorized_officers = vec![];
+    assert!(controller.validate_warrant_sync(&invalid_warrant).is_err());
 
     // Test warrant with invalid target identifier (empty)
     let mut invalid_warrant = create_valid_warrant();
     invalid_warrant.target_identifier = "".to_string();
-    assert!(controller.validate_warrant(&invalid_warrant).is_err());
+    assert!(controller.validate_warrant_sync(&invalid_warrant).is_err());
 
     Ok(())
 }
@@ -142,7 +143,7 @@ async fn test_warrant_expiry_enforcement() -> Result<()> {
 
     // Add a warrant that will expire soon
     let mut short_warrant = create_valid_warrant();
-    short_warrant.end_date = Utc::now() + Duration::minutes(1);
+    short_warrant.end_time = Utc::now() + Duration::minutes(1);
 
     controller.add_warrant(short_warrant.clone())?;
 
@@ -161,10 +162,10 @@ async fn test_warrant_expiry_enforcement() -> Result<()> {
         .await?;
     assert_eq!(active_warrants.len(), 1);
 
-    // Simulate passage of time by updating warrant end date to past
+    // Simulate passage of time by updating warrant end time to past
     let mut expired_warrant = short_warrant.clone();
-    expired_warrant.end_date = Utc::now() - Duration::minutes(1);
-    expired_warrant.is_active = false;
+    expired_warrant.end_time = Utc::now() - Duration::minutes(1);
+    expired_warrant.status = WarrantStatus::Expired;
 
     // Remove old warrant and add expired one
     controller.remove_warrant(&short_warrant.warrant_id)?;
@@ -192,10 +193,9 @@ async fn test_emergency_warrant_handling() -> Result<()> {
         .should_intercept(&emergency_warrant.target_identifier)
         .await?;
     assert_eq!(active_warrants.len(), 1);
-    assert!(active_warrants[0].emergency_warrant);
 
     // Emergency warrants should have shorter duration (72 hours max)
-    let duration = emergency_warrant.end_date - emergency_warrant.start_date;
+    let duration = emergency_warrant.end_time - emergency_warrant.start_time;
     assert!(
         duration <= Duration::hours(72),
         "Emergency warrant duration exceeds 72 hours"
@@ -315,22 +315,25 @@ async fn test_hi3_content_etsi_compliance() -> Result<()> {
 
 #[tokio::test]
 async fn test_encryption_requirements_compliance() -> Result<()> {
-    let config = create_test_li_config().await?;
+    // Delivery endpoints (with encryption/auth requirements) live on the
+    // warrant, not the controller config.
+    let warrant = create_valid_warrant();
+    let endpoints = &warrant.delivery_endpoints;
 
     // Verify encryption is mandatory in delivery endpoints
-    match config.delivery_endpoints.encryption_algorithm {
+    match endpoints.encryption_algorithm {
         EncryptionAlgorithm::Aes256Gcm | EncryptionAlgorithm::ChaCha20Poly1305 => {
             // Valid encryption algorithms
         }
     }
 
     // Verify TLS certificate paths are specified
-    assert!(!config.delivery_endpoints.tls_certificate_path.is_empty());
-    assert!(!config.delivery_endpoints.tls_private_key_path.is_empty());
+    assert!(!endpoints.tls_certificate_path.is_empty());
+    assert!(!endpoints.tls_private_key_path.is_empty());
 
     // Verify authentication method is secure
-    match config.delivery_endpoints.auth_method {
-        AuthenticationMethod::MutualTls | AuthenticationMethod::OAuth2 => {
+    match endpoints.auth_method {
+        AuthenticationMethod::MutualTls { .. } | AuthenticationMethod::OAuth2 { .. } => {
             // Valid authentication methods
         }
     }
@@ -454,41 +457,44 @@ async fn test_multiple_warrant_types() -> Result<()> {
 
     // Test different intercept types
     let mut metadata_warrant = create_valid_warrant();
-    metadata_warrant.intercept_type = InterceptType::MetadataOnly;
+    metadata_warrant.intercept_type = InterceptType::InterceptRelatedInformation;
     metadata_warrant.target_identifier = "+15551111111".to_string();
 
     let mut content_warrant = create_valid_warrant();
-    content_warrant.intercept_type = InterceptType::ContentOnly;
+    content_warrant.intercept_type = InterceptType::ContentOfCommunication;
     content_warrant.target_identifier = "+15552222222".to_string();
 
     let mut full_warrant = create_valid_warrant();
-    full_warrant.intercept_type = InterceptType::FullIntercept;
+    full_warrant.intercept_type = InterceptType::Both;
     full_warrant.target_identifier = "+15553333333".to_string();
 
     controller.add_warrant(metadata_warrant.clone())?;
     controller.add_warrant(content_warrant.clone())?;
     controller.add_warrant(full_warrant.clone())?;
 
-    // Test metadata-only intercept
+    // Test metadata-only intercept (IRI)
     let warrants = controller
         .should_intercept(&metadata_warrant.target_identifier)
         .await?;
     assert_eq!(warrants.len(), 1);
-    assert_eq!(warrants[0].intercept_type, InterceptType::MetadataOnly);
+    let w = controller.get_warrant(&warrants[0]).await.unwrap();
+    assert_eq!(w.intercept_type, InterceptType::InterceptRelatedInformation);
 
-    // Test content-only intercept
+    // Test content-only intercept (CC)
     let warrants = controller
         .should_intercept(&content_warrant.target_identifier)
         .await?;
     assert_eq!(warrants.len(), 1);
-    assert_eq!(warrants[0].intercept_type, InterceptType::ContentOnly);
+    let w = controller.get_warrant(&warrants[0]).await.unwrap();
+    assert_eq!(w.intercept_type, InterceptType::ContentOfCommunication);
 
-    // Test full intercept
+    // Test full intercept (Both)
     let warrants = controller
         .should_intercept(&full_warrant.target_identifier)
         .await?;
     assert_eq!(warrants.len(), 1);
-    assert_eq!(warrants[0].intercept_type, InterceptType::FullIntercept);
+    let w = controller.get_warrant(&warrants[0]).await.unwrap();
+    assert_eq!(w.intercept_type, InterceptType::Both);
 
     // Test non-intercepted number
     let warrants = controller.should_intercept("+15554444444").await?;
@@ -522,7 +528,7 @@ async fn test_warrant_storage_persistence() -> Result<()> {
         .should_intercept(&warrant.target_identifier)
         .await?;
     assert_eq!(warrants.len(), 1);
-    assert_eq!(warrants[0].warrant_id, warrant.warrant_id);
+    assert_eq!(warrants[0], warrant.warrant_id);
 
     Ok(())
 }
@@ -568,7 +574,8 @@ async fn test_warrant_deactivation_compliance() -> Result<()> {
         .should_intercept(&warrant.target_identifier)
         .await?;
     assert_eq!(warrants.len(), 1);
-    assert!(matches!(warrants[0].status, WarrantStatus::Active));
+    let w = controller.get_warrant(&warrants[0]).await.unwrap();
+    assert!(matches!(w.status, WarrantStatus::Active));
 
     // Deactivate warrant
     controller.deactivate_warrant(&warrant.warrant_id)?;

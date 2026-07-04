@@ -80,7 +80,7 @@ fn extract_number_from_request(request: &str) -> Option<String> {
 
 #[tokio::test]
 async fn test_lrn_dip_service_creation() {
-    let server_ip = "127.0.0.1".parse().expect("Valid IP address");
+    let server_ip: Option<IpAddr> = Some("127.0.0.1".parse().expect("Valid IP address"));
     let config = LrnDipConfig {
         server_ip,
         server_port: 15060,
@@ -131,7 +131,7 @@ async fn test_lrn_dip_302_redirect() {
 
     let local_ip = "127.0.0.1".parse().expect("Valid IP address");
     let config = LrnDipConfig {
-        server_ip: server_addr.ip(),
+        server_ip: Some(server_addr.ip()),
         server_port: server_addr.port(),
         local_ip: Some(local_ip),
         local_port: Some(0), // Random port
@@ -182,7 +182,7 @@ async fn test_lrn_dip_200_ok_response() {
 
     let local_ip = "127.0.0.1".parse().expect("Valid IP address");
     let config = LrnDipConfig {
-        server_ip: server_addr.ip(),
+        server_ip: Some(server_addr.ip()),
         server_port: server_addr.port(),
         local_ip: Some(local_ip),
         local_port: Some(0),
@@ -233,7 +233,7 @@ async fn test_lrn_dip_404_not_found() {
 
     let local_ip = "127.0.0.1".parse().expect("Valid IP address");
     let config = LrnDipConfig {
-        server_ip: server_addr.ip(),
+        server_ip: Some(server_addr.ip()),
         server_port: server_addr.port(),
         local_ip: Some(local_ip),
         local_port: Some(0),
@@ -283,7 +283,7 @@ async fn test_lrn_dip_caching() {
 
     let local_ip = "127.0.0.1".parse().expect("Valid IP address");
     let config = LrnDipConfig {
-        server_ip: server_addr.ip(),
+        server_ip: Some(server_addr.ip()),
         server_port: server_addr.port(),
         local_ip: Some(local_ip),
         local_port: Some(0),
@@ -426,7 +426,7 @@ async fn test_cache_cleanup() {
 
 #[tokio::test]
 async fn test_timeout_handling() {
-    let server_ip = "127.0.0.1".parse().expect("Valid IP address");
+    let server_ip: Option<IpAddr> = Some("127.0.0.1".parse().expect("Valid IP address"));
     let local_ip = "127.0.0.1".parse().expect("Valid IP address");
     let config = LrnDipConfig {
         server_ip,
@@ -469,7 +469,7 @@ async fn test_lrn_integration_with_routing() {
         LcrEngine,
     };
 
-    let server_ip = "127.0.0.1".parse().expect("Valid IP address");
+    let server_ip: Option<IpAddr> = Some("127.0.0.1".parse().expect("Valid IP address"));
     let lrn_config = LrnDipConfig {
         server_ip,
         server_port: 15065,
@@ -483,9 +483,13 @@ async fn test_lrn_integration_with_routing() {
     };
 
     // Start mock server
-    let server_addr: SocketAddr = format!("{}:{}", lrn_config.server_ip, lrn_config.server_port)
-        .parse()
-        .expect("Valid socket address");
+    let server_addr: SocketAddr = format!(
+        "{}:{}",
+        lrn_config.server_ip.expect("server_ip set above"),
+        lrn_config.server_port
+    )
+    .parse()
+    .expect("Valid socket address");
     let mock_server = MockLrnServer::new(server_addr)
         .await
         .expect("Mock server should start");

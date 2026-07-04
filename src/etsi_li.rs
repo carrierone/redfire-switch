@@ -654,6 +654,12 @@ impl EtsiLiController {
         Ok(warrant_id)
     }
 
+    /// Fetch a stored warrant by id (primarily for inspection/testing).
+    pub async fn get_warrant(&self, warrant_id: &Uuid) -> Option<LiWarrant> {
+        let warrants = self.warrants.read().await;
+        warrants.get(warrant_id).cloned()
+    }
+
     /// Check if target should be intercepted with TOCTOU race condition protection
     pub async fn should_intercept(&self, target_identifier: &str) -> Result<Vec<Uuid>> {
         // Use single lock acquisition to prevent TOCTOU vulnerabilities
@@ -662,7 +668,6 @@ impl EtsiLiController {
 
         if let Some(warrant_ids) = active_intercepts.get(target_identifier) {
             let mut valid_warrants = Vec::new();
-
             for &warrant_id in warrant_ids {
                 if let Some(warrant) = warrants.get(&warrant_id) {
                     // Critical: validate warrant while holding both locks to prevent TOCTOU
@@ -1122,7 +1127,7 @@ impl EtsiLiController {
     }
 
     /// Synchronous warrant validation for testing
-    fn validate_warrant_sync(&self, warrant: &LiWarrant) -> Result<()> {
+    pub fn validate_warrant_sync(&self, warrant: &LiWarrant) -> Result<()> {
         // Check warrant duration
         if warrant.end_time <= warrant.start_time {
             return Err(anyhow!("Invalid warrant duration"));

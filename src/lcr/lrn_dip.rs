@@ -419,7 +419,7 @@ impl LrnDipService {
     }
 
     /// Extract Contact URI from 302 response
-    fn extract_contact_uri(&self, response: &str) -> Result<String> {
+    pub fn extract_contact_uri(&self, response: &str) -> Result<String> {
         for line in response.lines() {
             if line.to_lowercase().starts_with("contact:") {
                 let contact_line = line.trim_start_matches(|c: char| {
@@ -447,7 +447,7 @@ impl LrnDipService {
     }
 
     /// Extract LRN from Contact URI (common format: sip:lrn@host)
-    fn extract_lrn_from_contact(&self, contact_uri: &str) -> Option<String> {
+    pub fn extract_lrn_from_contact(&self, contact_uri: &str) -> Option<String> {
         // Parse SIP URI to extract user part as potential LRN
         if contact_uri.starts_with("sip:") {
             let uri_part = contact_uri.trim_start_matches("sip:");
@@ -465,7 +465,7 @@ impl LrnDipService {
     }
 
     /// Extract LRN from custom SIP headers
-    fn extract_lrn_from_headers(&self, response: &str) -> Option<String> {
+    pub fn extract_lrn_from_headers(&self, response: &str) -> Option<String> {
         // Look for custom LRN headers (X-LRN, P-LRN, etc.)
         for line in response.lines() {
             let line_lower = line.to_lowercase();
@@ -481,7 +481,7 @@ impl LrnDipService {
     }
 
     /// Extract SPID from SIP headers
-    fn extract_spid_from_headers(&self, response: &str) -> Option<String> {
+    pub fn extract_spid_from_headers(&self, response: &str) -> Option<String> {
         for line in response.lines() {
             let line_lower = line.to_lowercase();
             if line_lower.starts_with("x-spid:") || line_lower.starts_with("p-spid:") {
@@ -499,7 +499,7 @@ impl LrnDipService {
     }
 
     /// Cache LRN result with ANI/DNIS pair
-    fn cache_lrn_result(
+    pub fn cache_lrn_result(
         &self,
         tn: &str,
         ani: Option<&str>,
@@ -535,7 +535,7 @@ impl LrnDipService {
     }
 
     /// Normalize telephone number for LRN dips
-    fn normalize_tn(&self, tn: &str) -> String {
+    pub fn normalize_tn(&self, tn: &str) -> String {
         let digits: String = tn.chars().filter(|c| c.is_ascii_digit()).collect();
 
         // Convert to 11-digit format (1NPANXXNNNN)
