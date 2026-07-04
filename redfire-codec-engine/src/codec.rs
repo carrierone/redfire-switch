@@ -1019,7 +1019,7 @@ impl CodecService {
                 let codec = g729_codecs
                     .get_mut(session_id)
                     .ok_or_else(|| anyhow!("G.729 codec not found for session"))?;
-                codec.encode(&pcm_data)
+                Self::g729_encode_chunked(codec, &pcm_data)
             }
             (AudioCodec::G711Alaw, AudioCodec::G729) => {
                 let pcm_data = G711Codec::decode_alaw(data);
@@ -1027,14 +1027,14 @@ impl CodecService {
                 let codec = g729_codecs
                     .get_mut(session_id)
                     .ok_or_else(|| anyhow!("G.729 codec not found for session"))?;
-                codec.encode(&pcm_data)
+                Self::g729_encode_chunked(codec, &pcm_data)
             }
             (AudioCodec::G729, AudioCodec::G711Ulaw) => {
                 let mut g729_codecs = self.g729_codecs.lock().await;
                 let codec = g729_codecs
                     .get_mut(session_id)
                     .ok_or_else(|| anyhow!("G.729 codec not found for session"))?;
-                let pcm_data = codec.decode(data)?;
+                let pcm_data = Self::g729_decode_chunked(codec, data)?;
                 Ok(G711Codec::encode_ulaw(&pcm_data))
             }
             (AudioCodec::G729, AudioCodec::G711Alaw) => {
@@ -1042,7 +1042,7 @@ impl CodecService {
                 let codec = g729_codecs
                     .get_mut(session_id)
                     .ok_or_else(|| anyhow!("G.729 codec not found for session"))?;
-                let pcm_data = codec.decode(data)?;
+                let pcm_data = Self::g729_decode_chunked(codec, data)?;
                 Ok(G711Codec::encode_alaw(&pcm_data))
             }
 
@@ -1072,6 +1072,53 @@ impl CodecService {
                 to_codec
             )),
         }
+    }
+
+    /// Encode PCM into one or more 10-byte G.729 frames.
+    ///
+    /// G.729 operates on fixed 80-sample (10ms) frames, but RTP packets commonly
+    /// carry 20ms (160 samples) or more. Split the PCM into 80-sample frames and
+    /// concatenate the encoded output; a trailing partial frame is zero-padded so
+    /// no audio is silently dropped. Without this, a standard 20ms G.711 packet
+    /// hit the encoder's "expected 80, got 160" guard and every transcoded packet
+    /// was dropped.
+    fn g729_encode_chunked(codec: &mut G729Codec, pcm: &[i16]) -> Result<Vec<u8>> {
+        use crate::g729_codec::G729_FRAME_SIZE;
+        if pcm.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut out = Vec::with_capacity(pcm.len() / G729_FRAME_SIZE * 10 + 10);
+        for chunk in pcm.chunks(G729_FRAME_SIZE) {
+            if chunk.len() == G729_FRAME_SIZE {
+                out.extend_from_slice(&codec.encode(chunk)?);
+            } else {
+                let mut framed = chunk.to_vec();
+                framed.resize(G729_FRAME_SIZE, 0);
+                out.extend_from_slice(&codec.encode(&framed)?);
+            }
+        }
+        Ok(out)
+    }
+
+    /// Decode a G.729 payload of one or more 10-byte frames into PCM.
+    fn g729_decode_chunked(codec: &mut G729Codec, data: &[u8]) -> Result<Vec<i16>> {
+        use crate::g729_codec::G729_ENCODED_SIZE;
+        if data.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut pcm = Vec::new();
+        for frame in data.chunks(G729_ENCODED_SIZE) {
+            if frame.len() != G729_ENCODED_SIZE {
+                warn!(
+                    "Dropping trailing {}-byte partial G.729 frame (expected {})",
+                    frame.len(),
+                    G729_ENCODED_SIZE
+                );
+                break;
+            }
+            pcm.extend_from_slice(&codec.decode(frame)?);
+        }
+        Ok(pcm)
     }
 
     /// Convert byte array to PCM16 samples

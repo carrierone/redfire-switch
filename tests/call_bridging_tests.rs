@@ -225,48 +225,53 @@ impl SipEndpoint {
         Ok(packets)
     }
 
-    /// Linear to μ-law conversion
+    /// Linear to μ-law conversion (ITU-T G.711)
     fn linear_to_ulaw(pcm: i16) -> u8 {
-        const BIAS: i16 = 0x84;
-        const CLIP: i16 = 32635;
+        const BIAS: i32 = 0x84;
+        const CLIP: i32 = 32635;
+        // Exponent lookup table indexed by the top 8 bits of the biased
+        // magnitude. This caps the exponent at 7; the previous code used
+        // `(sample >> 7) & 0xF`, which could produce an exponent up to 15 and
+        // then shift an i16 by up to 18 bits (>= 16), overflowing/panicking.
+        #[rustfmt::skip]
+        const EXP_LUT: [u8; 256] = [
+            0, 0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3,
+            4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+            5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+            5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+            7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+            7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+            7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+            7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+            7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+            7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+            7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+        ];
 
-        let mut sample = pcm;
-        if sample < 0 {
-            sample = -sample;
-        }
-        if sample > CLIP {
-            sample = CLIP;
-        }
-
+        let sign: u8 = if pcm < 0 { 0x80 } else { 0x00 };
+        // Use i32 and unsigned_abs so i16::MIN doesn't overflow on negation.
+        let mut sample = (pcm.unsigned_abs() as i32).min(CLIP);
         sample += BIAS;
-        let exponent = (sample >> 7) & 0xF;
-        let mantissa = (sample >> (exponent + 3)) & 0xF;
-        let ulaw = ((exponent << 4) | mantissa) as u8;
 
-        if pcm < 0 {
-            ulaw
-        } else {
-            !ulaw
-        }
+        let exponent = EXP_LUT[((sample >> 7) & 0xFF) as usize];
+        let mantissa = ((sample >> (exponent as i32 + 3)) & 0x0F) as u8;
+        !(sign | (exponent << 4) | mantissa)
     }
 
-    /// Linear to A-law conversion  
+    /// Linear to A-law conversion (ITU-T G.711)
     fn linear_to_alaw(pcm: i16) -> u8 {
-        const CLIP: i16 = 32635;
+        const CLIP: i32 = 32635;
 
-        let mut sample = pcm;
-        let sign = if sample < 0 {
-            sample = -sample;
-            0x80
-        } else {
-            0x00
-        };
+        let sign = if pcm < 0 { 0x80 } else { 0x00 };
+        // Use i32 + unsigned_abs so i16::MIN doesn't overflow on negation.
+        let sample = (pcm.unsigned_abs() as i32).min(CLIP);
 
-        if sample > CLIP {
-            sample = CLIP;
-        }
-
-        let exponent = if sample >= 256 {
+        let exponent: i32 = if sample >= 256 {
             let mut exp = 7;
             let mut temp = sample >> 8;
             while temp > 1 {
@@ -278,8 +283,8 @@ impl SipEndpoint {
             0
         };
 
-        let mantissa = (sample >> (exponent + 4)) & 0xF;
-        ((sign | (exponent << 4) | mantissa) ^ 0x55) as u8
+        let mantissa = ((sample >> (exponent + 4)) & 0x0F) as u8;
+        (sign | ((exponent as u8) << 4) | mantissa) ^ 0x55
     }
 }
 
@@ -611,8 +616,19 @@ async fn test_g729_codec_relay() -> Result<()> {
 
     for packet in &received_packets {
         assert_eq!(packet.payload_type, 18); // G.729 payload type
-                                             // G.729 frames should be 10 bytes
-        assert_eq!(packet.payload.len(), 10, "G.729 payload should be 10 bytes");
+        // The caller sends 20ms (160-sample) G.711 packets, which transcode to
+        // two 10ms G.729 frames = 20 bytes (ptime=20ms). Payload must be a
+        // whole number of 10-byte G.729 frames.
+        assert!(
+            !packet.payload.is_empty() && packet.payload.len() % 10 == 0,
+            "G.729 payload should be a multiple of 10 bytes, got {}",
+            packet.payload.len()
+        );
+        assert_eq!(
+            packet.payload.len(),
+            20,
+            "20ms G.711 input should yield two G.729 frames"
+        );
     }
 
     let stats = rtp_proxy.get_session_stats(&session_id).unwrap();

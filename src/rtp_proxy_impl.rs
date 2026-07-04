@@ -574,7 +574,10 @@ impl RtpProxyService {
             // Simplified - should use jitter buffer output
             let forwarded_packet = if let Some(ref translation) = session.codec_translation {
                 // Transcode packet
-                Self::transcode_packet(codec_service, translation, packet.clone()).await?
+                let transcoded =
+                    Self::transcode_packet(codec_service, translation, packet.clone()).await?;
+                session.stats.packets_transcoded += 1;
+                transcoded
             } else {
                 // Forward without transcoding
                 packet.clone()
