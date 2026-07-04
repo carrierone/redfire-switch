@@ -113,7 +113,7 @@ pub fn extract_oli_info(
 ) -> Option<OriginatingLineInfo> {
     // Try P-ISUP-OLI header first (highest priority)
     if let Some(oli_header) = get_header_case_insensitive(headers, "P-ISUP-OLI") {
-        if let Ok(oli_value) = oli_header.parse::<u8>() {
+        if let Some(oli_value) = OliParser::parse_oli_string(oli_header.trim()) {
             return Some(OriginatingLineInfo {
                 oli_value,
                 source: OliSource::PIsupOli,
@@ -133,7 +133,7 @@ pub fn extract_oli_info(
                 .get("oli")
                 .or_else(|| uri.1.parameters.get("isup-oli"))
             {
-                if let Ok(oli_value) = oli_str.parse::<u8>() {
+                if let Some(oli_value) = OliParser::parse_oli_string(oli_str) {
                     return Some(OriginatingLineInfo {
                         oli_value,
                         source: OliSource::FromUriParam,
@@ -150,11 +150,45 @@ pub fn extract_oli_info(
     if let Some(pai_header) = get_header_case_insensitive(headers, "P-Asserted-Identity") {
         if let Ok(uri) = SipUriParser::parse_header_field(pai_header) {
             if let Some(oli_str) = uri.1.parameters.get("oli") {
-                if let Ok(oli_value) = oli_str.parse::<u8>() {
+                if let Some(oli_value) = OliParser::parse_oli_string(oli_str) {
                     return Some(OriginatingLineInfo {
                         oli_value,
                         source: OliSource::PAssertedIdentity,
                         calling_number: uri.1.user.clone(),
+                        screening: None,
+                        presentation: None,
+                    });
+                }
+            }
+        }
+    }
+
+    // Try Remote-Party-ID header (RFC 3325 predecessor, carries screening/privacy)
+    if let Some(rpid_header) = get_header_case_insensitive(headers, "Remote-Party-ID") {
+        if let Ok((_, uri, header_params)) = SipUriParser::parse_header_field(rpid_header) {
+            if let Some(oli_str) = uri.parameters.get("oli") {
+                if let Some(oli_value) = OliParser::parse_oli_string(oli_str) {
+                    return Some(OriginatingLineInfo {
+                        oli_value,
+                        source: OliSource::RemotePartyId,
+                        calling_number: uri.user.clone(),
+                        screening: parse_screening_indicator(&header_params),
+                        presentation: parse_presentation_indicator(&header_params),
+                    });
+                }
+            }
+        }
+    }
+
+    // Try Diversion header (RFC 5806, call forwarding)
+    if let Some(diversion_header) = get_header_case_insensitive(headers, "Diversion") {
+        if let Ok((_, uri, _)) = SipUriParser::parse_header_field(diversion_header) {
+            if let Some(oli_str) = uri.parameters.get("oli") {
+                if let Some(oli_value) = OliParser::parse_oli_string(oli_str) {
+                    return Some(OriginatingLineInfo {
+                        oli_value,
+                        source: OliSource::DiversionHeader,
+                        calling_number: uri.user.clone(),
                         screening: None,
                         presentation: None,
                     });
@@ -171,6 +205,29 @@ pub fn extract_oli_info(
     }
 
     None
+}
+
+/// Map a Remote-Party-ID `screen=` parameter to an ISUP screening indicator.
+fn parse_screening_indicator(
+    header_params: &HashMap<String, String>,
+) -> Option<ScreeningIndicator> {
+    header_params.get("screen").map(|v| match v.trim().to_lowercase().as_str() {
+        "yes" | "verified" | "pass" => ScreeningIndicator::NetworkProvided,
+        "no" | "unverified" => ScreeningIndicator::UserProvidedNotScreened,
+        "fail" | "failed" => ScreeningIndicator::UserProvidedVerifiedFailed,
+        _ => ScreeningIndicator::UserProvidedNotScreened,
+    })
+}
+
+/// Map a Remote-Party-ID `privacy=` parameter to an ISUP presentation indicator.
+fn parse_presentation_indicator(
+    header_params: &HashMap<String, String>,
+) -> Option<PresentationIndicator> {
+    header_params.get("privacy").map(|v| match v.trim().to_lowercase().as_str() {
+        "off" | "none" => PresentationIndicator::Allowed,
+        "full" | "on" | "uri" | "name" => PresentationIndicator::Restricted,
+        _ => PresentationIndicator::Allowed,
+    })
 }
 
 /// Parser for ISUP content
@@ -360,11 +417,24 @@ impl SipUriParser {
             .ok_or_else(|| anyhow!("Missing URI scheme"))?
             .as_str()
             .to_lowercase();
-        let user = captures.get(2).map(|m| m.as_str().to_string());
+        let mut user = captures.get(2).map(|m| m.as_str().to_string());
         let host_part = captures
             .get(3)
             .ok_or_else(|| anyhow!("Missing URI host part"))?
             .as_str();
+
+        // A bare '@' with no userinfo (e.g. "sip:@example.com") is malformed: the
+        // optional user group won't match the empty userinfo, so the '@' leaks into
+        // the host part. Reject it explicitly.
+        if host_part.starts_with('@') {
+            return Err(anyhow!("SIP URI has empty user before '@': {}", uri_str));
+        }
+
+        // For tel: URIs the "host part" is actually the telephone-subscriber, which
+        // RFC 3966 models as the user portion (there is no host authority).
+        if scheme == "tel" && user.is_none() {
+            user = Some(host_part.to_string());
+        }
 
         // Parse host and port with proper IPv6 support
         let (host, port) = if host_part.starts_with('[') && host_part.contains("]:") {

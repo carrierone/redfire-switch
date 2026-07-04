@@ -22,6 +22,8 @@ log/
 # Configuration files (may contain sensitive data)
 config.json
 config-*.json
+# ...but keep the checked-in production example used by integration tests
+!config-production-example.json
 production.json
 local.json
 
