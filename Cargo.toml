@@ -166,20 +166,8 @@ name = "lcr_sip_server"
 path = "src/bin/lcr_sip_server.rs"
 
 [[bin]]
-name = "comprehensive-demo"
-path = "src/bin/comprehensive_demo.rs"
-
-[[bin]]
 name = "sipi-automated-tests"
 path = "src/bin/sipi_automated_tests.rs"
-
-[[bin]]
-name = "enterprise-demo"
-path = "src/bin/enterprise_demo.rs"
-
-[[bin]]
-name = "ai-analytics-demo"
-path = "src/bin/ai_analytics_demo.rs"
 
 [[bin]]
 name = "phone-validation-test-suite"
