@@ -20,9 +20,11 @@ use uuid::Uuid;
 
 /// Create test LI controller configuration
 async fn create_test_li_config() -> Result<LiControllerConfig> {
-    // Create temporary directories
-    let warrant_dir = "/tmp/test_warrants";
-    let _ = fs::create_dir_all(warrant_dir).await;
+    // Use a unique warrant storage directory per config so the persistence test
+    // (which spins up a second controller to simulate a restart) has a real
+    // backing store, and parallel tests don't collide.
+    let warrant_dir = format!("/tmp/test_warrants/{}", Uuid::new_v4());
+    fs::create_dir_all(&warrant_dir).await?;
 
     Ok(LiControllerConfig {
         enabled: true,
@@ -32,6 +34,7 @@ async fn create_test_li_config() -> Result<LiControllerConfig> {
         enable_encryption: true,
         default_delivery_format: DeliveryFormat::Asn1Ber,
         audit_retention_days: 365,
+        warrant_storage_path: Some(warrant_dir),
     })
 }
 
@@ -87,8 +90,11 @@ fn create_future_warrant() -> LiWarrant {
 fn create_emergency_warrant() -> LiWarrant {
     let mut warrant = create_valid_warrant();
     warrant.issuing_lea = "Emergency Services".to_string();
-    warrant.start_time = Utc::now();
-    warrant.end_time = Utc::now() + Duration::hours(72); // 72 hour emergency limit
+    // Capture a single "now" so the emergency window is exactly 72 hours (two
+    // separate Utc::now() calls would make end - start exceed 72h by a few nanos).
+    let now = Utc::now();
+    warrant.start_time = now;
+    warrant.end_time = now + Duration::hours(72); // 72 hour emergency limit
     warrant
 }
 

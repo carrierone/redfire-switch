@@ -129,6 +129,7 @@ fn create_performance_config(enable_li: bool) -> ComplianceConfig {
                 enable_encryption: true,
                 default_delivery_format: DeliveryFormat::Asn1Ber,
                 audit_retention_days: 90,
+                warrant_storage_path: None,
             }
         } else {
             LiControllerConfig::default()

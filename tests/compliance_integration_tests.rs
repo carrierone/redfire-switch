@@ -44,6 +44,7 @@ fn create_test_compliance_config() -> ComplianceConfig {
             enable_encryption: true,
             default_delivery_format: DeliveryFormat::Asn1Ber,
             audit_retention_days: 2555,
+            warrant_storage_path: None,
         },
         data_retention_days: 2555,
         realtime_monitoring: true,

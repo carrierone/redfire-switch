@@ -420,6 +420,12 @@ pub struct LiControllerConfig {
     pub default_delivery_format: DeliveryFormat,
     /// Audit log retention (days)
     pub audit_retention_days: u32,
+    /// Directory used to persist warrants across restarts. When set, warrants are
+    /// written on add/remove and reloaded by `load_warrants`. Lawful-intercept
+    /// warrants must survive a process restart, so this should be configured in
+    /// production. When `None`, storage is in-memory only.
+    #[serde(default)]
+    pub warrant_storage_path: Option<String>,
 }
 
 impl Default for LiControllerConfig {
@@ -432,6 +438,7 @@ impl Default for LiControllerConfig {
             enable_encryption: true,
             default_delivery_format: DeliveryFormat::XmlOverTcp,
             audit_retention_days: 2555, // 7 years
+            warrant_storage_path: None,
         }
     }
 }
@@ -1074,6 +1081,11 @@ impl EtsiLiController {
         let warrant_id = warrant.warrant_id;
         let target_id = warrant.target_identifier.clone();
 
+        // Persist the warrant so it survives a restart (lawful-intercept warrants
+        // must be durable). Do this before mutating in-memory state so a storage
+        // failure doesn't leave us with an unpersisted active intercept.
+        self.persist_warrant(&warrant)?;
+
         // Use blocking calls for testing
         {
             let warrants = futures::executor::block_on(self.warrants.write());
@@ -1085,10 +1097,20 @@ impl EtsiLiController {
             let active_intercepts = futures::executor::block_on(self.active_intercepts.write());
             let mut active_intercepts = active_intercepts;
             active_intercepts
-                .entry(target_id)
+                .entry(target_id.clone())
                 .or_insert_with(Vec::new)
                 .push(warrant_id);
         }
+
+        // Record an audit entry: every warrant operation must be auditable for
+        // CALEA/ETSI compliance.
+        futures::executor::block_on(self.audit_logger.log_event(
+            AuditEventType::WarrantCreated,
+            Some(warrant_id),
+            "system".to_string(),
+            IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+            format!("Warrant added for target: {}", target_id),
+        ))?;
 
         Ok(())
     }
@@ -1121,8 +1143,53 @@ impl EtsiLiController {
                     }
                 }
             }
+
+            // Remove the persisted copy so the deletion also survives a restart.
+            self.remove_persisted_warrant(warrant_id)?;
+
+            // Audit the removal.
+            futures::executor::block_on(self.audit_logger.log_event(
+                AuditEventType::WarrantDeactivated,
+                Some(*warrant_id),
+                "system".to_string(),
+                IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+                format!("Warrant removed for target: {}", target_id),
+            ))?;
         }
 
+        Ok(())
+    }
+
+    /// Directory used to persist warrants, if configured.
+    fn warrant_storage_dir(&self) -> Option<&str> {
+        self.config.warrant_storage_path.as_deref()
+    }
+
+    /// Write a warrant to persistent storage (one JSON file per warrant).
+    fn persist_warrant(&self, warrant: &LiWarrant) -> Result<()> {
+        let Some(dir) = self.warrant_storage_dir() else {
+            return Ok(());
+        };
+        std::fs::create_dir_all(dir)
+            .map_err(|e| anyhow!("Failed to create warrant storage dir {}: {}", dir, e))?;
+        let path = std::path::Path::new(dir).join(format!("{}.json", warrant.warrant_id));
+        let json = serde_json::to_string_pretty(warrant)
+            .map_err(|e| anyhow!("Failed to serialize warrant: {}", e))?;
+        std::fs::write(&path, json)
+            .map_err(|e| anyhow!("Failed to write warrant {}: {}", path.display(), e))?;
+        Ok(())
+    }
+
+    /// Delete a warrant's persisted copy.
+    fn remove_persisted_warrant(&self, warrant_id: &Uuid) -> Result<()> {
+        let Some(dir) = self.warrant_storage_dir() else {
+            return Ok(());
+        };
+        let path = std::path::Path::new(dir).join(format!("{}.json", warrant_id));
+        if path.exists() {
+            std::fs::remove_file(&path)
+                .map_err(|e| anyhow!("Failed to remove warrant {}: {}", path.display(), e))?;
+        }
         Ok(())
     }
 
@@ -1187,8 +1254,49 @@ impl EtsiLiController {
 
     /// Load warrants from storage (for testing)
     pub async fn load_warrants(&mut self) -> Result<()> {
-        // In a real implementation, this would load from persistent storage
-        // For testing, this is a no-op since we use in-memory storage
+        // Load persisted warrants (one JSON file per warrant) into memory,
+        // rebuilding the active-intercept index. This is what makes warrants
+        // survive a process restart.
+        let Some(dir) = self.config.warrant_storage_path.clone() else {
+            return Ok(());
+        };
+
+        let dir_path = std::path::Path::new(&dir);
+        if !dir_path.exists() {
+            return Ok(());
+        }
+
+        let mut warrants = self.warrants.write().await;
+        let mut active_intercepts = self.active_intercepts.write().await;
+
+        let mut loaded = 0usize;
+        for entry in std::fs::read_dir(dir_path)
+            .map_err(|e| anyhow!("Failed to read warrant storage dir {}: {}", dir, e))?
+        {
+            let entry = entry?;
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) != Some("json") {
+                continue;
+            }
+            let contents = std::fs::read_to_string(&path)
+                .map_err(|e| anyhow!("Failed to read warrant {}: {}", path.display(), e))?;
+            let warrant: LiWarrant = match serde_json::from_str(&contents) {
+                Ok(w) => w,
+                Err(e) => {
+                    warn!("Skipping unreadable warrant file {}: {}", path.display(), e);
+                    continue;
+                }
+            };
+
+            active_intercepts
+                .entry(warrant.target_identifier.clone())
+                .or_insert_with(Vec::new)
+                .push(warrant.warrant_id);
+            warrants.insert(warrant.warrant_id, warrant);
+            loaded += 1;
+        }
+
+        info!("Loaded {} warrant(s) from persistent storage", loaded);
         Ok(())
     }
 
