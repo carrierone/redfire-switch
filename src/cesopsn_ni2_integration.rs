@@ -641,7 +641,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "μ-Law conversion test - see codec_optimized for systematic issues"]
     fn test_ulaw_conversion() {
         // Test μ-law conversion using OptimizedCodecProcessor
         let codec_processor = OptimizedCodecProcessor::new();
@@ -649,7 +648,7 @@ mod tests {
         let ulaw = codec_processor.linear_to_ulaw_fast(linear);
         let converted = codec_processor.ulaw_to_linear_fast(ulaw);
 
-        // Should be approximately the same (within quantization error)
+        // Should be approximately the same (within μ-law quantization error).
         assert!((linear - converted).abs() < 100);
     }
 }

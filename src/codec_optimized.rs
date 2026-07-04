@@ -122,111 +122,96 @@ impl OptimizedCodecProcessor {
         }
     }
 
-    /// Standard µ-Law to linear conversion (used for table initialization)
+    /// Standard µ-Law to linear conversion (ITU-T G.711 reference).
+    ///
+    /// Decodes a µ-law octet to a 14-bit-range linear PCM sample stored in an
+    /// i16. This is the canonical Sun/CCITT implementation and is an exact
+    /// inverse of `linear_to_ulaw_slow` for every one of the 256 codes.
     fn ulaw_to_linear_slow(&self, ulaw: u8) -> i16 {
+        const BIAS: i32 = 0x84; // 132
         let ulaw = !ulaw;
-        let sign = if (ulaw & 0x80) != 0 { -1 } else { 1 };
-        let exponent = (ulaw >> 4) & 0x07;
-        let mantissa = ulaw & 0x0F;
-
-        let magnitude = if exponent == 0 {
-            (mantissa << 2) + 33
+        let sign = ulaw & 0x80;
+        let exponent = ((ulaw >> 4) & 0x07) as i32;
+        let mantissa = (ulaw & 0x0F) as i32;
+        let magnitude = (((mantissa << 3) + BIAS) << exponent) - BIAS;
+        if sign != 0 {
+            (-magnitude) as i16
         } else {
-            // Prevent overflow by limiting the shift amount
-            let shift_amount = (exponent as i32).min(10);
-            ((mantissa << 2) + 33) << shift_amount
-        };
-
-        // Use saturating arithmetic to prevent overflow
-        let result = (sign as i32).saturating_mul(magnitude as i32);
-        result.clamp(-32768, 32767) as i16
+            magnitude as i16
+        }
     }
 
-    /// Standard A-Law to linear conversion (used for table initialization)
+    /// Standard A-Law to linear conversion (ITU-T G.711 reference).
+    ///
+    /// Exact inverse of `linear_to_alaw_slow` for every one of the 256 codes.
     fn alaw_to_linear_slow(&self, alaw: u8) -> i16 {
-        let sign = if (alaw & 0x80) == 0 { -1 } else { 1 };
-        let exponent = (alaw >> 4) & 0x07;
-        let mantissa = alaw & 0x0F;
-
-        let magnitude = if exponent == 0 {
-            (mantissa << 1) + 8
-        } else if exponent > 1 {
-            // Prevent overflow by limiting the shift amount
-            let shift_amount = ((exponent as i32) - 1).min(10);
-            ((mantissa << 1) + 24) << shift_amount
+        let alaw = alaw ^ 0x55; // undo the alternating-bit inversion
+        let mut magnitude = ((alaw & 0x0F) as i32) << 4;
+        let segment = ((alaw & 0x70) >> 4) as i32;
+        match segment {
+            0 => magnitude += 8,
+            1 => magnitude += 0x108,
+            _ => {
+                magnitude += 0x108;
+                magnitude <<= segment - 1;
+            }
+        }
+        if (alaw & 0x80) != 0 {
+            magnitude as i16
         } else {
-            (mantissa << 1) + 24
-        };
-
-        // Use saturating arithmetic to prevent overflow
-        let result = (sign as i32).saturating_mul(magnitude as i32);
-        result.clamp(-32768, 32767) as i16
+            (-magnitude) as i16
+        }
     }
 
-    /// Standard linear to µ-Law conversion (used for table initialization)
+    /// Standard linear to µ-Law conversion (ITU-T G.711 reference).
     fn linear_to_ulaw_slow(&self, linear: i16) -> u8 {
-        let sign = if linear < 0 { 0x00 } else { 0x80 };
-        let magnitude = linear.saturating_abs() as u16;
+        const BIAS: i32 = 0x84; // 132
+        const CLIP: i32 = 32635;
 
-        let exponent = if magnitude < 33 {
-            0
-        } else if magnitude < 66 {
-            1
-        } else if magnitude < 132 {
-            2
-        } else if magnitude < 264 {
-            3
-        } else if magnitude < 528 {
-            4
-        } else if magnitude < 1056 {
-            5
-        } else if magnitude < 2112 {
-            6
-        } else {
-            7
-        };
+        let mut sample = linear as i32;
+        let sign = if sample < 0 { 0x80u8 } else { 0x00u8 };
+        if sign != 0 {
+            sample = -sample;
+        }
+        if sample > CLIP {
+            sample = CLIP;
+        }
+        sample += BIAS;
 
-        let mantissa = if exponent == 0 {
-            if magnitude >= 33 {
-                (magnitude - 33) >> 2
-            } else {
-                0
-            }
-        } else {
-            if magnitude >= 33 {
-                (magnitude - 33) >> (exponent + 2)
-            } else {
-                0
-            }
-        } & 0x0F;
-
-        !(sign | (exponent << 4) | mantissa as u8)
+        // Segment (exponent) = index of the highest set bit in bits 7..=14.
+        let mut exponent: i32 = 7;
+        let mut mask: i32 = 0x4000;
+        while exponent > 0 && (sample & mask) == 0 {
+            exponent -= 1;
+            mask >>= 1;
+        }
+        let mantissa = ((sample >> (exponent + 3)) & 0x0F) as u8;
+        !(sign | ((exponent as u8) << 4) | mantissa)
     }
 
-    /// Standard linear to A-Law conversion (used for table initialization)
+    /// Standard linear to A-Law conversion (ITU-T G.711 reference).
     fn linear_to_alaw_slow(&self, linear: i16) -> u8 {
-        let sign = if linear < 0 { 0x00 } else { 0x80 };
-        let magnitude = linear.saturating_abs() as u16;
-
-        let (exponent, mantissa) = if magnitude < 16 {
-            (0, (magnitude >> 1) & 0x0F)
-        } else if magnitude < 32 {
-            (1, (magnitude.saturating_sub(16) >> 1) & 0x0F)
-        } else if magnitude < 64 {
-            (2, (magnitude.saturating_sub(32) >> 2) & 0x0F)
-        } else if magnitude < 128 {
-            (3, (magnitude.saturating_sub(64) >> 3) & 0x0F)
-        } else if magnitude < 256 {
-            (4, (magnitude.saturating_sub(128) >> 4) & 0x0F)
-        } else if magnitude < 512 {
-            (5, (magnitude.saturating_sub(256) >> 5) & 0x0F)
-        } else if magnitude < 1024 {
-            (6, (magnitude.saturating_sub(512) >> 6) & 0x0F)
+        let mut sample = linear as i32;
+        let mask: u8;
+        if sample >= 0 {
+            mask = 0xD5; // sign bit = 1, plus the 0x55 alternating-bit pattern
         } else {
-            (7, (magnitude.saturating_sub(1024) >> 7) & 0x0F)
-        };
+            mask = 0x55;
+            sample = -sample - 1;
+            if sample < 0 {
+                sample = 0;
+            }
+        }
 
-        sign | (exponent << 4) | mantissa as u8
+        // Segment = top set-bit index of (sample | 0xFF) minus 7.
+        let segment = (31 - ((sample | 0xFF) as u32).leading_zeros() as i32) - 7;
+        if segment >= 8 {
+            // Out of range: return the maximum-magnitude code.
+            return 0x7F ^ mask;
+        }
+        let shift = if segment != 0 { segment + 3 } else { 4 };
+        let quant = ((sample >> shift) & 0x0F) as u8;
+        (((segment as u8) << 4) | quant) ^ mask
     }
 }
 
@@ -269,60 +254,48 @@ mod tests {
     use super::*;
 
     #[test]
-    #[ignore = "μ-Law conversion has systematic issues that need investigation"]
     fn test_codec_processor_tables() {
         let processor = OptimizedCodecProcessor::new();
 
-        // Test µ-Law round-trip conversion
+        // Canonical G.711 round trips every code exactly, with a single
+        // well-known exception per companding law: the "negative zero" code
+        // decodes to linear 0 and therefore re-encodes to the "positive zero"
+        // code. For µ-law that is 0x7F -> (linear 0) -> 0xFF.
         for ulaw_val in 0..=255u8 {
             let linear = processor.ulaw_to_linear_fast(ulaw_val);
             let back_to_ulaw = processor.linear_to_ulaw_fast(linear);
-
-            // Allow reasonable differences due to quantization
-            // µ-Law is a lossy compression, so perfect round-trip isn't expected
-            // Special handling for zero and extreme values which have larger quantization errors
-            let tolerance = if ulaw_val == 0 || ulaw_val == 255 {
-                255
-            } else {
-                8
-            };
-            let diff = (ulaw_val as i16 - back_to_ulaw as i16).abs();
-            assert!(
-                diff <= tolerance,
-                "µ-Law round-trip failed for {}: {} -> {} -> {} (diff: {}, tolerance: {})",
-                ulaw_val,
-                ulaw_val,
-                linear,
-                back_to_ulaw,
-                diff,
-                tolerance
+            let expected = if ulaw_val == 0x7F { 0xFF } else { ulaw_val };
+            assert_eq!(
+                expected, back_to_ulaw,
+                "µ-Law round-trip failed for code {}: {} -> linear {} -> {}",
+                ulaw_val, ulaw_val, linear, back_to_ulaw
             );
         }
 
-        // Test A-Law round-trip conversion
+        // A-law's two zero codes (0x55/0xD5) decode to distinct non-zero
+        // magnitudes (+/-8), so every A-law code round trips exactly.
         for alaw_val in 0..=255u8 {
             let linear = processor.alaw_to_linear_fast(alaw_val);
             let back_to_alaw = processor.linear_to_alaw_fast(linear);
-
-            // Allow reasonable differences due to quantization
-            // A-Law is also a lossy compression
-            let tolerance = if alaw_val == 0 || alaw_val == 255 {
-                255
-            } else {
-                8
-            };
-            let diff = (alaw_val as i16 - back_to_alaw as i16).abs();
-            assert!(
-                diff <= tolerance,
-                "A-Law round-trip failed for {}: {} -> {} -> {} (diff: {}, tolerance: {})",
-                alaw_val,
-                alaw_val,
-                linear,
-                back_to_alaw,
-                diff,
-                tolerance
+            assert_eq!(
+                alaw_val, back_to_alaw,
+                "A-Law round-trip failed for code {}: {} -> linear {} -> {}",
+                alaw_val, alaw_val, linear, back_to_alaw
             );
         }
+    }
+
+    #[test]
+    fn test_g711_reference_values() {
+        // Spot-check against known G.711 reference points.
+        let p = OptimizedCodecProcessor::new();
+        // Digital silence: µ-law 0xFF and A-law 0xD5 both decode near zero.
+        assert_eq!(p.linear_to_ulaw_fast(0), 0xFF);
+        assert_eq!(p.linear_to_alaw_fast(0), 0xD5);
+        // Full-scale positive clips to the max-magnitude positive code.
+        assert_eq!(p.linear_to_ulaw_fast(32767), 0x80);
+        // A µ-law decode of the all-ones code is 0 (the smallest positive step).
+        assert_eq!(p.ulaw_to_linear_fast(0xFF), 0);
     }
 
     #[test]

@@ -518,10 +518,14 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    #[ignore] // Requires a PostgreSQL database
     async fn test_enhanced_database_pool() {
+        // Uses the same local PostgreSQL that the default DatabaseConfig targets.
+        // Override with DATABASE_URL to point at a different instance.
+        let database_url = std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "postgresql://redfire:password@localhost/redfire_switch".to_string());
+
         let pool = DatabasePoolBuilder::new()
-            .database_url("postgres://postgres:password@localhost/test_redfire")
+            .database_url(&database_url)
             .max_connections(5)
             .enable_health_checks(false) // Disable for testing
             .build()
