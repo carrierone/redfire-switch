@@ -2,13 +2,57 @@
 mod lcr_tests {
     use redfire_switch::lcr::{routing::RouteRequest, types::*, LcrEngine};
     use rust_decimal::Decimal;
+    use sqlx::PgPool;
     use std::str::FromStr;
     use std::sync::Arc;
 
+    /// Cross-suite serialization lock for DB-mutating LCR tests. Must use the same
+    /// key as the other LCR suites (see routing_engine_v2_tests). Tests that assert
+    /// on global topology state (e.g. trunk counts) hold this for their duration so
+    /// concurrent suites can't mutate trunks out from under them.
+    const LCR_TEST_LOCK_KEY: i64 = 0x5245_4446_4952_4C43; // "REDFIRLC"
+
+    struct LcrTestLock {
+        pool: PgPool,
+    }
+
+    impl LcrTestLock {
+        async fn acquire(database_url: &str) -> LcrTestLock {
+            let pool = sqlx::postgres::PgPoolOptions::new()
+                .max_connections(1)
+                .connect(database_url)
+                .await
+                .expect("connect for test lock");
+            sqlx::query("SELECT pg_advisory_lock($1)")
+                .bind(LCR_TEST_LOCK_KEY)
+                .execute(&pool)
+                .await
+                .expect("acquire test advisory lock");
+            LcrTestLock { pool }
+        }
+    }
+
+    impl Drop for LcrTestLock {
+        fn drop(&mut self) {
+            let pool = self.pool.clone();
+            tokio::spawn(async move {
+                let _ = sqlx::query("SELECT pg_advisory_unlock($1)")
+                    .bind(LCR_TEST_LOCK_KEY)
+                    .execute(&pool)
+                    .await;
+                pool.close().await;
+            });
+        }
+    }
+
+    fn test_database_url() -> String {
+        std::env::var("TEST_DATABASE_URL")
+            .unwrap_or_else(|_| "postgresql://redfire:password@localhost/redfire_switch".to_string())
+    }
+
     async fn setup_test_engine() -> Arc<LcrEngine> {
         // Use test database or in-memory cache
-        let database_url = std::env::var("TEST_DATABASE_URL")
-            .unwrap_or_else(|_| "postgresql://redfire:password@localhost/redfire_switch".to_string());
+        let database_url = test_database_url();
 
         // Ensure the full schema (core + LCR) is present before the engine loads.
         redfire_switch::database::DatabaseService::provision_schema(&database_url)
@@ -205,6 +249,10 @@ mod lcr_tests {
 
     #[tokio::test]
     async fn test_cache_reload() {
+        // Asserts the trunk count is stable across a reload, so it must not run
+        // while another suite is adding/removing trunks. Serialize on the shared
+        // LCR test lock.
+        let _lock = LcrTestLock::acquire(&test_database_url()).await;
         let engine = setup_test_engine().await;
 
         // Initial cache should be loaded

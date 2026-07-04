@@ -9,13 +9,70 @@ use sqlx::PgPool;
 use std::sync::Arc;
 use tokio;
 
-// Test database setup
-async fn setup_test_db() -> Result<String> {
+/// Cross-suite serialization for DB-mutating LCR tests.
+///
+/// All the LCR integration suites share a single Postgres database. Several of
+/// them assert on global state (e.g. total trunk count, or that a freshly linked
+/// trunk shows up in routing), which is inherently incompatible with other
+/// suites mutating trunks/decks at the same time. Holding a session-level
+/// Postgres advisory lock for the duration of such a test serializes them across
+/// processes without needing a dedicated test database per suite.
+///
+/// The lock key must match across every suite that participates.
+const LCR_TEST_LOCK_KEY: i64 = 0x5245_4446_4952_4C43; // "REDFIRLC"
+
+struct LcrTestLock {
+    pool: PgPool,
+}
+
+impl LcrTestLock {
+    async fn acquire(database_url: &str) -> Result<Self> {
+        // A single dedicated connection holds the session-level lock, so the
+        // matching unlock (and the implicit release on close) happen on the same
+        // backend session.
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(1)
+            .connect(database_url)
+            .await?;
+        sqlx::query("SELECT pg_advisory_lock($1)")
+            .bind(LCR_TEST_LOCK_KEY)
+            .execute(&pool)
+            .await?;
+        Ok(Self { pool })
+    }
+}
+
+impl Drop for LcrTestLock {
+    fn drop(&mut self) {
+        // Best-effort release; closing the pool also drops the session lock.
+        let pool = self.pool.clone();
+        tokio::spawn(async move {
+            let _ = sqlx::query("SELECT pg_advisory_unlock($1)")
+                .bind(LCR_TEST_LOCK_KEY)
+                .execute(&pool)
+                .await;
+            pool.close().await;
+        });
+    }
+}
+
+// Test database setup.
+//
+// Returns the database URL together with an `LcrTestLock` guard. The whole suite
+// shares one Postgres database and each test's setup wipes `TEST_%` decks, so the
+// setup + test body must be serialized against sibling tests (and other LCR
+// suites) that mutate the same rows. Callers must keep the returned guard alive
+// for the duration of the test (`let (url, _guard) = setup_test_db().await?;`).
+async fn setup_test_db() -> Result<(String, LcrTestLock)> {
     let database_url = std::env::var("TEST_DATABASE_URL")
         .unwrap_or_else(|_| "postgresql://redfire:password@localhost/redfire_switch".to_string());
 
-    // Ensure the full schema (core + LCR) is present before we touch it.
+    // Ensure the full schema (core + LCR) is present before we touch it. This is
+    // internally advisory-locked and safe to race.
     redfire_switch::database::DatabaseService::provision_schema(&database_url).await?;
+
+    // Acquire the shared LCR test lock before mutating any shared TEST_% state.
+    let lock = LcrTestLock::acquire(&database_url).await?;
 
     // Seed the shared LCR fixture data (trunks, decks, NANPA static). These
     // tests load their own TEST_* rate decks on top of this baseline topology.
@@ -40,7 +97,7 @@ async fn setup_test_db() -> Result<String> {
         .await?;
 
     pool.close().await;
-    Ok(database_url)
+    Ok((database_url, lock))
 }
 
 // Helper to create test rates
@@ -160,7 +217,7 @@ async fn link_vendor_deck_to_topology(
 
 #[tokio::test]
 async fn test_routing_v2_basic_functionality() -> Result<()> {
-    let database_url = setup_test_db().await?;
+    let (database_url, _db_guard) = setup_test_db().await?;
     let lcr = LcrEngine::new(&database_url).await?;
     let deck_loader = lcr.get_deck_loader();
     let routing_v2 = lcr.get_routing_engine();
@@ -215,7 +272,10 @@ async fn test_routing_v2_basic_functionality() -> Result<()> {
 
 #[tokio::test]
 async fn test_time_based_routing() -> Result<()> {
-    let database_url = setup_test_db().await?;
+    let (database_url, _db_guard) = setup_test_db().await?;
+    // setup_test_db already holds the shared LCR test lock for the whole body, so
+    // linking a new trunk and asserting routing reaches it is safe from concurrent
+    // trunk mutation by sibling tests / other suites.
     let lcr = LcrEngine::new(&database_url).await?;
     let deck_loader = lcr.get_deck_loader();
     let routing_v2 = lcr.get_routing_engine();
@@ -346,7 +406,7 @@ async fn test_time_based_routing() -> Result<()> {
 
 #[tokio::test]
 async fn test_jurisdiction_detection() -> Result<()> {
-    let database_url = setup_test_db().await?;
+    let (database_url, _db_guard) = setup_test_db().await?;
     let lcr = LcrEngine::new(&database_url).await?;
     let deck_loader = lcr.get_deck_loader();
     let routing_v2 = lcr.get_routing_engine();
@@ -405,7 +465,7 @@ async fn test_jurisdiction_detection() -> Result<()> {
 
 #[tokio::test]
 async fn test_profit_protection() -> Result<()> {
-    let database_url = setup_test_db().await?;
+    let (database_url, _db_guard) = setup_test_db().await?;
     let lcr = LcrEngine::new(&database_url).await?;
     let deck_loader = lcr.get_deck_loader();
     let routing_v2 = lcr.get_routing_engine();
@@ -514,7 +574,7 @@ async fn test_profit_protection() -> Result<()> {
 
 #[tokio::test]
 async fn test_routing_engine_comparison() -> Result<()> {
-    let database_url = setup_test_db().await?;
+    let (database_url, _db_guard) = setup_test_db().await?;
     let lcr = LcrEngine::new(&database_url).await?;
     let deck_loader = lcr.get_deck_loader();
     let routing_v1 = lcr.get_routing_engine();
@@ -605,7 +665,7 @@ async fn test_routing_engine_comparison() -> Result<()> {
 
 #[tokio::test]
 async fn test_performance_comparison() -> Result<()> {
-    let database_url = setup_test_db().await?;
+    let (database_url, _db_guard) = setup_test_db().await?;
     let lcr = LcrEngine::new(&database_url).await?;
     let deck_loader = lcr.get_deck_loader();
     let routing_v1 = lcr.get_routing_engine();
