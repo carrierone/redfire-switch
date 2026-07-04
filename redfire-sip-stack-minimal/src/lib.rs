@@ -21,10 +21,17 @@
 //! ## Basic Usage
 //!
 //! ```rust
-//! use redfire_sip_stack_minimal::{SipMessage, SipParser, SipMethod};
+//! use redfire_sip_stack_minimal::{SipParser, SipMethod};
 //!
 //! let parser = SipParser::new();
-//! let sip_data = "INVITE sip:alice@example.com SIP/2.0\r\n...";
+//! let sip_data = "INVITE sip:alice@example.com SIP/2.0\r\n\
+//!                 Via: SIP/2.0/UDP host.example.com;branch=z9hG4bKabc\r\n\
+//!                 From: <sip:bob@example.com>;tag=1\r\n\
+//!                 To: <sip:alice@example.com>\r\n\
+//!                 Call-ID: 1@host.example.com\r\n\
+//!                 CSeq: 1 INVITE\r\n\
+//!                 Content-Length: 0\r\n\
+//!                 \r\n";
 //! let message = parser.parse(sip_data.as_bytes())?;
 //!
 //! if let Some(SipMethod::Invite) = message.method {
