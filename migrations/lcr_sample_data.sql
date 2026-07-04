@@ -12,13 +12,16 @@ INSERT INTO nanpa_static (npa, nxx, state, country, lata, ocn, rate_center) VALU
 ('202', NULL, 'DC', 'US', '236', '7421', 'WASHINGTON'),
 ('617', NULL, 'MA', 'US', '128', '7421', 'BOSTON'),
 ('512', NULL, 'TX', 'US', '566', '7421', 'AUSTIN'),
+('713', NULL, 'TX', 'US', '560', '7421', 'HOUSTON'),
 ('206', NULL, 'WA', 'US', '674', '7421', 'SEATTLE');
 
--- More specific NPANXX data
+-- More specific NPANXX data (npa is 3 digits, nxx is 3 digits; the cache keys
+-- these as the concatenated NPANXX string, e.g. "212555").
 INSERT INTO nanpa_static (npa, nxx, state, country, lata, ocn, rate_center) VALUES
-('212555', '555', 'NY', 'US', '132', '7421', 'MANHATTAN'),
-('213555', '555', 'CA', 'US', '730', '7421', 'LOS ANGELES'),
-('415555', '555', 'CA', 'US', '722', '7421', 'SAN FRANCISCO');
+('212', '555', 'NY', 'US', '132', '7421', 'MANHATTAN'),
+('213', '555', 'CA', 'US', '730', '7421', 'LOS ANGELES'),
+('415', '555', 'CA', 'US', '722', '7421', 'SAN FRANCISCO'),
+('713', '555', 'TX', 'US', '560', '7421', 'HOUSTON');
 
 -- Insert vendor rate decks
 INSERT INTO vendor_rate_decks (name, vendor_id, rate_type, effective_date) VALUES

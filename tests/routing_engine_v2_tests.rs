@@ -17,6 +17,10 @@ async fn setup_test_db() -> Result<String> {
     // Ensure the full schema (core + LCR) is present before we touch it.
     redfire_switch::database::DatabaseService::provision_schema(&database_url).await?;
 
+    // Seed the shared LCR fixture data (trunks, decks, NANPA static). These
+    // tests load their own TEST_* rate decks on top of this baseline topology.
+    redfire_switch::database::DatabaseService::seed_lcr_sample_data(&database_url).await?;
+
     // Run migrations
     let pool = PgPool::connect(&database_url).await?;
 
@@ -79,6 +83,79 @@ fn create_test_rates() -> Vec<NanpaRate> {
             setup_fee: None,
         },
     ]
+}
+
+/// Wire a freshly-loaded vendor deck into the routing topology so that routing
+/// through `ingress_trunk_id = 1` can actually reach it. Operators normally do
+/// this via `lcr_route_trunks`; the deck loader only manages rate versions, not
+/// trunk linkage. Returns the id of the dedicated egress trunk created for the
+/// deck. Idempotent per deck name so it is safe to call across re-runs.
+async fn link_vendor_deck_to_topology(
+    database_url: &str,
+    deck_name: &str,
+    trunk_name: &str,
+) -> Result<i32> {
+    let pool = PgPool::connect(database_url).await?;
+
+    // Resolve the vendor id backing this deck family.
+    let vendor_id: i32 = sqlx::query_scalar(
+        "SELECT vendor_id FROM vendor_rate_decks WHERE name = $1 ORDER BY deck_version DESC LIMIT 1",
+    )
+    .bind(deck_name)
+    .fetch_one(&pool)
+    .await?;
+
+    // The current (base) version this trunk is pinned to; routing resolves the
+    // version active at the effective time from the same deck family.
+    let base_deck_id: i32 = sqlx::query_scalar(
+        "SELECT id FROM vendor_rate_decks WHERE name = $1 ORDER BY deck_version ASC LIMIT 1",
+    )
+    .bind(deck_name)
+    .fetch_one(&pool)
+    .await?;
+
+    // Dedicated egress trunk for this deck (unique name -> idempotent upsert).
+    let egress_trunk_id: i32 = sqlx::query_scalar(
+        r#"
+        INSERT INTO egress_trunks (name, vendor_id, host, port, transport, capacity_limit, cps_limit, priority, active, supports_international)
+        VALUES ($1, $2, 'sip.test.local', 5060, 'UDP', 1000, 100.0, 50, true, false)
+        ON CONFLICT (name) DO UPDATE SET vendor_id = EXCLUDED.vendor_id
+        RETURNING id
+        "#,
+    )
+    .bind(trunk_name)
+    .bind(vendor_id)
+    .fetch_one(&pool)
+    .await?;
+
+    // A route to hang the trunk off, and the trunk<->deck linkage.
+    let lcr_route_id: i32 = sqlx::query_scalar(
+        r#"
+        INSERT INTO lcr_routes (name, route_type, description, priority)
+        VALUES ($1, 'NANPA', 'test route', 100)
+        ON CONFLICT (name) DO UPDATE SET route_type = EXCLUDED.route_type
+        RETURNING id
+        "#,
+    )
+    .bind(format!("{trunk_name}-route"))
+    .fetch_one(&pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO lcr_route_trunks (lcr_route_id, egress_trunk_id, vendor_deck_id, priority, weight)
+        VALUES ($1, $2, $3, 50, 1)
+        ON CONFLICT (lcr_route_id, egress_trunk_id, vendor_deck_id) DO NOTHING
+        "#,
+    )
+    .bind(lcr_route_id)
+    .bind(egress_trunk_id)
+    .bind(base_deck_id)
+    .execute(&pool)
+    .await?;
+
+    pool.close().await;
+    Ok(egress_trunk_id)
 }
 
 #[tokio::test]
@@ -186,6 +263,15 @@ async fn test_time_based_routing() -> Result<()> {
     let future_deck_id = deck_loader.load_vendor_deck(future_request).await?;
     println!("✓ Loaded future deck: {}", future_deck_id);
 
+    // Wire this versioned deck into the routing topology and reload the cache so
+    // routing can actually reach it. Routing resolves the deck version active at
+    // the effective time, so the current vs future comparison exercises the
+    // deck-versioning path rather than the static sample data.
+    let egress_trunk_id =
+        link_vendor_deck_to_topology(&database_url, "TEST_TIME_ROUTING", "TEST_TIME_ROUTING_TRUNK")
+            .await?;
+    lcr.reload_cache().await?;
+
     // Test routing at current time
     let route_request = RouteRequest {
         ani: "12125551234".to_string(),
@@ -220,23 +306,33 @@ async fn test_time_based_routing() -> Result<()> {
         "Future routing should find routes"
     );
 
-    if let (Some(current_route), Some(future_route)) = (
-        current_response.routes.first(),
-        future_response.routes.first(),
-    ) {
-        assert!(
-            future_route.cost_per_minute < current_route.cost_per_minute,
-            "Future rates should be lower than current rates"
-        );
+    // Compare the cost on the specific trunk backed by the versioned deck, so we
+    // measure the deck-version change rather than which trunk happened to win.
+    let current_route = current_response
+        .routes
+        .iter()
+        .find(|r| r.egress_trunk.id == egress_trunk_id)
+        .expect("current routing should reach the versioned deck's trunk");
+    let future_route = future_response
+        .routes
+        .iter()
+        .find(|r| r.egress_trunk.id == egress_trunk_id)
+        .expect("future routing should reach the versioned deck's trunk");
 
-        println!("✓ Time-based routing test passed");
-        println!("  Current cost: ${}", current_route.cost_per_minute);
-        println!("  Future cost:  ${}", future_route.cost_per_minute);
-        println!(
-            "  Savings:      ${}",
-            current_route.cost_per_minute - future_route.cost_per_minute
-        );
-    }
+    assert!(
+        future_route.cost_per_minute < current_route.cost_per_minute,
+        "Future rates should be lower than current rates (current {}, future {})",
+        current_route.cost_per_minute,
+        future_route.cost_per_minute
+    );
+
+    println!("✓ Time-based routing test passed");
+    println!("  Current cost: ${}", current_route.cost_per_minute);
+    println!("  Future cost:  ${}", future_route.cost_per_minute);
+    println!(
+        "  Savings:      ${}",
+        current_route.cost_per_minute - future_route.cost_per_minute
+    );
 
     Ok(())
 }

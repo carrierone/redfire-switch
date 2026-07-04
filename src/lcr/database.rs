@@ -42,7 +42,7 @@ impl DatabasePool {
                 vendor_id as owner_id,
                 rate_type,
                 effective_date,
-                expires_date,
+                end_date,
                 deck_version,
                 parent_deck_id,
                 effective_time,
@@ -70,7 +70,7 @@ impl DatabasePool {
                     _ => RateType::DNIS,
                 },
                 effective_date: row.get("effective_date"),
-                end_date: row.get("expires_date"),
+                end_date: row.get("end_date"),
                 deck_version: row.get::<Option<i32>, _>("deck_version").unwrap_or(1),
                 parent_deck_id: row.get("parent_deck_id"),
                 effective_time: row
@@ -97,7 +97,7 @@ impl DatabasePool {
                 client_id as owner_id,
                 rate_type,
                 effective_date,
-                expires_date,
+                end_date,
                 deck_version,
                 parent_deck_id,
                 effective_time,
@@ -125,7 +125,7 @@ impl DatabasePool {
                     _ => RateType::DNIS,
                 },
                 effective_date: row.get("effective_date"),
-                end_date: row.get("expires_date"),
+                end_date: row.get("end_date"),
                 deck_version: row.get::<Option<i32>, _>("deck_version").unwrap_or(1),
                 parent_deck_id: row.get("parent_deck_id"),
                 effective_time: row
@@ -740,6 +740,27 @@ impl DatabasePool {
 
     /// Create default international routing plans if they don't exist
     pub async fn ensure_default_routing_plans(&self) -> Result<()> {
+        // Serialize seeding across concurrent engine starts. Without this, two
+        // LcrEngine::new() calls can both observe an empty table and then race
+        // to INSERT the same named plans, violating the name unique constraint.
+        const ROUTING_PLAN_SEED_LOCK_KEY: i64 = 0x5245_4446_4952_4502; // "REDFIRE\x02"
+        let mut lock_conn = self.pool.acquire().await?;
+        sqlx::query("SELECT pg_advisory_lock($1)")
+            .bind(ROUTING_PLAN_SEED_LOCK_KEY)
+            .execute(&mut *lock_conn)
+            .await?;
+
+        let result = self.ensure_default_routing_plans_locked().await;
+
+        let _ = sqlx::query("SELECT pg_advisory_unlock($1)")
+            .bind(ROUTING_PLAN_SEED_LOCK_KEY)
+            .execute(&mut *lock_conn)
+            .await;
+
+        result
+    }
+
+    async fn ensure_default_routing_plans_locked(&self) -> Result<()> {
         // Check if any routing plans exist
         let count =
             sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM international_routing_plans")

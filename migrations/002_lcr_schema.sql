@@ -11,8 +11,9 @@
 --   * rate_type / route_type / jurisdiction / special_service jurisdiction_override
 --     are VARCHAR, not ENUM: the loaders do `row.get::<String, _>(...)`, which
 --     cannot decode a Postgres enum.
---   * rate decks expose the expiry column as `expires_date` (the loaders SELECT
---     `expires_date`, not `end_date`).
+--   * rate decks expose the expiry column as `end_date`, matching the deck
+--     loader/versioning write path (deck_loader.rs), api_deck.rs, cli_commands.rs
+--     and the `RateDeck.end_date` field in types.rs.
 --   * ingress_trunks.ip_address is VARCHAR, not INET: the loader reads it as a
 --     String and parses it with IpAddr::from_str.
 --   * All CREATE statements are idempotent so the migration can be re-applied.
@@ -27,7 +28,7 @@ CREATE TABLE IF NOT EXISTS vendor_rate_decks (
     vendor_id INTEGER NOT NULL,
     rate_type VARCHAR(10) NOT NULL DEFAULT 'DNIS',
     effective_date TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    expires_date TIMESTAMP WITH TIME ZONE,
+    end_date TIMESTAMP WITH TIME ZONE,
     deck_version INTEGER NOT NULL DEFAULT 1,
     parent_deck_id INTEGER REFERENCES vendor_rate_decks(id),
     effective_time TIME DEFAULT '00:00:00',
@@ -51,7 +52,7 @@ CREATE TABLE IF NOT EXISTS client_rate_decks (
     client_id INTEGER NOT NULL,
     rate_type VARCHAR(10) NOT NULL DEFAULT 'DNIS',
     effective_date TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    expires_date TIMESTAMP WITH TIME ZONE,
+    end_date TIMESTAMP WITH TIME ZONE,
     deck_version INTEGER NOT NULL DEFAULT 1,
     parent_deck_id INTEGER REFERENCES client_rate_decks(id),
     effective_time TIME DEFAULT '00:00:00',
@@ -448,8 +449,8 @@ CREATE INDEX IF NOT EXISTS idx_vendor_intl_prefix ON vendor_international_rates(
 CREATE INDEX IF NOT EXISTS idx_vendor_intl_country ON vendor_international_rates(country_code);
 CREATE INDEX IF NOT EXISTS idx_client_intl_prefix ON client_international_rates(deck_id, country_code, destination_code);
 CREATE INDEX IF NOT EXISTS idx_client_intl_country ON client_international_rates(country_code);
-CREATE INDEX IF NOT EXISTS idx_vendor_decks_effective ON vendor_rate_decks(effective_date, expires_date);
-CREATE INDEX IF NOT EXISTS idx_client_decks_effective ON client_rate_decks(effective_date, expires_date);
+CREATE INDEX IF NOT EXISTS idx_vendor_decks_effective ON vendor_rate_decks(effective_date, end_date);
+CREATE INDEX IF NOT EXISTS idx_client_decks_effective ON client_rate_decks(effective_date, end_date);
 CREATE INDEX IF NOT EXISTS idx_vendor_rate_decks_active ON vendor_rate_decks(active) WHERE deleted = false;
 CREATE INDEX IF NOT EXISTS idx_client_rate_decks_active ON client_rate_decks(active) WHERE deleted = false;
 CREATE INDEX IF NOT EXISTS idx_intl_routing_plans_active ON international_routing_plans(active);
@@ -488,16 +489,16 @@ BEGIN
     IF NEW.parent_deck_id IS NOT NULL THEN
         IF TG_TABLE_NAME = 'vendor_rate_decks' THEN
             UPDATE vendor_rate_decks
-               SET expires_date = NEW.effective_date - INTERVAL '1 second',
+               SET end_date = NEW.effective_date - INTERVAL '1 second',
                    updated_at = NOW()
              WHERE id = NEW.parent_deck_id
-               AND expires_date IS NULL;
+               AND end_date IS NULL;
         ELSIF TG_TABLE_NAME = 'client_rate_decks' THEN
             UPDATE client_rate_decks
-               SET expires_date = NEW.effective_date - INTERVAL '1 second',
+               SET end_date = NEW.effective_date - INTERVAL '1 second',
                    updated_at = NOW()
              WHERE id = NEW.parent_deck_id
-               AND expires_date IS NULL;
+               AND end_date IS NULL;
         END IF;
     END IF;
     RETURN NEW;

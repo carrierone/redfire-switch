@@ -15,6 +15,12 @@ mod lcr_tests {
             .await
             .expect("Failed to provision test schema");
 
+        // Seed the shared LCR fixture data (trunks, decks, NANPA static, static
+        // routes) these tests route against. Idempotent + advisory-locked.
+        redfire_switch::database::DatabaseService::seed_lcr_sample_data(&database_url)
+            .await
+            .expect("Failed to seed LCR sample data");
+
         Arc::new(
             LcrEngine::new(&database_url)
                 .await
@@ -122,7 +128,9 @@ mod lcr_tests {
         // Simulate adding calls to a trunk
         let trunk_id = 1;
         let capacity_limit = 100;
-        let cps_limit = Decimal::from(10);
+        // Use a high CPS limit so this test isolates *capacity* behaviour; a
+        // 100-call burst would otherwise legitimately trip a low CPS limit.
+        let cps_limit = Decimal::from(10_000);
 
         // Add calls up to capacity
         for _ in 0..capacity_limit {

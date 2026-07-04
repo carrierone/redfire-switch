@@ -46,8 +46,17 @@ impl TrunkManager {
                 return false;
             }
 
-            // Check CPS limit
-            if stats.current_cps >= stats.cps_limit {
+            // Check CPS limit. Compute the rate live from the sliding window
+            // rather than trusting the cached `current_cps`, which is only
+            // refreshed on increment. Without this, a trunk that saw a burst
+            // would stay wedged as "over CPS" forever after the window drained.
+            let one_second_ago = Utc::now() - Duration::seconds(1);
+            let live_cps = stats
+                .cps_window
+                .iter()
+                .filter(|&&t| t > one_second_ago)
+                .count();
+            if Decimal::from(live_cps) >= stats.cps_limit {
                 return false;
             }
 

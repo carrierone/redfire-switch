@@ -405,7 +405,10 @@ impl DeckLoader {
     // Helper methods
 
     async fn get_current_vendor_version(&self, name: &str, vendor_id: i32) -> Result<Option<i32>> {
-        let version = sqlx::query_scalar(
+        // MAX() always returns a single row (NULL when there are no matching
+        // decks), so decode the aggregate as a nullable scalar and unwrap the
+        // row wrapper. Decoding NULL directly into i32 would error.
+        let version = sqlx::query_scalar::<_, Option<i32>>(
             r#"
             SELECT MAX(deck_version) 
             FROM vendor_rate_decks 
@@ -414,7 +417,7 @@ impl DeckLoader {
         )
         .bind(name)
         .bind(vendor_id)
-        .fetch_optional(&self.pool)
+        .fetch_one(&self.pool)
         .await?;
 
         Ok(version)
@@ -442,7 +445,8 @@ impl DeckLoader {
     }
 
     async fn get_current_client_version(&self, name: &str, client_id: i32) -> Result<Option<i32>> {
-        let version = sqlx::query_scalar(
+        // See get_current_vendor_version: decode MAX() as a nullable scalar.
+        let version = sqlx::query_scalar::<_, Option<i32>>(
             r#"
             SELECT MAX(deck_version) 
             FROM client_rate_decks 
@@ -451,7 +455,7 @@ impl DeckLoader {
         )
         .bind(name)
         .bind(client_id)
-        .fetch_optional(&self.pool)
+        .fetch_one(&self.pool)
         .await?;
 
         Ok(version)
@@ -495,13 +499,13 @@ impl DeckLoader {
             )
             .bind(deck_id)
             .bind(&rate.code)
-            .bind(rate.inter_rate.to_string())
-            .bind(rate.intra_rate.to_string())
-            .bind(rate.ij_rate.to_string())
-            .bind(rate.local_rate.map(|d| d.to_string()))
+            .bind(rate.inter_rate)
+            .bind(rate.intra_rate)
+            .bind(rate.ij_rate)
+            .bind(rate.local_rate)
             .bind(rate.min_increment)
             .bind(rate.interval)
-            .bind(rate.setup_fee.map(|d| d.to_string()))
+            .bind(rate.setup_fee)
             .execute(&mut **tx)
             .await?;
         }
@@ -525,13 +529,13 @@ impl DeckLoader {
             )
             .bind(deck_id)
             .bind(&rate.code)
-            .bind(rate.inter_rate.to_string())
-            .bind(rate.intra_rate.to_string())
-            .bind(rate.ij_rate.to_string())
-            .bind(rate.local_rate.map(|d| d.to_string()))
+            .bind(rate.inter_rate)
+            .bind(rate.intra_rate)
+            .bind(rate.ij_rate)
+            .bind(rate.local_rate)
             .bind(rate.min_increment)
             .bind(rate.interval)
-            .bind(rate.setup_fee.map(|d| d.to_string()))
+            .bind(rate.setup_fee)
             .execute(&mut **tx)
             .await?;
         }

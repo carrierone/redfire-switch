@@ -119,6 +119,67 @@ impl DatabaseService {
         Ok(service.pool().clone())
     }
 
+    /// Seed the LCR sample/fixture data (trunks, rate decks, NANPA static, static
+    /// routes, etc.) used by the DB-backed integration tests and local demos.
+    ///
+    /// This is idempotent and safe under parallelism: it only inserts when the
+    /// fixture set is empty (no egress trunks) and serializes with the same
+    /// advisory lock used for migrations so concurrent test binaries do not race
+    /// on the fixed-id sample rows. Callers must have already provisioned the
+    /// schema (e.g. via [`provision_schema`]).
+    pub async fn seed_lcr_sample_data(url: &str) -> Result<()> {
+        let pool = PgPoolOptions::new()
+            .max_connections(2)
+            .connect(url)
+            .await?;
+
+        // Serialize with migrations / other seeders on a dedicated connection.
+        const SEED_LOCK_KEY: i64 = 0x5245_4446_4952_4503; // "REDFIRE\x03"
+        let mut lock_conn = pool.acquire().await?;
+        sqlx::query("SELECT pg_advisory_lock($1)")
+            .bind(SEED_LOCK_KEY)
+            .execute(&mut *lock_conn)
+            .await?;
+
+        let result = Self::seed_lcr_sample_data_locked(&pool).await;
+
+        let _ = sqlx::query("SELECT pg_advisory_unlock($1)")
+            .bind(SEED_LOCK_KEY)
+            .execute(&mut *lock_conn)
+            .await;
+
+        pool.close().await;
+        result
+    }
+
+    async fn seed_lcr_sample_data_locked(pool: &Pool<Postgres>) -> Result<()> {
+        let already_seeded = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS (SELECT 1 FROM egress_trunks LIMIT 1)",
+        )
+        .fetch_one(pool)
+        .await?;
+
+        if already_seeded {
+            return Ok(());
+        }
+
+        const SAMPLE_DATA: &str = include_str!("../migrations/lcr_sample_data.sql");
+
+        let mut tx = pool.begin().await?;
+        for statement in split_sql_statements(SAMPLE_DATA) {
+            let statement = statement.trim();
+            if !statement.is_empty() && !statement.starts_with("--") {
+                sqlx::query(statement)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(|e| anyhow!("Sample-data seed failed at '{}': {}", statement, e))?;
+            }
+        }
+        tx.commit().await?;
+        info!("Seeded LCR sample/fixture data");
+        Ok(())
+    }
+
     async fn run_migrations(&self) -> Result<()> {
         info!("Running database migrations...");
 
