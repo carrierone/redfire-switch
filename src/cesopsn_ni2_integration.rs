@@ -225,9 +225,10 @@ impl CesopsnNi2Integration {
             // Add DTMF detector for voice channels
             if config.enable_dtmf_detection {
                 let channel_id = self.channel_cache.get_or_create(circuit_id, channel_num);
-                // Parse channel ID to u32
-                let channel_id_num: u32 = channel_id.parse().unwrap_or(channel_num as u32);
-                self.dtmf_processor.detector().add_channel(channel_id_num)?;
+                self.dtmf_processor
+                    .detector()
+                    .add_channel(channel_id.to_string())
+                    .await?;
             }
         }
 
@@ -413,18 +414,11 @@ impl CesopsnNi2Integration {
                 // Use cached channel ID to avoid string allocations
                 let channel_id = channel_cache.get_or_create(circuit_id, channel_num);
 
-                // Process for DTMF detection using the pooled buffer
-                let channel_id_num: u32 = channel_id.parse().unwrap_or(channel_num as u32);
-
-                // Convert f32 audio samples to u8 bytes for DTMF processing
-                let mut audio_bytes: Vec<u8> = Vec::with_capacity(audio_buffer.len());
-                for &sample in audio_buffer.iter() {
-                    audio_bytes.push((sample * 127.0 + 128.0) as u8);
-                }
-
+                // Process the raw f32 audio samples for DTMF detection.
                 if let Err(e) = dtmf_processor
                     .detector()
-                    .process_audio(channel_id_num, &audio_bytes)
+                    .process_samples(&channel_id, &audio_buffer)
+                    .await
                 {
                     debug!("DTMF processing error for {}: {}", channel_id, e);
                 }
@@ -511,11 +505,12 @@ impl CesopsnNi2Integration {
             ));
         }
 
-        // Generate DTMF samples
-        let samples = self
-            .dtmf_processor
-            .generator()
-            .generate_digit(digit, duration_ms)?;
+        // Generate DTMF samples (f32 PCM in the range [-1.0, 1.0]).
+        let samples = self.dtmf_processor.generator().generate_digit(
+            digit,
+            Some(std::time::Duration::from_millis(duration_ms as u64)),
+            None,
+        )?;
 
         // Convert to PCM and create TDM frame
         let mut tdm_frame = vec![0u8; 24]; // T1 frame
@@ -524,7 +519,7 @@ impl CesopsnNi2Integration {
                 break;
             }
             if i == (channel - 1) as usize {
-                let linear_sample = (sample as f32 * 32767.0 / 255.0) as i16;
+                let linear_sample = (sample.clamp(-1.0, 1.0) * 32767.0) as i16;
                 tdm_frame[i] = match config.pcm_codec {
                     PcmCodec::MuLaw => self.codec_processor.linear_to_ulaw_fast(linear_sample),
                     PcmCodec::ALaw => self.codec_processor.linear_to_alaw_fast(linear_sample),

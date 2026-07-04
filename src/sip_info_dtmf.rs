@@ -411,8 +411,10 @@ impl SipInfoDtmfProcessor {
 
     /// Check if content type is supported
     fn is_content_type_supported(&self, content_type: &SipInfoDtmfContentType) -> bool {
+        // A Custom content type is only accepted if it was explicitly registered
+        // via add_supported_content_type. Unknown MIME types are rejected so the
+        // caller can respond with 415 Unsupported Media Type.
         self.supported_content_types.contains(content_type)
-            || matches!(content_type, SipInfoDtmfContentType::Custom(_))
     }
 
     /// Update session state
