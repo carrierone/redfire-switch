@@ -36,18 +36,36 @@
 //! ## Basic Usage
 //!
 //! ```rust
-//! use redfire_sip_stack::{SipMessage, SipParser, SipMethod};
+//! use redfire_sip_stack::SipParser;
+//! use redfire_sip_stack::parser::SipTransport;
+//! use rsip::message::SipMessage as RsipMessage;
 //!
-//! // Parse a SIP message
-//! let sip_data = "INVITE sip:alice@example.com SIP/2.0\r\n...";
-//! let parser = SipParser::new();
-//! let message = parser.parse_message(sip_data.as_bytes())?;
+//! // A minimal, well-formed SIP INVITE request.
+//! let sip_data = "\
+//! INVITE sip:alice@example.com SIP/2.0\r\n\
+//! Via: SIP/2.0/UDP 192.0.2.1:5060;branch=z9hG4bK-1\r\n\
+//! Max-Forwards: 70\r\n\
+//! From: <sip:bob@example.com>;tag=abc\r\n\
+//! To: <sip:alice@example.com>\r\n\
+//! Call-ID: 1234567890@192.0.2.1\r\n\
+//! CSeq: 1 INVITE\r\n\
+//! Contact: <sip:bob@192.0.2.1:5060>\r\n\
+//! Content-Length: 0\r\n\
+//! \r\n";
 //!
-//! match message.method {
-//!     Some(SipMethod::Invite) => {
-//!         println!("Received INVITE request");
-//!     }
-//!     _ => {}
+//! let parser = SipParser::new("192.0.2.2".to_string(), 5060, "redfire".to_string());
+//! let source = "192.0.2.1:5060".parse().unwrap();
+//! let destination = "192.0.2.2:5060".parse().unwrap();
+//!
+//! let message = parser.parse_message(
+//!     sip_data.as_bytes(),
+//!     source,
+//!     destination,
+//!     SipTransport::UDP,
+//! )?;
+//!
+//! if let RsipMessage::Request(request) = &message.message {
+//!     println!("Received {} request", request.method);
 //! }
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
