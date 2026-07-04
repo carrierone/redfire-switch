@@ -8,6 +8,7 @@ pub use redfire_sip_stack as sip_stack;
 pub mod billing;
 pub mod config;
 pub mod simple_b2bua;
+pub mod sip_call_server;
 
 // REST API and web interface
 pub mod api;
