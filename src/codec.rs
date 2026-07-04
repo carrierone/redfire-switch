@@ -579,13 +579,16 @@ impl CodecService {
         };
 
         // Initialize G.729 Annex A/B processor
-        let g729_annex_processor = if config.use_gpu
-            && (config.g729_annex_config.annex_a_enabled
-                || config.g729_annex_config.annex_b_enabled)
+        // G.729 Annex A/B (VAD + DTX + comfort noise) is a codec feature, not a
+        // GPU feature: it must be available whenever Annex A or B is enabled,
+        // regardless of `use_gpu`. The processor uses GPU kernels when a GPU
+        // backend is compiled/available and falls back to CPU otherwise.
+        let g729_annex_processor = if config.g729_annex_config.annex_a_enabled
+            || config.g729_annex_config.annex_b_enabled
         {
             match G729AnnexGpuProcessor::new(config.g729_annex_config.clone()).await {
                 Ok(processor) => {
-                    info!("G.729 Annex A/B GPU processor initialized");
+                    info!("G.729 Annex A/B processor initialized");
                     Some(Arc::new(processor))
                 }
                 Err(e) => {

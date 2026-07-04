@@ -120,24 +120,34 @@ impl AudioSignalGenerator {
         let mut frames = Vec::new();
 
         for frame_num in 0..total_frames {
-            let samples = match frame_num % 10 {
-                0..=4 => {
-                    // Speech frames (50% of time)
-                    self.generate_speech_frame(
+            // First half: a realistic talk spurt followed by a sustained pause
+            // (long enough to exceed the VAD hangover so DTX actually engages, as
+            // happens between utterances in a real call). Second half: choppy
+            // speech/noise/silence that should mostly stay in transmit.
+            let samples = if frame_num < total_frames / 2 {
+                match frame_num % 25 {
+                    // ~15 frames of speech (a talk spurt)
+                    0..=14 => self.generate_speech_frame(
                         frame_num,
                         800.0 + (frame_num % 5) as f32 * 100.0,
                         0.8,
-                    )
+                    ),
+                    // ~10 frames of sustained silence (an inter-utterance gap)
+                    _ => self.generate_silence_frame(frame_num),
                 }
-                5..=6 => {
+            } else {
+                match frame_num % 10 {
+                    // Speech frames (50% of time)
+                    0..=4 => self.generate_speech_frame(
+                        frame_num,
+                        800.0 + (frame_num % 5) as f32 * 100.0,
+                        0.8,
+                    ),
                     // Transitional noise (20% of time)
-                    self.generate_noise_frame(frame_num, 0.1)
-                }
-                7..=9 => {
+                    5..=6 => self.generate_noise_frame(frame_num, 0.1),
                     // Silence frames (30% of time)
-                    self.generate_silence_frame(frame_num)
+                    _ => self.generate_silence_frame(frame_num),
                 }
-                _ => unreachable!(),
             };
             frames.push(samples);
         }

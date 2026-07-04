@@ -357,7 +357,9 @@ impl G729AnnexGpuProcessor {
             GpuBackend::Rocm => {
                 self.compile_rocm_kernels().await
             }
-            _ => Err(anyhow!("Unsupported GPU backend")),
+            // No GPU backend compiled/available: nothing to compile, the processor
+            // runs its CPU fallback paths for VAD/DTX/CNG.
+            _ => Ok(()),
         }
     }
 
@@ -624,8 +626,42 @@ impl G729AnnexGpuProcessor {
                 self.rocm_voice_activity_detection(_audio_samples, _vad_state)
                     .await
             }
-            _ => Err(anyhow!("Unsupported GPU backend for VAD")),
+            // No GPU backend compiled/available: VAD is a codec feature and must
+            // still work on CPU (G.729 Annex B DTX is not GPU-specific).
+            _ => self.cpu_voice_activity_detection(_audio_samples, _vad_state),
         }
+    }
+
+    /// CPU Voice Activity Detection (mirrors the GPU vad_energy kernel).
+    ///
+    /// Computes frame energy and zero-crossing rate the same way the CUDA kernel
+    /// does, then defers to `make_vad_decision` for the SNR/hangover logic. This
+    /// keeps DTX behavior identical whether or not a GPU backend is present.
+    fn cpu_voice_activity_detection(
+        &self,
+        audio_samples: &[f32],
+        vad_state: &mut VadState,
+    ) -> Result<VadResult> {
+        if audio_samples.is_empty() {
+            return Ok(VadResult::Silence);
+        }
+
+        let mut energy = 0.0f32;
+        let mut zero_crossings = 0u32;
+        let mut prev_sample = audio_samples[0];
+        for &sample in audio_samples {
+            energy += sample * sample;
+            if (prev_sample >= 0.0 && sample < 0.0) || (prev_sample < 0.0 && sample >= 0.0) {
+                zero_crossings += 1;
+            }
+            prev_sample = sample;
+        }
+
+        let frame_size = audio_samples.len() as f32;
+        let frame_energy = energy / frame_size;
+        let zero_crossing_rate = zero_crossings as f32 / frame_size;
+
+        self.make_vad_decision(frame_energy, zero_crossing_rate, vad_state)
     }
 
     #[cfg(feature = "cuda")]
@@ -855,9 +891,17 @@ impl G729AnnexGpuProcessor {
             return Ok(vec![0i16; G729_FRAME_SIZE]);
         }
 
-        // Update CNG parameters from SID frame
+        // Dequantize the SID energy field into a linear power. The SID quantizer
+        // encodes energy as dBov (0 dB == full scale), so a large/garbage field
+        // could otherwise ask for full-scale (or louder) noise.
         state.cng_state.cng_energy = (sid_frame.energy as f32 - 100.0) / 10.0;
         state.cng_state.cng_energy = 10.0_f32.powf(state.cng_state.cng_energy);
+
+        // Comfort noise is meant to be quiet background ambiance, never loud. Cap
+        // the level at the configured ceiling so a high SID energy can't blast the
+        // listener at (or above) full scale.
+        let max_cng_energy = 10.0_f32.powf(self.config.comfort_noise_level_db / 10.0);
+        state.cng_state.cng_energy = state.cng_state.cng_energy.min(max_cng_energy);
 
         // Generate noise using GPU
         let noise_samples = self
@@ -880,8 +924,31 @@ impl G729AnnexGpuProcessor {
             GpuBackend::Cuda => self.cuda_generate_comfort_noise(cng_state).await,
             #[cfg(feature = "rocm")]
             GpuBackend::Rocm => self.rocm_generate_comfort_noise(cng_state).await,
-            _ => Err(anyhow!("Unsupported GPU backend for CNG")),
+            // No GPU backend compiled/available: generate comfort noise on CPU.
+            _ => Ok(self.cpu_generate_comfort_noise(cng_state)),
         }
+    }
+
+    /// CPU comfort noise generation (mirrors the GPU cng_generation kernel).
+    ///
+    /// Uses the same LCG-based white-noise formula and energy scaling as the CUDA
+    /// kernel so decoder output is consistent regardless of backend.
+    fn cpu_generate_comfort_noise(&self, cng_state: &mut CngState) -> Vec<f32> {
+        let energy_scale = cng_state.cng_energy.max(0.0).sqrt();
+        let mut noise_samples = Vec::with_capacity(G729_FRAME_SIZE);
+        for idx in 0..G729_FRAME_SIZE {
+            let seed = cng_state
+                .rng_seed
+                .wrapping_add(idx as u32)
+                .wrapping_mul(1664525)
+                .wrapping_add(1013904223);
+            let noise = ((seed & 0x7FFF_FFFF) as f32 / 0x7FFF_FFFF as f32) * 2.0 - 1.0;
+            noise_samples.push(noise * energy_scale);
+            if idx == 0 {
+                cng_state.rng_seed = seed;
+            }
+        }
+        noise_samples
     }
 
     #[cfg(feature = "cuda")]
