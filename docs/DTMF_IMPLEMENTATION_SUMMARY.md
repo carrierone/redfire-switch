@@ -89,20 +89,6 @@ The implementation provides complete DTMF functionality across all major telepho
 - **Error Handling Tests** for robustness validation
 - **Real-World Scenarios** including IVR systems and call authentication
 
-#### `benches/dtmf_benchmarks.rs`
-- **Performance Benchmarking** using Criterion.rs framework
-- **Latency Measurements** for detection and generation operations  
-- **Throughput Testing** under concurrent load conditions
-- **Memory Usage Profiling** for long-running operations
-- **Comparative Analysis** across different transport protocols
-
-#### `examples/dtmf_showcase.rs`
-- **Complete Demonstration** of all DTMF functionality
-- **Integration Examples** showing cross-protocol operation
-- **SDP Negotiation** examples for RFC2833 setup
-- **Event Monitoring** and statistics collection
-- **Real-World Usage Patterns** for telephony applications
-
 ### Demonstration and Integration
 
 #### `src/bin/tdmoe_dtmf_demo.rs`
@@ -237,12 +223,6 @@ integration.process_tdm_audio("T1-1-1", &audio_samples).await?;
 ```bash
 # Run integration tests
 cargo test dtmf_integration_tests
-
-# Run benchmarks  
-cargo bench dtmf_benchmarks
-
-# Run DTMF showcase example
-cargo run --example dtmf_showcase
 
 # Run TDMoE integration demo
 cargo run --bin tdmoe-dtmf-demo
