@@ -327,9 +327,11 @@ mod tests {
         let auth_config = AuthConfig::default();
         let api_config = ApiServerConfig::development();
 
-        let state = AppState::with_auth_config(auth_config.clone());
+        // The development config has an enabled HTTP listener; apply it via the
+        // builder and verify it was stored.
+        let state =
+            AppState::with_auth_config(auth_config.clone()).with_api_config(api_config);
 
-        // Verify configuration was applied
         let stored_api_config = state.api_config.read().await;
         assert!(!stored_api_config.get_enabled_http_listeners().is_empty());
     }

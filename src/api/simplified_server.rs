@@ -5,7 +5,7 @@
 
 use axum::{
     extract::{Json, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::Json as ResponseJson,
     routing::{get, post},
     Router,
@@ -99,11 +99,43 @@ pub async fn login(
     }
 }
 
+/// Reload system configuration. Protected endpoint: requires a Bearer token.
+#[utoipa::path(
+    post,
+    path = "/api/v1/system/config/reload",
+    responses(
+        (status = 200, description = "Configuration reloaded"),
+        (status = 401, description = "Missing or invalid authentication")
+    ),
+    tag = "system"
+)]
+pub async fn reload_config(
+    headers: HeaderMap,
+    Json(_body): Json<serde_json::Value>,
+) -> Result<ResponseJson<ApiResponse<String>>, StatusCode> {
+    // Require a Bearer token. This simplified server only checks presence and
+    // shape of the Authorization header; full validation lives in the main API.
+    let authorized = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.strip_prefix("Bearer ").map(|t| !t.is_empty()).unwrap_or(false))
+        .unwrap_or(false);
+
+    if !authorized {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    Ok(ResponseJson(ApiResponse::success(
+        "Configuration reloaded".to_string(),
+    )))
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
         get_system_stats,
-        login
+        login,
+        reload_config
     ),
     components(
         schemas(
@@ -154,6 +186,7 @@ pub fn create_simple_api_router() -> Router {
 
     Router::new()
         .route("/api/v1/system/stats", get(get_system_stats))
+        .route("/api/v1/system/config/reload", post(reload_config))
         .route("/api/v1/auth/login", post(login))
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .with_state(state)

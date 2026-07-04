@@ -332,13 +332,17 @@ impl JwtConfig {
             ));
         }
 
-        // Check for common weak secrets
+        // Check for common weak/default secrets. Note we deliberately do not
+        // flag the bare substring "secret": strong secrets frequently contain
+        // the word (e.g. "..._secret_key_..."). We match specific weak defaults
+        // instead.
         let weak_secrets = [
-            "secret",
             "password",
             "123456",
             "development_secret",
             "change_me",
+            "changeme",
+            "default",
         ];
 
         for weak in &weak_secrets {

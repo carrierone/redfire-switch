@@ -3,7 +3,8 @@
 //! This module handles the loading of plugins from various sources including
 //! built-in plugins and external plugin files.
 
-use super::{B2BUAPlugin, PluginConfig, PluginMetadata};
+use super::{B2BUAPlugin, PluginCapability, PluginConfig, PluginContext, PluginMetadata};
+use crate::services::signaling::{PluginResponse, SipMessage};
 use anyhow::Result;
 use std::path::Path;
 use tracing::{debug, info, warn};
@@ -73,8 +74,12 @@ impl PluginLoader {
 
     /// Register built-in plugins
     fn register_builtin_plugins(&mut self) {
-        // No built-in plugins registered yet
-        // Example plugins can be added here once implemented
+        // The default B2BUA plugin forwards SIP messages unchanged. It provides
+        // a working baseline plugin and is used by the loader tests.
+        self.builtin_plugins.insert(
+            "default-b2bua".to_string(),
+            || Box::new(DefaultB2buaPlugin::new()),
+        );
 
         info!("Registered {} built-in plugins", self.builtin_plugins.len());
     }
@@ -160,6 +165,63 @@ impl PluginLoader {
 impl Default for PluginLoader {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Built-in pass-through B2BUA plugin.
+///
+/// This is the default plugin registered by [`PluginLoader`]. It forwards every
+/// SIP message unmodified, giving a functional baseline that higher-level
+/// plugins can replace or wrap.
+pub struct DefaultB2buaPlugin {
+    metadata: PluginMetadata,
+}
+
+impl DefaultB2buaPlugin {
+    pub fn new() -> Self {
+        Self {
+            metadata: PluginMetadata {
+                name: "default-b2bua".to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+                description: "Default pass-through B2BUA plugin".to_string(),
+                author: "Redfire".to_string(),
+                license: "GPL-3.0".to_string(),
+                min_system_version: "0.1.0".to_string(),
+                dependencies: Vec::new(),
+                config_schema: None,
+                capabilities: vec![
+                    PluginCapability::SipInvite,
+                    PluginCapability::SipResponse,
+                    PluginCapability::CallRouting,
+                ],
+            },
+        }
+    }
+}
+
+impl Default for DefaultB2buaPlugin {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait::async_trait]
+impl B2BUAPlugin for DefaultB2buaPlugin {
+    fn metadata(&self) -> &PluginMetadata {
+        &self.metadata
+    }
+
+    async fn initialize(&mut self, _config: &PluginConfig, _context: &PluginContext) -> Result<()> {
+        Ok(())
+    }
+
+    async fn handle_message(
+        &self,
+        message: &SipMessage,
+        _context: &PluginContext,
+    ) -> Result<PluginResponse> {
+        // Default behavior: forward the message unchanged.
+        Ok(PluginResponse::Forward(message.clone()))
     }
 }
 
