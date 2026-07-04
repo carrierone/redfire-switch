@@ -57,6 +57,16 @@ pub struct DatabaseStatistics {
 }
 
 impl DatabaseService {
+    /// Database connection URL this service was configured with.
+    pub fn database_url(&self) -> &str {
+        &self.config.url
+    }
+
+    /// Shared connection pool.
+    pub fn pool(&self) -> &Pool<Postgres> {
+        &self.pool
+    }
+
     pub async fn new(config: DatabaseConfig) -> Result<Self> {
         info!(
             "Initializing database service with URL: {}",
@@ -132,7 +142,7 @@ impl DatabaseService {
             // Execute the migration in a transaction
             let mut tx = self.pool.begin().await?;
 
-            for statement in migration_sql.split(';') {
+            for statement in split_sql_statements(migration_sql) {
                 let statement = statement.trim();
                 if !statement.is_empty() && !statement.starts_with("--") {
                     sqlx::query(statement)
@@ -692,4 +702,135 @@ fn mask_database_url(url: &str) -> String {
         }
     }
     url.to_string()
+}
+
+/// Split a SQL script into individual statements on top-level semicolons,
+/// respecting PostgreSQL dollar-quoted string bodies (e.g. `$$ ... $$` used by
+/// plpgsql function definitions), single-quoted strings, and line comments.
+///
+/// A naive `split(';')` corrupts function bodies whose statements contain
+/// semicolons; this splitter keeps such bodies intact.
+fn split_sql_statements(sql: &str) -> Vec<String> {
+    let bytes = sql.as_bytes();
+    let mut statements = Vec::new();
+    let mut current = String::new();
+    let mut i = 0;
+    let mut in_single_quote = false;
+    let mut dollar_tag: Option<String> = None;
+
+    while i < bytes.len() {
+        let c = bytes[i] as char;
+
+        // Inside a dollar-quoted body, look only for the matching close tag.
+        if let Some(tag) = &dollar_tag {
+            if sql[i..].starts_with(tag.as_str()) {
+                current.push_str(tag);
+                i += tag.len();
+                dollar_tag = None;
+                continue;
+            }
+            current.push(c);
+            i += 1;
+            continue;
+        }
+
+        if in_single_quote {
+            current.push(c);
+            i += 1;
+            if c == '\'' {
+                in_single_quote = false;
+            }
+            continue;
+        }
+
+        // Line comment: consume through end of line without copying it, so a
+        // statement is never left with a leading comment (which callers would
+        // otherwise mistake for a comment-only, skippable fragment).
+        if c == '-' && i + 1 < bytes.len() && bytes[i + 1] as char == '-' {
+            while i < bytes.len() && bytes[i] as char != '\n' {
+                i += 1;
+            }
+            continue;
+        }
+
+        // Start of a dollar-quote tag like `$$` or `$body$`.
+        if c == '$' {
+            if let Some(end) = sql[i + 1..].find('$') {
+                let candidate = &sql[i..i + 1 + end + 1]; // includes both '$'
+                if candidate[1..candidate.len() - 1]
+                    .chars()
+                    .all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
+                {
+                    dollar_tag = Some(candidate.to_string());
+                    current.push_str(candidate);
+                    i += candidate.len();
+                    continue;
+                }
+            }
+        }
+
+        if c == '\'' {
+            in_single_quote = true;
+            current.push(c);
+            i += 1;
+            continue;
+        }
+
+        if c == ';' {
+            statements.push(current.clone());
+            current.clear();
+            i += 1;
+            continue;
+        }
+
+        current.push(c);
+        i += 1;
+    }
+
+    if !current.trim().is_empty() {
+        statements.push(current);
+    }
+
+    statements
+}
+
+#[cfg(test)]
+mod migration_split_tests {
+    use super::split_sql_statements;
+
+    #[test]
+    fn splits_simple_statements() {
+        let sql = "CREATE TABLE a (id int); CREATE TABLE b (id int);";
+        let stmts: Vec<String> = split_sql_statements(sql)
+            .into_iter()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        assert_eq!(stmts.len(), 2);
+    }
+
+    #[test]
+    fn keeps_dollar_quoted_function_body_intact() {
+        let sql = "CREATE FUNCTION f() RETURNS trigger AS $$\nBEGIN\n  NEW.x = NOW();\n  RETURN NEW;\nEND;\n$$ language 'plpgsql';\nCREATE TABLE t (id int);";
+        let stmts: Vec<String> = split_sql_statements(sql)
+            .into_iter()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        assert_eq!(stmts.len(), 2, "function body must not be split");
+        assert!(stmts[0].contains("RETURN NEW;"));
+        assert!(stmts[0].contains("NEW.x = NOW();"));
+    }
+
+    #[test]
+    fn ignores_semicolons_in_single_quoted_strings() {
+        let sql = "INSERT INTO t VALUES ('a;b'); SELECT 1;";
+        let stmts: Vec<String> = split_sql_statements(sql)
+            .into_iter()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        assert_eq!(stmts.len(), 2);
+        assert!(stmts[0].contains("'a;b'"));
+    }
 }

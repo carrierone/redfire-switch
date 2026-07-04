@@ -6,7 +6,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Call Detail Records table
 CREATE TABLE call_detail_records (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID DEFAULT uuid_generate_v4(),
     call_id VARCHAR(255) NOT NULL,
     session_id UUID,
     from_number VARCHAR(50) NOT NULL,
@@ -25,8 +25,11 @@ CREATE TABLE call_detail_records (
     recording_enabled BOOLEAN DEFAULT FALSE,
     cost DECIMAL(10,6),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    -- Range partitioning requires the partition key to be part of any
+    -- primary/unique key, so the PK is composite over (id, start_time).
+    PRIMARY KEY (id, start_time)
+) PARTITION BY RANGE (start_time);
 
 -- Create indexes for CDR table
 CREATE INDEX idx_cdr_call_id ON call_detail_records(call_id);
@@ -403,15 +406,15 @@ WHERE created_at >= NOW() - INTERVAL '24 hours'
 GROUP BY event_type, severity
 ORDER BY event_count DESC;
 
--- Performance optimization: Create partial indexes
-CREATE INDEX idx_cdr_recent_calls ON call_detail_records(start_time)
-WHERE start_time >= NOW() - INTERVAL '7 days';
+-- Performance optimization: Create indexes.
+-- NOTE: partial-index predicates must be IMMUTABLE, so a NOW()-based
+-- "recent" predicate is not allowed. Index the full column instead.
+CREATE INDEX idx_cdr_recent_calls ON call_detail_records(start_time);
 
 CREATE INDEX idx_active_sessions_current ON active_sessions(state, start_time)
 WHERE state IN ('Establishing', 'Active');
 
-CREATE INDEX idx_security_events_recent ON security_events(created_at, severity)
-WHERE created_at >= NOW() - INTERVAL '30 days';
+CREATE INDEX idx_security_events_recent ON security_events(created_at, severity);
 
 -- Cleanup function for old data
 CREATE OR REPLACE FUNCTION cleanup_old_data() RETURNS void AS $$

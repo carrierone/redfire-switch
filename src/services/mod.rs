@@ -126,8 +126,15 @@ impl ServiceRegistry {
             return Ok(()); // Already initialized
         }
 
-        // Create dependencies (these would normally be injected)
-        let lcr_engine = Arc::new(crate::lcr::LcrEngine::new("sqlite::memory:").await.unwrap());
+        // Create dependencies (these would normally be injected). Reuse the
+        // database service's connection URL so routing shares the same backend
+        // instead of a bogus in-memory URL the Postgres-backed engine can't open.
+        let database_url = self
+            .database_service
+            .as_ref()
+            .map(|svc| svc.database_url().to_string())
+            .unwrap_or_else(|| crate::database::DatabaseConfig::default().url);
+        let lcr_engine = Arc::new(crate::lcr::LcrEngine::new(&database_url).await?);
         let origination_routes = Arc::new(tokio::sync::Mutex::new(
             crate::origination_routing::OriginationRoutingEngine::new(
                 crate::origination_routing::OriginationConfig::default(),
