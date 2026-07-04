@@ -1,6 +1,6 @@
 # Redfire Switch
 
-A high-performance Class 4 SIP telephone switch written in Rust, designed for modern telecommunications infrastructure with advanced codec transcoding and GPU acceleration.
+A Class 4 SIP telephone switch written in Rust, focused on carrier call routing (least-cost routing, LNP/LRN), SIP-T/SIP-I interworking, and codec transcoding, with optional GPU-accelerated codec paths.
 
 **Sponsored by [Carrier One Inc](https://www.carrierone.com)**
 
@@ -17,21 +17,31 @@ A high-performance Class 4 SIP telephone switch written in Rust, designed for mo
 - **STIR/SHAKEN** - JWT-based call authentication and fraud prevention
 - **Emergency Services** - 911/E911 routing with location services
 
-### Advanced Codec Engine
-- **Universal GPU Transcoding** - Hardware-accelerated codec conversion
-- **56 Codec Pairs** - Direct transcoding between all supported formats
-- **Real-time Performance** - 15-20x faster than CPU-only solutions
-- **Patent-Free Codecs** - G.729, G.722.2/AMR-WB implementations
+### Codec Engine
+- **CPU Transcoding** - G.711 μ-law/A-law and G.729 transcoding (see notes below)
+- **Optional GPU Acceleration** - Hardware codec paths behind the `cuda`/`rocm`
+  build features (not required; CPU fallbacks always available)
+- **Frame-aware Transcoding** - Handles multi-frame RTP payloads (e.g. 20ms
+  G.711 <-> two 10ms G.729 frames)
 
-#### Supported Codecs
-| Codec | Description | Sample Rate | GPU Accelerated |
-|-------|-------------|-------------|-----------------|
-| **G.711 μ-law/A-law** | Standard telephony | 8 kHz | ✅ |
-| **G.729/G.729A/G.729B** | CELP compression | 8 kHz | ✅ |
-| **G.722.2 (AMR-WB)** | Wideband ACELP | 16 kHz | ✅ |
-| **G.722** | ADPCM wideband | 16 kHz | ✅ |
-| **PCM16** | Linear PCM | 8/16 kHz | ✅ |
-| **Opus** | Modern codec | 48 kHz | CPU |
+> **Codec status:** The G.729 and G.722.2/AMR-WB codecs in this repo are
+> **simplified reference implementations**, not bit-exact ITU-T codecs, and are
+> intended for signaling/plumbing tests rather than production audio quality.
+> G.711 μ-law/A-law is complete. GPU transcoding is feature-gated and currently
+> unverified in CI.
+
+#### Codecs and transcoding
+| Codec | Description | Sample Rate | Status |
+|-------|-------------|-------------|--------|
+| **G.711 μ-law/A-law** | Standard telephony | 8 kHz | Complete |
+| **G.729** | CELP compression | 8 kHz | Simplified reference |
+| **G.722.2 (AMR-WB)** | Wideband ACELP | 16 kHz | Simplified reference |
+| **G.722** | ADPCM wideband | 16 kHz | Partial |
+| **PCM16** | Linear PCM | 8/16 kHz | Complete |
+| **Opus** | Modern codec | 48 kHz | Placeholder |
+
+Default enabled transcodes: G.711 μ-law <-> A-law, G.711 <-> G.729 (both laws),
+Opus <-> G.711 μ-law.
 
 ### Enterprise Features
 - **High Availability** - Clustering and failover support

@@ -89,14 +89,16 @@ The implementation provides complete DTMF functionality across all major telepho
 - **Error Handling Tests** for robustness validation
 - **Real-World Scenarios** including IVR systems and call authentication
 
-### Demonstration and Integration
+### Integration Testing
 
-#### `src/bin/tdmoe_dtmf_demo.rs`
-- **TDMoE Integration Demo** showing complete system operation
+#### `tests/dtmf_integration_tests.rs`
+- **TDMoE Integration Tests** exercising complete system operation
 - **Multi-Span Simulation** with realistic TDM channel processing
-- **Cross-Protocol Relay** demonstration between TDM and SIP
+- **Cross-Protocol Relay** between TDM and SIP
 - **Performance Statistics** with real-time monitoring
-- **Event Processing** showing complete DTMF event lifecycle
+- **Event Processing** covering the complete DTMF event lifecycle
+
+Run with `cargo test --test dtmf_integration_tests`.
 
 ## Technical Specifications
 

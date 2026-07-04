@@ -54,17 +54,19 @@ async fn main() -> Result<()> {
 
     match mode.as_str() {
         "demo" => {
-            println!("🔥 RedFire Switch - Demo Mode");
-            println!("==============================");
+            println!("🔥 RedFire Switch - Class 4 SIP Switch");
+            println!("======================================");
             println!();
-            println!("Available working binaries:");
-            println!("  • simple-b2bua-test     - Basic SIP forwarding");
-            println!("  • comprehensive-demo    - Complete feature overview");
-            println!("  • sipi-automated-tests  - High-performance testing");
-            println!("  • enterprise-demo       - Enterprise features");
-            println!("  • ai-analytics-demo     - AI capabilities");
+            println!("Available binaries:");
+            println!("  • lcr_sip_server         - LCR-routing SIP server (place real calls)");
+            println!("  • simple-b2bua-test      - Basic SIP B2BUA forwarding");
+            println!("  • sipi-automated-tests   - SIP-I/SIP-T automated testing");
+            println!("  • standalone_api_server  - Configuration/management REST API");
+            println!("  • redfire-web-ui         - Web administration UI");
+            println!("  • lcr_cli                - Least-cost-routing CLI");
             println!();
-            println!("Usage: cargo run --bin <binary-name>");
+            println!("Run: cargo run --bin <binary-name>");
+            println!("Test calling: cargo test --test sip_call_flow_tests");
         }
         "b2bua" => {
             println!("🔥 RedFire Switch - B2BUA Mode");
@@ -72,7 +74,8 @@ async fn main() -> Result<()> {
         }
         "test" => {
             println!("🔥 RedFire Switch - Test Mode");
-            println!("Use: cargo run --bin sipi-automated-tests");
+            println!("Automated SIP call flow: cargo test --test sip_call_flow_tests");
+            println!("SIP-I/SIP-T tests:       cargo run --bin sipi-automated-tests");
         }
         _ => {
             println!("Unknown mode: {}", mode);

@@ -60,6 +60,30 @@ make docker-logs     # Container logs
 - 🔄 **RETRY** - Test is being retried
 - 📊 **STATS** - Performance statistics available
 
+## 📞 Built-in Automated Call Testing (no external tools)
+
+The switch ships with a self-contained SIP call-flow harness that places **real
+SIP calls over UDP** through the real LCR routing engine, with no SIPp or Docker
+required. It starts `LcrSipServer` in-process on an ephemeral port (backed by the
+seeded test database) and drives calls as a SIP UAC.
+
+```bash
+# Provision + seed a Postgres DB first (see Test Environment Setup), then:
+cargo test --test sip_call_flow_tests
+```
+
+Covered scenarios:
+
+- **Answered call** - full `INVITE → 100 → 180 → 200 → ACK → BYE → 200` flow
+- **Unroutable number** - LCR finds no route, caller gets `404 Not Found`
+- **OPTIONS ping** - keepalive answered with `200 OK`
+- **Concurrent calls** - several simultaneous calls all answered
+
+The harness reuses the shipping `redfire_switch::sip_call_server::LcrSipServer`,
+so it exercises the same routing/signaling code path as the `lcr_sip_server`
+binary. This is the recommended first stop for validating call handling; the
+SIPp scenarios below are for heavier protocol/interop and stress testing.
+
 ## 🏗️ Test Environment Setup
 
 ### Prerequisites

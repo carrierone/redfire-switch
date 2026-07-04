@@ -220,10 +220,17 @@ async fn test_time_based_routing() -> Result<()> {
     let deck_loader = lcr.get_deck_loader();
     let routing_v2 = lcr.get_routing_engine();
 
+    // Use per-run unique names so this test doesn't collide with other DB-touching
+    // suites running in parallel against the shared test database (or with its own
+    // previous runs).
+    let run_id = uuid::Uuid::new_v4().simple().to_string();
+    let deck_name = format!("TEST_TIME_ROUTING_{}", &run_id[..8]);
+    let trunk_name = format!("TEST_TIME_ROUTING_TRUNK_{}", &run_id[..8]);
+
     // Load current deck
     let current_rates = create_test_rates();
     let current_request = DeckLoadRequest {
-        deck_name: "TEST_TIME_ROUTING".to_string(),
+        deck_name: deck_name.clone(),
         owner_id: 1,
         rate_type: RateType::DNIS,
         effective_date: Utc::now(),
@@ -250,7 +257,7 @@ async fn test_time_based_routing() -> Result<()> {
 
     let future_time = Utc::now() + chrono::Duration::hours(24);
     let future_request = DeckLoadRequest {
-        deck_name: "TEST_TIME_ROUTING".to_string(), // Same name for versioning
+        deck_name: deck_name.clone(), // Same name for versioning
         owner_id: 1,
         rate_type: RateType::DNIS,
         effective_date: future_time,
@@ -268,7 +275,7 @@ async fn test_time_based_routing() -> Result<()> {
     // the effective time, so the current vs future comparison exercises the
     // deck-versioning path rather than the static sample data.
     let egress_trunk_id =
-        link_vendor_deck_to_topology(&database_url, "TEST_TIME_ROUTING", "TEST_TIME_ROUTING_TRUNK")
+        link_vendor_deck_to_topology(&database_url, &deck_name, &trunk_name)
             .await?;
     lcr.reload_cache().await?;
 
