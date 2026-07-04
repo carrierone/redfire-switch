@@ -60,7 +60,7 @@ async fn test_config_validation_comprehensive() -> Result<()> {
 async fn test_b2bua_complete_call_flow() -> Result<()> {
     info!("📞 Testing complete B2BUA call flow");
 
-    let bind_addr = "127.0.0.1:5060".parse()?;
+    let bind_addr = "127.0.0.1:0".parse()?;
     let b2bua = SimpleB2BUA::new(bind_addr, "127.0.0.1".to_string(), 5070).await?;
 
     // Start B2BUA in background
@@ -233,7 +233,7 @@ async fn test_system_integration_under_load() -> Result<()> {
     let _config = Config::load_from_file("config-production-example.json")?;
 
     // Initialize all components
-    let bind_addr = "127.0.0.1:5061".parse()?;
+    let bind_addr = "127.0.0.1:0".parse()?;
     let _b2bua = Arc::new(SimpleB2BUA::new(bind_addr, "127.0.0.1".to_string(), 5071).await?);
     let security_monitor = Arc::new(SecurityMonitor::new(SecurityMonitorConfig::default()));
     let analytics_config = AIAnalyticsConfig {
@@ -293,7 +293,7 @@ async fn test_error_recovery_resilience() -> Result<()> {
     info!("🔄 Testing error recovery and resilience");
 
     let _config = Config::load_from_file("config-production-example.json")?;
-    let bind_addr = "127.0.0.1:5062".parse()?;
+    let bind_addr = "127.0.0.1:0".parse()?;
     let _b2bua = SimpleB2BUA::new(bind_addr, "127.0.0.1".to_string(), 5072).await?;
 
     // Test invalid SIP message handling
@@ -331,7 +331,7 @@ async fn test_performance_benchmarks() -> Result<()> {
 
     // Test SIP message processing performance
     let _config = Config::load_from_file("config-production-example.json")?;
-    let bind_addr = "127.0.0.1:5063".parse()?;
+    let bind_addr = "127.0.0.1:0".parse()?;
     let _b2bua = SimpleB2BUA::new(bind_addr, "127.0.0.1".to_string(), 5073).await?;
 
     let test_invite = create_test_invite_message();

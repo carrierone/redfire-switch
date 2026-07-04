@@ -30,7 +30,7 @@ use tokio::runtime::Runtime;
 
 #[tokio::test]
 async fn test_sip_authentication_validation() {
-    let bind_addr = "127.0.0.1:5060".parse().unwrap();
+    let bind_addr = "127.0.0.1:0".parse().unwrap();
     let b2bua = SimpleB2BUA::new(bind_addr, "127.0.0.1".to_string(), 5070).await.unwrap();
 
     // Test 1: Missing authentication should be rejected
@@ -114,7 +114,7 @@ async fn test_rate_limiting_protection() {
 #[tokio::test]
 async fn test_malicious_message_handling() {
     let config = Config::default();
-    let b2bua = SimpleB2BUA::new("127.0.0.1:5060".parse().unwrap(), "127.0.0.1".to_string(), 5070).await.unwrap();
+    let b2bua = SimpleB2BUA::new("127.0.0.1:0".parse().unwrap(), "127.0.0.1".to_string(), 5070).await.unwrap();
     let source = "192.168.1.100:5060".parse::<SocketAddr>().unwrap();
 
     // Test 1: Oversized message
@@ -172,7 +172,7 @@ Content-Length: 0
 #[tokio::test]
 async fn test_buffer_overflow_prevention() {
     let config = Config::default();
-    let b2bua = SimpleB2BUA::new("127.0.0.1:5060".parse().unwrap(), "127.0.0.1".to_string(), 5070).await.unwrap();
+    let b2bua = SimpleB2BUA::new("127.0.0.1:0".parse().unwrap(), "127.0.0.1".to_string(), 5070).await.unwrap();
     let source = "192.168.1.100:5060".parse::<SocketAddr>().unwrap();
 
     // Test various buffer overflow scenarios
@@ -390,7 +390,7 @@ async fn test_tls_certificate_validation() {
 #[tokio::test]
 async fn test_session_security_limits() {
     let config = Config::default();
-    let b2bua = SimpleB2BUA::new("127.0.0.1:5060".parse().unwrap(), "127.0.0.1".to_string(), 5070).await.unwrap();
+    let b2bua = SimpleB2BUA::new("127.0.0.1:0".parse().unwrap(), "127.0.0.1".to_string(), 5070).await.unwrap();
 
     // Test concurrent session limits
     let mut session_handles = vec![];
@@ -449,7 +449,7 @@ Content-Length: 0
 #[tokio::test]
 async fn test_input_sanitization() {
     let config = Config::default();
-    let b2bua = SimpleB2BUA::new("127.0.0.1:5060".parse().unwrap(), "127.0.0.1".to_string(), 5070).await.unwrap();
+    let b2bua = SimpleB2BUA::new("127.0.0.1:0".parse().unwrap(), "127.0.0.1".to_string(), 5070).await.unwrap();
     let source = "192.168.1.100:5060".parse::<SocketAddr>().unwrap();
 
     // Test various injection and XSS attempts
@@ -532,7 +532,7 @@ async fn test_security_monitoring_alerts() {
 #[tokio::test]
 async fn test_security_performance_under_attack() {
     let config = Config::default();
-    let b2bua = Arc::new(SimpleB2BUA::new("127.0.0.1:5060".parse().unwrap(), "127.0.0.1".to_string(), 5070).await.unwrap());
+    let b2bua = Arc::new(SimpleB2BUA::new("127.0.0.1:0".parse().unwrap(), "127.0.0.1".to_string(), 5070).await.unwrap());
     let security_monitor = Arc::new(SecurityMonitor::new(SecurityMonitorConfig::default()));
 
     let attack_start = Instant::now();
