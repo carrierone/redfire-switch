@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://redfire/contracts/boss_to_pbx.assign_did.json",
-  "title": "BOSS -> PBX: assign/unassign DID",
-  "description": "B/OSS owns DID inventory. On assignment it tells the PBX to build the inbound route to the tenant. Auto-trunking to Carrier One is triggered from this.",
+  "$id": "https://redfire/contracts/boss_to_ucaas.assign_did.json",
+  "title": "BOSS -> UCaaS: assign/unassign DID",
+  "description": "B/OSS owns DID inventory. On assignment it tells the UCaaS platform to build the inbound route to the tenant. Auto-trunking to Carrier One is triggered from this.",
   "type": "object",
   "additionalProperties": false,
   "required": ["boss_account_id", "boss_did_id", "e164", "action"],
@@ -13,7 +13,7 @@
     "action": { "type": "string", "enum": ["assign", "unassign", "update_routing"] },
     "inbound_destination": {
       "type": ["object", "null"],
-      "description": "Optional initial routing target inside the PBX",
+      "description": "Optional initial routing target inside the UCaaS platform",
       "additionalProperties": false,
       "properties": {
         "type": { "type": "string", "enum": ["extension", "ring_group", "ivr", "queue", "voicemail"] },

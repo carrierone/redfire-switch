@@ -559,7 +559,7 @@ impl SipAuthenticator {
     /// Extract tech prefix from request URI
     fn extract_tech_prefix(&self, uri: &rsip::Uri) -> Result<Option<String>> {
         // Decode the canonical PREFIX*E164 wire format from the Request-URI user
-        // part. The tech prefix identifies the originating PBX tenant on the
+        // part. The tech prefix identifies the originating UCaaS tenant on the
         // shared Class 4 trunk. Canonical form and golden cases live in the
         // cross-project contract hub (contracts/techprefix/cases.json); the
         // pure decoder below is round-tripped against those cases in CI.
@@ -723,7 +723,7 @@ impl SipAuthenticator {
 /// Decode the canonical `PREFIX*E164` tech-prefix wire format from a
 /// Request-URI user part into `(tech_prefix, dialed_number)`.
 ///
-/// This is the switch-side counterpart to the PBX egress encoder. Both sides
+/// This is the switch-side counterpart to the redfire-ucaas egress encoder. Both sides
 /// share the golden cases in the cross-project contract hub
 /// (`contracts/techprefix/cases.json`); the `techprefix_golden_cases` test
 /// round-trips every documented case through this function so the two repos

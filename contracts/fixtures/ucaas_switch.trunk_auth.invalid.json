@@ -1,5 +1,5 @@
 {
-  "trunk_id": "pbx_platform_interconnect",
+  "trunk_id": "ucaas_platform_interconnect",
   "customer_id": "switch_acct_acme",
   "source_networks": [],
   "tech_prefix": "12",

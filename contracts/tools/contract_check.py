@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
 Dependency-free contract validator for the redfire triple
-(redfire-pbx <-> redfire-switch <-> redfire-boss).
+(redfire-ucaas <-> redfire-switch <-> redfire-boss).
 
-Single source of truth lives in redfire-pbx/contracts/. Each repo vendors or
+Single source of truth lives in redfire-ucaas/contracts/. Each repo vendors or
 submodules this folder and runs this script in CI so all three stay in lock-step.
 
 Implements the subset of JSON Schema Draft-07 used by our contracts:

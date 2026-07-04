@@ -1,7 +1,7 @@
 {
   "contract": "techprefix",
   "version": "1.0.0",
-  "description": "Canonical tech-prefix wire format for PBX -> Carrier One Class 4 (redfire-switch) outbound trunk. The PBX encodes (tech_prefix, dialed_e164) into the SIP Request-URI user part on egress. redfire-switch extract_tech_prefix decodes the same user part back into (tech_prefix, dialed_number). Both sides MUST round-trip every case below. Canonical form is PREFIX*E164 with an explicit '*' separator.",
+  "description": "Canonical tech-prefix wire format for UCaaS -> Carrier One Class 4 (redfire-switch) outbound trunk. The UCaaS platform encodes (tech_prefix, dialed_e164) into the SIP Request-URI user part on egress. redfire-switch extract_tech_prefix decodes the same user part back into (tech_prefix, dialed_number). Both sides MUST round-trip every case below. Canonical form is PREFIX*E164 with an explicit '*' separator.",
   "canonical_form": "PREFIX*E164",
   "rules": {
     "prefix_min_digits": 3,

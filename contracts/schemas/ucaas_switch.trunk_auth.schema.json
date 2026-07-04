@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://redfire/contracts/pbx_switch.trunk_auth.json",
-  "title": "PBX <-> Switch: trunk auth / tenant identification",
-  "description": "Mirror of redfire-switch IpAuthConfig for the PBX platform interconnect. The PBX egresses from source_networks; each tenant is identified by a tech_prefix that resolves to a switch customer_id (== boss voice_accounts.switchAccountId). Keep this in sync with redfire-switch authentication.rs IpAuthConfig.",
+  "$id": "https://redfire/contracts/ucaas_switch.trunk_auth.json",
+  "title": "UCaaS <-> Switch: trunk auth / tenant identification",
+  "description": "Mirror of redfire-switch IpAuthConfig for the UCaaS platform interconnect. The UCaaS platform egresses from source_networks; each tenant is identified by a tech_prefix that resolves to a switch customer_id (== boss voice_accounts.switchAccountId). Keep this in sync with redfire-switch authentication.rs IpAuthConfig.",
   "type": "object",
   "additionalProperties": false,
   "required": ["trunk_id", "customer_id", "source_networks", "tech_prefix"],

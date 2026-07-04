@@ -4,7 +4,7 @@ Generate/verify a checksum manifest of the contracts folder.
 
 Because redfire-switch and redfire-boss each vendor a copy of contracts/,
 this manifest lets each repo's CI assert its copy is byte-identical to the
-source of truth in redfire-pbx (or a pinned version), catching silent drift.
+source of truth in redfire-ucaas (or a pinned version), catching silent drift.
 
 Usage:
   manifest.py            # print manifest to stdout
@@ -68,7 +68,7 @@ def main():
             saved = f.read()
         if saved != current:
             print("CONTRACT DRIFT: contracts/ does not match MANIFEST.sha256")
-            print("Re-sync the vendored contracts folder from redfire-pbx, or")
+            print("Re-sync the vendored contracts folder from redfire-ucaas, or")
             print("update the manifest with manifest.py --write if this is the source repo.")
             return 1
         print("OK: contracts match manifest")

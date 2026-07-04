@@ -1,7 +1,7 @@
 {
   "external_id": "call_9f2a-1",
   "boss_account_id": "acct_01H8XYZ",
-  "pbx_tenant_id": "tnt_acme",
+  "ucaas_tenant_id": "tnt_acme",
   "tech_prefix": "1001",
   "call_id": "9f2a",
   "direction": "outbound",

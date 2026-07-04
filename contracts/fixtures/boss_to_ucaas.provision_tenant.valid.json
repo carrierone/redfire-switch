@@ -2,7 +2,7 @@
   "boss_account_id": "acct_01H8XYZ",
   "boss_reseller_id": "rsl_alpha",
   "action": "create",
-  "domain": "acme.pbx.example.com",
+  "domain": "acme.voice.example.com",
   "company_name": "Acme Corporation",
   "tech_prefix": "1001",
   "plan_limits": {

@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://redfire/contracts/boss_to_pbx.provision_tenant.json",
-  "title": "BOSS -> PBX: provision/update tenant",
-  "description": "Replaces the legacy VitalPBX createTenant/updateResources integration. B/OSS calls the PBX adapter with this payload. Field names are the cross-project contract.",
+  "$id": "https://redfire/contracts/boss_to_ucaas.provision_tenant.json",
+  "title": "BOSS -> UCaaS: provision/update tenant",
+  "description": "Replaces the legacy VitalPBX createTenant/updateResources integration. B/OSS calls the UCaaS adapter with this payload. Field names are the cross-project contract.",
   "type": "object",
   "additionalProperties": false,
   "required": ["boss_account_id", "action", "plan_limits"],
@@ -10,11 +10,11 @@
     "boss_account_id": { "type": "string", "minLength": 1 },
     "boss_reseller_id": { "type": ["string", "null"] },
     "action": { "type": "string", "enum": ["create", "update", "suspend", "unsuspend", "terminate"] },
-    "domain": { "type": ["string", "null"], "description": "SIP/registration domain; PBX may derive if null" },
+    "domain": { "type": ["string", "null"], "description": "SIP/registration domain; UCaaS may derive if null" },
     "company_name": { "type": ["string", "null"] },
     "tech_prefix": {
       "type": ["string", "null"],
-      "description": "Per-tenant Class 4 account key. If null on create, PBX allocates and returns it. Must match techprefix contract rules.",
+      "description": "Per-tenant Class 4 account key. If null on create, UCaaS allocates and returns it. Must match techprefix contract rules.",
       "pattern": "^[*+]?[0-9]{3,6}$"
     },
     "plan_limits": {
