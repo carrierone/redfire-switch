@@ -244,8 +244,11 @@ impl DigestCredentials {
         // Calculate expected response
         let expected = self.calculate_digest_response(realm, nonce, uri, algorithm);
 
-        // Constant-time comparison to prevent timing attacks
-        expected == response
+        // Constant-time comparison to prevent timing attacks. A plain `==` on
+        // `String`/`&str` short-circuits on the first mismatched byte, which
+        // leaks how many leading characters of `response` were correct via
+        // response timing.
+        constant_time_str_eq(&expected, response)
     }
 
     /// Calculate digest response
@@ -292,6 +295,25 @@ impl DigestCredentials {
 
         response
     }
+}
+
+/// Compare two strings in constant time (with respect to their contents),
+/// to avoid leaking a digest response's correct prefix length via timing.
+///
+/// A length mismatch is still observable (as it is in any real digest
+/// implementation, since responses have a fixed, algorithm-defined length),
+/// but once lengths match, every byte is compared regardless of earlier
+/// mismatches.
+fn constant_time_str_eq(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff: u8 = 0;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
 }
 
 /// Rate limiting tracker
