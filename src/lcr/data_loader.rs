@@ -43,7 +43,10 @@ impl NanpaLergDataLoader {
             }
 
             let fields: Vec<&str> = line.split(',').collect();
-            if fields.len() < 20 {
+            // Fields up to index 20 (`area_served`) are accessed below, so at
+            // least 21 columns are required. The previous `< 20` bound let a
+            // 20-column line through and then panicked on `fields[20]`.
+            if fields.len() < 21 {
                 warn!("Skipping malformed line: {}", line);
                 continue;
             }
