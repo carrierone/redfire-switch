@@ -21,6 +21,7 @@ subtree, submodule, or CI fetch) and verify it against `MANIFEST.sha256`.
 | UCaaS -> BOSS | billable usage record (revenue) | `schemas/ucaas_to_boss.usage_record.schema.json` | ucaas (producer), boss (consumer) |
 | UCaaS <-> Switch | trunk auth / tenant identification | `schemas/ucaas_switch.trunk_auth.schema.json` | ucaas (producer), switch (consumer) |
 | UCaaS <-> Switch | tech-prefix wire format | `techprefix/cases.json` | ucaas (encoder), switch (decoder) |
+| Switch -> BOSS | rated wholesale CDR (revenue, already rated via LRN/LCR) | `schemas/switch_to_boss.wholesale_cdr.schema.json` | switch (producer), boss (consumer) |
 
 Identifier spine that must stay consistent across all three:
 
@@ -55,11 +56,14 @@ divergence between them is itself a test failure.
 - **redfire-ucaas**: source of truth. CI runs both validators and asserts the
   manifest is current. Producer-side tests assert generated payloads validate.
 - **redfire-switch**: vendors `contracts/`, runs `manifest.py --check` for
-  drift, and its Rust test suite feeds `techprefix/cases.json` through the real
-  `extract_tech_prefix` parser so encode/decode round-trips with the UCaaS side.
+  drift, its Rust test suite feeds `techprefix/cases.json` through the real
+  `extract_tech_prefix` parser so encode/decode round-trips with the UCaaS side,
+  and its wholesale CDR webhook sender asserts outbound payloads validate
+  against `switch_to_boss.wholesale_cdr`.
 - **redfire-boss**: vendors `contracts/`, runs `manifest.py --check`, and a jest
   test validates the adapter's outbound provision/DID payloads and asserts the
-  usage records it ingests match `ucaas_to_boss.usage_record`.
+  usage records it ingests match `ucaas_to_boss.usage_record` and
+  `switch_to_boss.wholesale_cdr`.
 
 ## Changing a contract
 
