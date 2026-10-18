@@ -226,13 +226,13 @@ pub struct CallDetailRecord {
     // not from the static ingress/egress trunk-config costing above.
     pub lrn: Option<String>,
     pub jurisdiction: Option<crate::lcr::types::CallJurisdiction>,
-    pub client_rate: Option<f64>,            // sell-side per-minute rate
-    pub client_billed_seconds: Option<u64>,  // after client-side min_increment/interval rounding
-    pub client_cost: Option<f64>,            // final sell-side dollar amount
+    pub client_rate: Option<f64>,           // sell-side per-minute rate
+    pub client_billed_seconds: Option<u64>, // after client-side min_increment/interval rounding
+    pub client_cost: Option<f64>,           // final sell-side dollar amount
     pub client_rate_deck_version: Option<String>,
-    pub vendor_rate: Option<f64>,            // buy-side per-minute rate
-    pub vendor_billed_seconds: Option<u64>,  // after vendor-side min_increment/interval rounding
-    pub vendor_cost: Option<f64>,            // final buy-side dollar amount
+    pub vendor_rate: Option<f64>,           // buy-side per-minute rate
+    pub vendor_billed_seconds: Option<u64>, // after vendor-side min_increment/interval rounding
+    pub vendor_cost: Option<f64>,           // final buy-side dollar amount
     pub vendor_rate_deck_version: Option<String>,
 }
 
@@ -547,7 +547,11 @@ impl CallDetailRecord {
             return;
         };
 
-        fn billed_seconds(duration_seconds: u64, initial_seconds: i32, increment_seconds: i32) -> u64 {
+        fn billed_seconds(
+            duration_seconds: u64,
+            initial_seconds: i32,
+            increment_seconds: i32,
+        ) -> u64 {
             if duration_seconds == 0 {
                 return 0;
             }
@@ -1836,9 +1840,11 @@ impl Class4B2BUA {
             // rather than the static trunk-config costing above, when this
             // call was routed through LCR at all.
             if let Some(route) = session.current_route.clone() {
-                session
-                    .cdr
-                    .apply_lcr_route_costs(&route, session.jurisdiction, session.lrn.clone());
+                session.cdr.apply_lcr_route_costs(
+                    &route,
+                    session.jurisdiction,
+                    session.lrn.clone(),
+                );
             }
 
             // Send CDR with calculated costs
@@ -3344,7 +3350,9 @@ impl CodecTranslator {
 #[cfg(test)]
 mod wholesale_cdr_tests {
     use super::*;
-    use crate::lcr::types::{CallJurisdiction, CallRoute, EgressTrunk, NanpaRate, TransportProtocol};
+    use crate::lcr::types::{
+        CallJurisdiction, CallRoute, EgressTrunk, NanpaRate, TransportProtocol,
+    };
     use rust_decimal::Decimal;
     use std::str::FromStr;
 
@@ -3455,7 +3463,11 @@ mod wholesale_cdr_tests {
             interval: 60,
         };
 
-        cdr.apply_lcr_route_costs(&route, Some(CallJurisdiction::Interstate), Some("4155550000".to_string()));
+        cdr.apply_lcr_route_costs(
+            &route,
+            Some(CallJurisdiction::Interstate),
+            Some("4155550000".to_string()),
+        );
 
         assert_eq!(cdr.lrn, Some("4155550000".to_string()));
         assert_eq!(cdr.jurisdiction, Some(CallJurisdiction::Interstate));
@@ -3509,7 +3521,9 @@ mod wholesale_cdr_tests {
     #[tokio::test]
     async fn persist_cdr_round_trips_through_real_postgres() {
         let Ok(url) = std::env::var("TEST_DATABASE_URL") else {
-            eprintln!("TEST_DATABASE_URL not set, skipping persist_cdr_round_trips_through_real_postgres");
+            eprintln!(
+                "TEST_DATABASE_URL not set, skipping persist_cdr_round_trips_through_real_postgres"
+            );
             return;
         };
 
@@ -3539,7 +3553,11 @@ mod wholesale_cdr_tests {
             min_increment: 60,
             interval: 60,
         };
-        cdr.apply_lcr_route_costs(&route, Some(CallJurisdiction::Interstate), Some("4155550000".to_string()));
+        cdr.apply_lcr_route_costs(
+            &route,
+            Some(CallJurisdiction::Interstate),
+            Some("4155550000".to_string()),
+        );
 
         persist_cdr(db.pool(), &cdr)
             .await

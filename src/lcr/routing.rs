@@ -90,7 +90,9 @@ impl RoutingEngine {
             Some(request.ingress_trunk_id),
             RoutePosition::Before,
         ) {
-            return self.build_static_route_response(static_route, request).await;
+            return self
+                .build_static_route_response(static_route, request)
+                .await;
         }
 
         // Determine route type automatically if not specified.
@@ -111,7 +113,8 @@ impl RoutingEngine {
             request.dnis.to_string()
         };
 
-        let is_toll_free = route_type == RouteType::NANPA && Self::is_toll_free_number(&request.dnis);
+        let is_toll_free =
+            route_type == RouteType::NANPA && Self::is_toll_free_number(&request.dnis);
 
         // For international calls, client rate is handled separately per trunk.
         let client_rate = if route_type == RouteType::NANPA {
@@ -226,19 +229,20 @@ impl RoutingEngine {
 
                             // Local calls are rated off local_rate, so detect them
                             // before falling back to inter/intra classification.
-                            let jurisdiction = if JurisdictionCalculator::determine_local_jurisdiction(
-                                &request.ani,
-                                &request.dnis,
-                                ani_info.as_ref(),
-                                dnis_info.as_ref(),
-                            ) {
-                                CallJurisdiction::Local
-                            } else {
-                                JurisdictionCalculator::determine_jurisdiction(
+                            let jurisdiction =
+                                if JurisdictionCalculator::determine_local_jurisdiction(
+                                    &request.ani,
+                                    &request.dnis,
                                     ani_info.as_ref(),
                                     dnis_info.as_ref(),
-                                )
-                            };
+                                ) {
+                                    CallJurisdiction::Local
+                                } else {
+                                    JurisdictionCalculator::determine_jurisdiction(
+                                        ani_info.as_ref(),
+                                        dnis_info.as_ref(),
+                                    )
+                                };
                             (jurisdiction, None)
                         };
 
@@ -397,7 +401,8 @@ impl RoutingEngine {
 
                             overall_jurisdiction = CallJurisdiction::International;
 
-                            if request.require_profit_protection || ingress_trunk.profit_protection {
+                            if request.require_profit_protection || ingress_trunk.profit_protection
+                            {
                                 let min_margin = request
                                     .min_profit_margin
                                     .unwrap_or(ingress_trunk.min_profit_margin);
@@ -443,7 +448,9 @@ impl RoutingEngine {
                 Some(request.ingress_trunk_id),
                 RoutePosition::After,
             ) {
-                return self.build_static_route_response(static_route, request).await;
+                return self
+                    .build_static_route_response(static_route, request)
+                    .await;
             }
         }
 
@@ -621,7 +628,10 @@ impl RoutingEngine {
         deck_id: i32,
         code: &str,
     ) -> Result<Option<NanpaRate>> {
-        if let Some(rate) = self.load_nanpa_rate_row("vendor_nanpa_rates", deck_id, code).await? {
+        if let Some(rate) = self
+            .load_nanpa_rate_row("vendor_nanpa_rates", deck_id, code)
+            .await?
+        {
             return Ok(Some(rate));
         }
 
@@ -645,7 +655,10 @@ impl RoutingEngine {
         deck_id: i32,
         code: &str,
     ) -> Result<Option<NanpaRate>> {
-        if let Some(rate) = self.load_nanpa_rate_row("client_nanpa_rates", deck_id, code).await? {
+        if let Some(rate) = self
+            .load_nanpa_rate_row("client_nanpa_rates", deck_id, code)
+            .await?
+        {
             return Ok(Some(rate));
         }
 
@@ -960,7 +973,10 @@ impl RoutingEngine {
 
     /// Determine whether a number is international (not NANPA).
     fn is_international_number(&self, dnis: &str) -> bool {
-        let normalized = dnis.chars().filter(|c| c.is_ascii_digit()).collect::<String>();
+        let normalized = dnis
+            .chars()
+            .filter(|c| c.is_ascii_digit())
+            .collect::<String>();
 
         if normalized.starts_with("011") || normalized.starts_with("00") || dnis.starts_with('+') {
             return true;
@@ -999,7 +1015,10 @@ impl RoutingEngine {
         } else {
             return false;
         };
-        matches!(npa, "800" | "822" | "833" | "844" | "855" | "866" | "877" | "888")
+        matches!(
+            npa,
+            "800" | "822" | "833" | "844" | "855" | "866" | "877" | "888"
+        )
     }
 
     /// Check if a trunk supports NANPA routing.
@@ -1176,7 +1195,11 @@ mod toll_free_rating_tests {
     fn is_toll_free_number_covers_the_full_npa_set() {
         for npa in ["800", "822", "833", "844", "855", "866", "877", "888"] {
             let full = format!("1{}5551234", npa);
-            assert!(RoutingEngine::is_toll_free_number(&full), "{} should be toll-free", full);
+            assert!(
+                RoutingEngine::is_toll_free_number(&full),
+                "{} should be toll-free",
+                full
+            );
         }
         assert!(!RoutingEngine::is_toll_free_number("12125551234")); // NYC, not toll-free
         assert!(!RoutingEngine::is_toll_free_number("+442071234567")); // international, not NANPA at all
@@ -1197,7 +1220,9 @@ mod toll_free_rating_tests {
             eprintln!("TEST_DATABASE_URL not set, skipping toll_free_flat_rate_is_a_fallback_not_a_direct_match");
             return;
         };
-        let pool = PgPool::connect(&url).await.expect("failed to connect to TEST_DATABASE_URL");
+        let pool = PgPool::connect(&url)
+            .await
+            .expect("failed to connect to TEST_DATABASE_URL");
 
         let engine = RoutingEngine::new(
             Arc::new(LcrCache::new()),
@@ -1241,10 +1266,21 @@ mod toll_free_rating_tests {
             .await
             .expect("lookup failed")
             .expect("sentinel lookup should have found the flat rate row");
-        assert_eq!(sentinel_lookup.inter_rate, Decimal::from_str("0.02").unwrap());
+        assert_eq!(
+            sentinel_lookup.inter_rate,
+            Decimal::from_str("0.02").unwrap()
+        );
 
-        sqlx::query("DELETE FROM client_nanpa_rates WHERE deck_id = $1").bind(deck_id).execute(&pool).await.ok();
-        sqlx::query("DELETE FROM client_rate_decks WHERE id = $1").bind(deck_id).execute(&pool).await.ok();
+        sqlx::query("DELETE FROM client_nanpa_rates WHERE deck_id = $1")
+            .bind(deck_id)
+            .execute(&pool)
+            .await
+            .ok();
+        sqlx::query("DELETE FROM client_rate_decks WHERE id = $1")
+            .bind(deck_id)
+            .execute(&pool)
+            .await
+            .ok();
     }
 
     /// Same proof as the client-side test, for the vendor (cost) path, which
@@ -1256,7 +1292,9 @@ mod toll_free_rating_tests {
             eprintln!("TEST_DATABASE_URL not set, skipping toll_free_vendor_flat_rate_is_a_fallback_not_a_direct_match");
             return;
         };
-        let pool = PgPool::connect(&url).await.expect("failed to connect to TEST_DATABASE_URL");
+        let pool = PgPool::connect(&url)
+            .await
+            .expect("failed to connect to TEST_DATABASE_URL");
 
         let engine = RoutingEngine::new(
             Arc::new(LcrCache::new()),
@@ -1316,19 +1354,45 @@ mod toll_free_rating_tests {
             .get_vendor_rate_for_trunk_at_time(egress_trunk_id, "18005551234", now)
             .await
             .expect("lookup failed");
-        assert!(direct.is_none(), "must not match the real dialed number directly");
+        assert!(
+            direct.is_none(),
+            "must not match the real dialed number directly"
+        );
 
         let (sentinel_rate, _rate_type) = engine
             .get_vendor_rate_for_trunk_at_time(egress_trunk_id, TOLL_FREE_FLAT_CODE, now)
             .await
             .expect("lookup failed")
             .expect("sentinel lookup should have found the flat vendor rate row");
-        assert_eq!(sentinel_rate.inter_rate, Decimal::from_str("0.008").unwrap());
+        assert_eq!(
+            sentinel_rate.inter_rate,
+            Decimal::from_str("0.008").unwrap()
+        );
 
-        sqlx::query("DELETE FROM vendor_nanpa_rates WHERE deck_id = $1").bind(vendor_deck_id).execute(&pool).await.ok();
-        sqlx::query("DELETE FROM lcr_route_trunks WHERE lcr_route_id = $1").bind(lcr_route_id).execute(&pool).await.ok();
-        sqlx::query("DELETE FROM lcr_routes WHERE id = $1").bind(lcr_route_id).execute(&pool).await.ok();
-        sqlx::query("DELETE FROM vendor_rate_decks WHERE id = $1").bind(vendor_deck_id).execute(&pool).await.ok();
-        sqlx::query("DELETE FROM egress_trunks WHERE id = $1").bind(egress_trunk_id).execute(&pool).await.ok();
+        sqlx::query("DELETE FROM vendor_nanpa_rates WHERE deck_id = $1")
+            .bind(vendor_deck_id)
+            .execute(&pool)
+            .await
+            .ok();
+        sqlx::query("DELETE FROM lcr_route_trunks WHERE lcr_route_id = $1")
+            .bind(lcr_route_id)
+            .execute(&pool)
+            .await
+            .ok();
+        sqlx::query("DELETE FROM lcr_routes WHERE id = $1")
+            .bind(lcr_route_id)
+            .execute(&pool)
+            .await
+            .ok();
+        sqlx::query("DELETE FROM vendor_rate_decks WHERE id = $1")
+            .bind(vendor_deck_id)
+            .execute(&pool)
+            .await
+            .ok();
+        sqlx::query("DELETE FROM egress_trunks WHERE id = $1")
+            .bind(egress_trunk_id)
+            .execute(&pool)
+            .await
+            .ok();
     }
 }

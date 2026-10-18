@@ -84,8 +84,10 @@ mod integration_tests {
         };
 
         // Test jurisdiction-based rate selection
-        let inter_rate = get_rate_for_jurisdiction(&rate_without_local, CallJurisdiction::Interstate);
-        let intra_rate = get_rate_for_jurisdiction(&rate_without_local, CallJurisdiction::Intrastate);
+        let inter_rate =
+            get_rate_for_jurisdiction(&rate_without_local, CallJurisdiction::Interstate);
+        let intra_rate =
+            get_rate_for_jurisdiction(&rate_without_local, CallJurisdiction::Intrastate);
         let local_rate = get_rate_for_jurisdiction(&rate_without_local, CallJurisdiction::Local);
         let ij_rate =
             get_rate_for_jurisdiction(&rate_without_local, CallJurisdiction::Indeterminate);

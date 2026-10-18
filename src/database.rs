@@ -128,10 +128,7 @@ impl DatabaseService {
     /// on the fixed-id sample rows. Callers must have already provisioned the
     /// schema (e.g. via [`provision_schema`]).
     pub async fn seed_lcr_sample_data(url: &str) -> Result<()> {
-        let pool = PgPoolOptions::new()
-            .max_connections(2)
-            .connect(url)
-            .await?;
+        let pool = PgPoolOptions::new().max_connections(2).connect(url).await?;
 
         // Serialize with migrations / other seeders on a dedicated connection.
         const SEED_LOCK_KEY: i64 = 0x5245_4446_4952_4503; // "REDFIRE\x03"
@@ -153,11 +150,10 @@ impl DatabaseService {
     }
 
     async fn seed_lcr_sample_data_locked(pool: &Pool<Postgres>) -> Result<()> {
-        let already_seeded = sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS (SELECT 1 FROM egress_trunks LIMIT 1)",
-        )
-        .fetch_one(pool)
-        .await?;
+        let already_seeded =
+            sqlx::query_scalar::<_, bool>("SELECT EXISTS (SELECT 1 FROM egress_trunks LIMIT 1)")
+                .fetch_one(pool)
+                .await?;
 
         if already_seeded {
             return Ok(());
@@ -275,14 +271,17 @@ impl DatabaseService {
             for statement in split_sql_statements(migration_sql) {
                 let statement = statement.trim();
                 if !statement.is_empty() && !statement.starts_with("--") {
-                    sqlx::query(statement).execute(&mut *tx).await.map_err(|e| {
-                        anyhow!(
-                            "Migration {} failed at statement '{}': {}",
-                            version,
-                            statement,
-                            e
-                        )
-                    })?;
+                    sqlx::query(statement)
+                        .execute(&mut *tx)
+                        .await
+                        .map_err(|e| {
+                            anyhow!(
+                                "Migration {} failed at statement '{}': {}",
+                                version,
+                                statement,
+                                e
+                            )
+                        })?;
                 }
             }
 

@@ -76,11 +76,17 @@ fn disposition_str(cdr: &CallDetailRecord) -> &'static str {
 /// persisted successfully.
 pub async fn send_wholesale_cdr(cdr: &CallDetailRecord) -> Result<()> {
     let Ok(url) = std::env::var("BOSS_WEBHOOK_URL") else {
-        warn!("BOSS_WEBHOOK_URL not configured, skipping wholesale CDR sync for call {}", cdr.a_leg_call_id);
+        warn!(
+            "BOSS_WEBHOOK_URL not configured, skipping wholesale CDR sync for call {}",
+            cdr.a_leg_call_id
+        );
         return Ok(());
     };
     let Ok(secret) = std::env::var("SWITCH_SHARED_SECRET") else {
-        warn!("SWITCH_SHARED_SECRET not configured, skipping wholesale CDR sync for call {}", cdr.a_leg_call_id);
+        warn!(
+            "SWITCH_SHARED_SECRET not configured, skipping wholesale CDR sync for call {}",
+            cdr.a_leg_call_id
+        );
         return Ok(());
     };
 
@@ -124,10 +130,16 @@ pub async fn send_wholesale_cdr(cdr: &CallDetailRecord) -> Result<()> {
 /// Pure/no I/O so it's unit-testable against the contract schema directly.
 fn build_payload(cdr: &CallDetailRecord) -> Result<WholesaleCdrPayload> {
     let Some(duration) = cdr.duration_seconds else {
-        return Err(anyhow!("CDR {} has no duration_seconds, cannot sync", cdr.a_leg_call_id));
+        return Err(anyhow!(
+            "CDR {} has no duration_seconds, cannot sync",
+            cdr.a_leg_call_id
+        ));
     };
     let Some(end_time) = cdr.end_time else {
-        return Err(anyhow!("CDR {} has no end_time, cannot sync", cdr.a_leg_call_id));
+        return Err(anyhow!(
+            "CDR {} has no end_time, cannot sync",
+            cdr.a_leg_call_id
+        ));
     };
     let Some(client_billed_seconds) = cdr.client_billed_seconds else {
         return Err(anyhow!(
@@ -251,7 +263,10 @@ mod tests {
         let json = serde_json::to_string_pretty(&payload).expect("serialize failed");
 
         let contracts_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/contracts");
-        let fixture_path = format!("{}/fixtures/switch_to_boss.wholesale_cdr.valid.json", contracts_dir);
+        let fixture_path = format!(
+            "{}/fixtures/switch_to_boss.wholesale_cdr.valid.json",
+            contracts_dir
+        );
         let original = std::fs::read_to_string(&fixture_path).expect("failed to read real fixture");
 
         std::fs::write(&fixture_path, &json).expect("failed to write generated fixture");
@@ -287,13 +302,19 @@ mod tests {
             inner: Arc<Mutex<Option<(HeaderMap, Vec<u8>)>>>,
         }
 
-        async fn capture(State(state): State<Captured>, headers: HeaderMap, body: axum::body::Bytes) -> &'static str {
+        async fn capture(
+            State(state): State<Captured>,
+            headers: HeaderMap,
+            body: axum::body::Bytes,
+        ) -> &'static str {
             *state.inner.lock().unwrap() = Some((headers, body.to_vec()));
             "ok"
         }
 
         let captured = Captured::default();
-        let app = Router::new().route("/webhook", post(capture)).with_state(captured.clone());
+        let app = Router::new()
+            .route("/webhook", post(capture))
+            .with_state(captured.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move {
@@ -305,14 +326,31 @@ mod tests {
         std::env::set_var("SWITCH_SHARED_SECRET", secret);
 
         let cdr = minimal_cdr(31);
-        send_wholesale_cdr(&cdr).await.expect("send_wholesale_cdr failed");
+        send_wholesale_cdr(&cdr)
+            .await
+            .expect("send_wholesale_cdr failed");
 
         std::env::remove_var("BOSS_WEBHOOK_URL");
         std::env::remove_var("SWITCH_SHARED_SECRET");
 
-        let (headers, body) = captured.inner.lock().unwrap().take().expect("server never received a request");
-        let timestamp = headers.get("x-switch-timestamp").unwrap().to_str().unwrap().to_string();
-        let signature = headers.get("x-switch-signature").unwrap().to_str().unwrap().to_string();
+        let (headers, body) = captured
+            .inner
+            .lock()
+            .unwrap()
+            .take()
+            .expect("server never received a request");
+        let timestamp = headers
+            .get("x-switch-timestamp")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+        let signature = headers
+            .get("x-switch-signature")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
 
         // Independently recompute the signature exactly as boss's
         // verifyUcaasSignature would, and confirm it matches.
@@ -322,9 +360,13 @@ mod tests {
         let expected_tag = hmac::sign(&key, &signed_data);
         let expected_signature = BASE64.encode(expected_tag.as_ref());
 
-        assert_eq!(signature, expected_signature, "signature does not match independent recomputation");
+        assert_eq!(
+            signature, expected_signature,
+            "signature does not match independent recomputation"
+        );
 
-        let parsed: serde_json::Value = serde_json::from_slice(&body).expect("body was not valid JSON");
+        let parsed: serde_json::Value =
+            serde_json::from_slice(&body).expect("body was not valid JSON");
         assert_eq!(parsed["call_id"], "a-leg-1");
         assert_eq!(parsed["client_billed_seconds"], 36);
     }
