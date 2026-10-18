@@ -111,9 +111,11 @@ impl RoutingEngine {
             request.dnis.to_string()
         };
 
+        let is_toll_free = route_type == RouteType::NANPA && Self::is_toll_free_number(&request.dnis);
+
         // For international calls, client rate is handled separately per trunk.
         let client_rate = if route_type == RouteType::NANPA {
-            if let Some(deck_id) = request.client_deck_id {
+            let specific = if let Some(deck_id) = request.client_deck_id {
                 self.get_client_rate_at_time(deck_id, &base_rating_code, effective_time)
                     .await?
             } else {
@@ -124,6 +126,25 @@ impl RoutingEngine {
                     effective_time,
                 )
                 .await?
+            };
+            // No NPANXX-specific client rate for this toll-free number --
+            // fall back to the deck's flat toll-free rate, if one exists.
+            // Most toll-free client billing is a single blended rate
+            // regardless of NPANXX, unlike regular NANPA termination.
+            if specific.is_none() && is_toll_free {
+                if let Some(deck_id) = request.client_deck_id {
+                    self.get_client_rate_at_time(deck_id, TOLL_FREE_FLAT_CODE, effective_time)
+                        .await?
+                } else {
+                    self.get_client_rate_for_trunk_at_time(
+                        request.ingress_trunk_id,
+                        TOLL_FREE_FLAT_CODE,
+                        effective_time,
+                    )
+                    .await?
+                }
+            } else {
+                specific
             }
         } else {
             None
@@ -158,13 +179,30 @@ impl RoutingEngine {
                     }
 
                     // Get NANPA vendor rate and check if this trunk uses LRN rating.
-                    let vendor_rate_info = self
+                    let specific_vendor_rate = self
                         .get_vendor_rate_for_trunk_at_time(
                             egress_trunk.id,
                             &base_rating_code,
                             effective_time,
                         )
                         .await?;
+
+                    // No NPANXX-specific vendor cost for this toll-free number
+                    // -- fall back to this trunk's flat toll-free vendor rate,
+                    // if one exists. Unlike client billing, vendor cost for
+                    // toll-free is often still NPANXX-keyed (upstream
+                    // carriers bill that way) -- the specific lookup above
+                    // still wins when present, this is only a fallback.
+                    let vendor_rate_info = if specific_vendor_rate.is_none() && is_toll_free {
+                        self.get_vendor_rate_for_trunk_at_time(
+                            egress_trunk.id,
+                            TOLL_FREE_FLAT_CODE,
+                            effective_time,
+                        )
+                        .await?
+                    } else {
+                        specific_vendor_rate
+                    };
 
                     if let Some((rate, rate_type)) = vendor_rate_info {
                         // Determine if we need LRN for this specific trunk.
@@ -650,17 +688,20 @@ impl RoutingEngine {
             id: row.get("id"),
             deck_id: row.get("deck_id"),
             code: row.get("code"),
-            inter_rate: Decimal::try_from(row.get::<f64, _>("inter_rate")).unwrap_or_default(),
-            intra_rate: Decimal::try_from(row.get::<f64, _>("intra_rate")).unwrap_or_default(),
-            ij_rate: Decimal::try_from(row.get::<f64, _>("ij_rate")).unwrap_or_default(),
-            local_rate: row
-                .get::<Option<f64>, _>("local_rate")
-                .map(|f| Decimal::try_from(f).unwrap_or_default()),
+            // These columns are NUMERIC/DECIMAL in Postgres -- decode as
+            // Decimal directly (the sqlx `rust_decimal` feature supports this
+            // natively). Decoding as f64 first panics/errors on any real row
+            // ("mismatched types... FLOAT8 is not compatible with NUMERIC"),
+            // which meant any NANPA call whose deck had an actual matching
+            // rate row would fail this lookup and get rejected as "no routes
+            // available" -- confirmed via a real-Postgres test, not assumed.
+            inter_rate: row.get("inter_rate"),
+            intra_rate: row.get("intra_rate"),
+            ij_rate: row.get("ij_rate"),
+            local_rate: row.get("local_rate"),
             min_increment: row.get("min_increment"),
             interval: row.get("interval"),
-            setup_fee: row
-                .get::<Option<f64>, _>("setup_fee")
-                .map(|f| Decimal::try_from(f).unwrap_or_default()),
+            setup_fee: row.get("setup_fee"),
         }))
     }
 
@@ -944,6 +985,23 @@ impl RoutingEngine {
         false
     }
 
+    /// Canonical, complete toll-free NPA set for rating purposes. The
+    /// existing origination_routing.rs::default_toll_free_prefixes() list is
+    /// missing 855/844/833/822 -- rating needs the full set since the
+    /// flat-rate fallback below (TOLL_FREE_FLAT_CODE) must apply to every
+    /// assigned toll-free NPA, not just the four most common ones.
+    fn is_toll_free_number(dnis: &str) -> bool {
+        let normalized: String = dnis.chars().filter(|c| c.is_ascii_digit()).collect();
+        let npa = if normalized.len() == 11 && normalized.starts_with('1') {
+            &normalized[1..4]
+        } else if normalized.len() == 10 {
+            &normalized[0..3]
+        } else {
+            return false;
+        };
+        matches!(npa, "800" | "822" | "833" | "844" | "855" | "866" | "877" | "888")
+    }
+
     /// Check if a trunk supports NANPA routing.
     fn trunk_supports_nanpa(&self, _trunk: &EgressTrunk) -> bool {
         // All trunks currently support NANPA unless configured international-only.
@@ -1104,5 +1162,173 @@ impl RoutingEngine {
         } else {
             Ok(None)
         }
+    }
+}
+
+#[cfg(test)]
+mod toll_free_rating_tests {
+    use super::*;
+    use crate::lcr::timers::TimerManager;
+    use crate::lcr::trunk_manager::TrunkManager;
+    use std::str::FromStr;
+
+    #[test]
+    fn is_toll_free_number_covers_the_full_npa_set() {
+        for npa in ["800", "822", "833", "844", "855", "866", "877", "888"] {
+            let full = format!("1{}5551234", npa);
+            assert!(RoutingEngine::is_toll_free_number(&full), "{} should be toll-free", full);
+        }
+        assert!(!RoutingEngine::is_toll_free_number("12125551234")); // NYC, not toll-free
+        assert!(!RoutingEngine::is_toll_free_number("+442071234567")); // international, not NANPA at all
+    }
+
+    /// Real round-trip against Postgres: proves the sentinel-code lookup
+    /// mechanism find_routes's toll-free fallback depends on actually works
+    /// -- a deck with ONLY a TOLL_FREE_FLAT_CODE row (no NPANXX-specific row)
+    /// is correctly invisible to a normal lookup by the real dialed number
+    /// (the existing prefix-shortening fallback in load_client_rate_from_db
+    /// can never reach a bare "800"-style code, since it shortens from the
+    /// full 1NPANXXNNNN number and never isolates just the NPA), and
+    /// correctly found when looked up by the sentinel code directly --
+    /// exactly the two calls find_routes's fallback makes in sequence.
+    #[tokio::test]
+    async fn toll_free_flat_rate_is_a_fallback_not_a_direct_match() {
+        let Ok(url) = std::env::var("TEST_DATABASE_URL") else {
+            eprintln!("TEST_DATABASE_URL not set, skipping toll_free_flat_rate_is_a_fallback_not_a_direct_match");
+            return;
+        };
+        let pool = PgPool::connect(&url).await.expect("failed to connect to TEST_DATABASE_URL");
+
+        let engine = RoutingEngine::new(
+            Arc::new(LcrCache::new()),
+            Arc::new(TrunkManager::new()),
+            Arc::new(TimerManager::new()),
+            pool.clone(),
+        );
+
+        let deck_id: i32 = sqlx::query_scalar(
+            "INSERT INTO client_rate_decks (name, client_id, rate_type, active) VALUES ($1, $2, 'DNIS', true) RETURNING id",
+        )
+        .bind(format!("toll-free-test-deck-{}", uuid::Uuid::new_v4()))
+        .bind(1)
+        .fetch_one(&pool)
+        .await
+        .expect("failed to insert test client_rate_decks row");
+
+        sqlx::query(
+            "INSERT INTO client_nanpa_rates (deck_id, code, inter_rate, intra_rate, ij_rate, min_increment, interval) VALUES ($1, $2, 0.02, 0.02, 0.02, 6, 6)",
+        )
+        .bind(deck_id)
+        .bind(TOLL_FREE_FLAT_CODE)
+        .execute(&pool)
+        .await
+        .expect("failed to insert flat toll-free rate row");
+
+        let now = Utc::now();
+        let real_dnis_code = "18005551234"; // normalize_nanpa_number's actual output shape
+
+        let direct_lookup = engine
+            .get_client_rate_at_time(deck_id, real_dnis_code, now)
+            .await
+            .expect("lookup failed");
+        assert!(
+            direct_lookup.is_none(),
+            "a deck with only a TOLLFREE sentinel row must NOT match the real dialed number directly"
+        );
+
+        let sentinel_lookup = engine
+            .get_client_rate_at_time(deck_id, TOLL_FREE_FLAT_CODE, now)
+            .await
+            .expect("lookup failed")
+            .expect("sentinel lookup should have found the flat rate row");
+        assert_eq!(sentinel_lookup.inter_rate, Decimal::from_str("0.02").unwrap());
+
+        sqlx::query("DELETE FROM client_nanpa_rates WHERE deck_id = $1").bind(deck_id).execute(&pool).await.ok();
+        sqlx::query("DELETE FROM client_rate_decks WHERE id = $1").bind(deck_id).execute(&pool).await.ok();
+    }
+
+    /// Same proof as the client-side test, for the vendor (cost) path, which
+    /// goes through the heavier lcr_route_trunks/egress_trunks join instead
+    /// of a direct deck_id lookup.
+    #[tokio::test]
+    async fn toll_free_vendor_flat_rate_is_a_fallback_not_a_direct_match() {
+        let Ok(url) = std::env::var("TEST_DATABASE_URL") else {
+            eprintln!("TEST_DATABASE_URL not set, skipping toll_free_vendor_flat_rate_is_a_fallback_not_a_direct_match");
+            return;
+        };
+        let pool = PgPool::connect(&url).await.expect("failed to connect to TEST_DATABASE_URL");
+
+        let engine = RoutingEngine::new(
+            Arc::new(LcrCache::new()),
+            Arc::new(TrunkManager::new()),
+            Arc::new(TimerManager::new()),
+            pool.clone(),
+        );
+
+        let suffix = uuid::Uuid::new_v4();
+
+        let egress_trunk_id: i32 = sqlx::query_scalar(
+            "INSERT INTO egress_trunks (name, vendor_id, host, active) VALUES ($1, 1, 'vendor.test', true) RETURNING id",
+        )
+        .bind(format!("tf-test-egress-{}", suffix))
+        .fetch_one(&pool)
+        .await
+        .expect("failed to insert egress_trunks row");
+
+        let vendor_deck_id: i32 = sqlx::query_scalar(
+            "INSERT INTO vendor_rate_decks (name, vendor_id, rate_type, active) VALUES ($1, 1, 'DNIS', true) RETURNING id",
+        )
+        .bind(format!("tf-test-vendor-deck-{}", suffix))
+        .fetch_one(&pool)
+        .await
+        .expect("failed to insert vendor_rate_decks row");
+
+        let lcr_route_id: i32 = sqlx::query_scalar(
+            "INSERT INTO lcr_routes (name, route_type, active) VALUES ($1, 'NANPA', true) RETURNING id",
+        )
+        .bind(format!("tf-test-route-{}", suffix))
+        .fetch_one(&pool)
+        .await
+        .expect("failed to insert lcr_routes row");
+
+        sqlx::query(
+            "INSERT INTO lcr_route_trunks (lcr_route_id, egress_trunk_id, vendor_deck_id) VALUES ($1, $2, $3)",
+        )
+        .bind(lcr_route_id)
+        .bind(egress_trunk_id)
+        .bind(vendor_deck_id)
+        .execute(&pool)
+        .await
+        .expect("failed to insert lcr_route_trunks row");
+
+        sqlx::query(
+            "INSERT INTO vendor_nanpa_rates (deck_id, code, inter_rate, intra_rate, ij_rate, min_increment, interval) VALUES ($1, $2, 0.008, 0.008, 0.008, 60, 60)",
+        )
+        .bind(vendor_deck_id)
+        .bind(TOLL_FREE_FLAT_CODE)
+        .execute(&pool)
+        .await
+        .expect("failed to insert flat toll-free vendor rate row");
+
+        let now = Utc::now();
+
+        let direct = engine
+            .get_vendor_rate_for_trunk_at_time(egress_trunk_id, "18005551234", now)
+            .await
+            .expect("lookup failed");
+        assert!(direct.is_none(), "must not match the real dialed number directly");
+
+        let (sentinel_rate, _rate_type) = engine
+            .get_vendor_rate_for_trunk_at_time(egress_trunk_id, TOLL_FREE_FLAT_CODE, now)
+            .await
+            .expect("lookup failed")
+            .expect("sentinel lookup should have found the flat vendor rate row");
+        assert_eq!(sentinel_rate.inter_rate, Decimal::from_str("0.008").unwrap());
+
+        sqlx::query("DELETE FROM vendor_nanpa_rates WHERE deck_id = $1").bind(vendor_deck_id).execute(&pool).await.ok();
+        sqlx::query("DELETE FROM lcr_route_trunks WHERE lcr_route_id = $1").bind(lcr_route_id).execute(&pool).await.ok();
+        sqlx::query("DELETE FROM lcr_routes WHERE id = $1").bind(lcr_route_id).execute(&pool).await.ok();
+        sqlx::query("DELETE FROM vendor_rate_decks WHERE id = $1").bind(vendor_deck_id).execute(&pool).await.ok();
+        sqlx::query("DELETE FROM egress_trunks WHERE id = $1").bind(egress_trunk_id).execute(&pool).await.ok();
     }
 }

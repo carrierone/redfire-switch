@@ -1335,7 +1335,12 @@ impl Class4B2BUA {
             dnis: session.cdr.dnis.clone(),
             ingress_trunk_id: 1, // TODO: Get from origination result
             client_deck_id: None,
-            route_type: RouteType::NANPA, // TODO: Determine from number analysis
+            // find_routes (src/lcr/routing.rs) only auto-detects international
+            // via is_international_number() when given OTHER -- passing NANPA
+            // here unconditionally forced every call through the NANPA path
+            // regardless of the dialed number, so international calls never
+            // actually got routed/rated as international in the live call flow.
+            route_type: RouteType::OTHER,
             require_profit_protection: false,
             min_profit_margin: None,
             effective_time: Some(Utc::now()),

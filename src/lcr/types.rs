@@ -40,11 +40,23 @@ pub enum CallJurisdiction {
     International,
 }
 
+/// Rate-deck sentinel `code` for a flat rate applying to any toll-free
+/// number in that deck when no number-specific (NPANXX) row exists for it --
+/// much toll-free rating is a single blended rate regardless of NPANXX,
+/// rather than per-prefix like regular NANPA termination. Not a real NPANXX
+/// (those are 7 digits), so it can never collide with a genuine per-prefix
+/// row under `UNIQUE(deck_id, code)`. A deck can still carry specific-NPANXX
+/// rows alongside this one -- those take priority (see
+/// routing.rs::find_routes), so an operator who DOES have per-NPANXX vendor
+/// costing for toll-free can still express it; the flat row is only a
+/// fallback for whichever NPANXX codes aren't explicitly priced.
+pub const TOLL_FREE_FLAT_CODE: &str = "TOLLFREE";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NanpaRate {
     pub id: i32,
     pub deck_id: i32,
-    pub code: String, // 1NPANXX or more specific
+    pub code: String, // 1NPANXX, "TOLLFREE" (see TOLL_FREE_FLAT_CODE), or more specific
     pub inter_rate: Decimal,
     pub intra_rate: Decimal,
     pub ij_rate: Decimal,
