@@ -186,6 +186,7 @@ mod routing_integration_tests {
             egress_trunk: egress_trunk.clone(),
             vendor: "test_vendor".to_string(),
             vendor_rate: None,
+            client_rate: None,
             cost_per_minute: Decimal::from_str("0.01").unwrap(),
             selling_per_minute: Decimal::from_str("0.02").unwrap(),
             profit_margin: Decimal::from_str("0.01").unwrap(),
@@ -915,6 +916,7 @@ mod routing_integration_tests {
             },
             vendor: format!("intl_vendor_{}", country_code),
             vendor_rate: None,
+            client_rate: None,
             cost_per_minute: cost,
             selling_per_minute: cost * Decimal::from_str("1.25").unwrap(), // 25% markup
             profit_margin: cost * Decimal::from_str("0.25").unwrap(),

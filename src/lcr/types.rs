@@ -37,6 +37,7 @@ pub enum CallJurisdiction {
     Intrastate,
     Indeterminate,
     Local,
+    International,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -314,6 +315,13 @@ pub struct CallRoute {
     pub egress_trunk: EgressTrunk,
     pub vendor: String,
     pub vendor_rate: Option<NanpaRate>,
+    // Client/sell-side rate record, kept alongside vendor_rate so its own
+    // min_increment/interval/deck_id survive to CDR time -- the client and
+    // vendor side can legitimately have different billing increments
+    // (e.g. customer 30/6, upstream vendor 60/60). None for the static-route
+    // fallback path and for international calls (whose client rate isn't a
+    // NanpaRate); both still fall back to this route's own min_increment/interval.
+    pub client_rate: Option<NanpaRate>,
     pub cost_per_minute: Decimal,
     pub selling_per_minute: Decimal,
     pub profit_margin: Decimal,

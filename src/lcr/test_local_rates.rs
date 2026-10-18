@@ -79,6 +79,7 @@ mod tests {
             CallJurisdiction::Intrastate => rate.intra_rate,
             CallJurisdiction::Indeterminate => rate.ij_rate,
             CallJurisdiction::Local => rate.local_rate.unwrap_or(rate.intra_rate),
+            CallJurisdiction::International => rate.ij_rate,
         }
     }
 

@@ -234,6 +234,7 @@ impl RoutingEngine {
                             egress_trunk: egress_trunk.clone(),
                             vendor: format!("Vendor {}", egress_trunk.vendor_id),
                             vendor_rate: Some(rate.clone()),
+                            client_rate: client_rate.clone(),
                             cost_per_minute: cost,
                             selling_per_minute: sell,
                             profit_margin: profit,
@@ -356,8 +357,7 @@ impl RoutingEngine {
                             let sell = client_intl_rate.as_ref().map(|cr| cr.rate).unwrap_or(cost);
                             let profit = sell - cost;
 
-                            // International calls have indeterminate NANPA jurisdiction.
-                            overall_jurisdiction = CallJurisdiction::Indeterminate;
+                            overall_jurisdiction = CallJurisdiction::International;
 
                             if request.require_profit_protection || ingress_trunk.profit_protection {
                                 let min_margin = request
@@ -372,6 +372,7 @@ impl RoutingEngine {
                                 egress_trunk: egress_trunk.clone(),
                                 vendor: format!("Vendor {}", egress_trunk.vendor_id),
                                 vendor_rate: None,
+                                client_rate: None,
                                 cost_per_minute: cost,
                                 selling_per_minute: sell,
                                 profit_margin: profit,
@@ -670,6 +671,9 @@ impl RoutingEngine {
             CallJurisdiction::Intrastate => rate.intra_rate,
             CallJurisdiction::Indeterminate => rate.ij_rate,
             CallJurisdiction::Local => rate.local_rate.unwrap_or(rate.intra_rate),
+            // This function only ever runs on NANPA rates; international calls are
+            // priced via the separate international_rates lookup, not NanpaRate.
+            CallJurisdiction::International => rate.ij_rate,
         }
     }
 
@@ -738,6 +742,7 @@ impl RoutingEngine {
             egress_trunk: egress_trunk.clone(),
             vendor: format!("Vendor {}", egress_trunk.vendor_id),
             vendor_rate: None,
+            client_rate: None,
             cost_per_minute: Decimal::ZERO,
             selling_per_minute: Decimal::ZERO,
             profit_margin: Decimal::ZERO,

@@ -466,6 +466,7 @@ mod tests {
             },
             vendor: format!("vendor_{}", id),
             vendor_rate: None,
+            client_rate: None,
             cost_per_minute: Decimal::from_str("0.005").unwrap(),
             selling_per_minute: Decimal::from_str("0.008").unwrap(),
             profit_margin: Decimal::from_str("0.003").unwrap(),

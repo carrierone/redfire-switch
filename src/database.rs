@@ -250,6 +250,10 @@ impl DatabaseService {
                 "003_anti_fraud_monitoring",
                 include_str!("../migrations/003_anti_fraud_monitoring.sql"),
             ),
+            (
+                "004_wholesale_cdr_fields",
+                include_str!("../migrations/004_wholesale_cdr_fields.sql"),
+            ),
         ];
 
         for (version, migration_sql) in MIGRATIONS {

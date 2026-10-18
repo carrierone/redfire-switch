@@ -146,6 +146,7 @@ pub mod database_connections;
 // Class 4 B2BUA implementation
 pub mod class4_b2bua;
 pub mod class4_integration;
+pub mod boss_webhook;
 
 // Event-driven architecture
 pub mod events;

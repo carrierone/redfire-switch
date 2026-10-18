@@ -609,6 +609,7 @@ impl DatabasePool {
             CallJurisdiction::Intrastate => "intra",
             CallJurisdiction::Local => "local",
             CallJurisdiction::Indeterminate => "indeterminate",
+            CallJurisdiction::International => "international",
         });
 
         sqlx::query(

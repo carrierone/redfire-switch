@@ -86,6 +86,11 @@ pub struct CallSession {
     pub last_activity: DateTime<Utc>,
     pub route_attempts: u32,
     pub current_route: Option<crate::lcr::types::CallRoute>,
+    // Carried forward from TerminationRoutingResponse at route-selection time
+    // (see attempt_outbound_call) so terminate_session can persist them onto
+    // the CDR -- previously computed by the LCR engine and then dropped.
+    pub lrn: Option<String>,
+    pub jurisdiction: Option<crate::lcr::types::CallJurisdiction>,
     pub codec_negotiation: CodecNegotiation,
     pub cdr: CallDetailRecord,
 }
@@ -215,6 +220,20 @@ pub struct CallDetailRecord {
     pub is_toll_free: bool, // Flag indicating toll-free number
     pub payphone_surcharge_amount: Option<f64>, // Surcharge amount in USD
     pub payphone_surcharge_reason: Option<String>, // Reason for surcharge (ANI-II code)
+
+    // Wholesale CDR fields (switch_to_boss.wholesale_cdr contract) -- populated
+    // from the LCR-selected CallRoute at teardown (see apply_lcr_route_costs),
+    // not from the static ingress/egress trunk-config costing above.
+    pub lrn: Option<String>,
+    pub jurisdiction: Option<crate::lcr::types::CallJurisdiction>,
+    pub client_rate: Option<f64>,            // sell-side per-minute rate
+    pub client_billed_seconds: Option<u64>,  // after client-side min_increment/interval rounding
+    pub client_cost: Option<f64>,            // final sell-side dollar amount
+    pub client_rate_deck_version: Option<String>,
+    pub vendor_rate: Option<f64>,            // buy-side per-minute rate
+    pub vendor_billed_seconds: Option<u64>,  // after vendor-side min_increment/interval rounding
+    pub vendor_cost: Option<f64>,            // final buy-side dollar amount
+    pub vendor_rate_deck_version: Option<String>,
 }
 
 /// Transcoding profile for codec translation
@@ -510,6 +529,71 @@ impl CallDetailRecord {
         }
     }
 
+    /// Populate the wholesale CDR fields (lrn/jurisdiction/client+vendor
+    /// rate/billed_seconds/cost) from the LCR-selected route, using the
+    /// client and vendor sides' own min_increment/interval independently --
+    /// this is the actual rate the call was routed on, not the static
+    /// trunk-config defaults calculate_costs() uses above. Always rounds up
+    /// to the next increment boundary past the initial period, matching
+    /// standard telecom block billing (and redfire-boss's own call-rating
+    /// convention, so the two systems agree on the math).
+    pub fn apply_lcr_route_costs(
+        &mut self,
+        route: &crate::lcr::types::CallRoute,
+        jurisdiction: Option<crate::lcr::types::CallJurisdiction>,
+        lrn: Option<String>,
+    ) {
+        let Some(duration) = self.duration_seconds else {
+            return;
+        };
+
+        fn billed_seconds(duration_seconds: u64, initial_seconds: i32, increment_seconds: i32) -> u64 {
+            if duration_seconds == 0 {
+                return 0;
+            }
+            if increment_seconds <= 0 {
+                return duration_seconds;
+            }
+            let initial = initial_seconds.max(0) as u64;
+            let increment = increment_seconds as u64;
+            if duration_seconds <= initial {
+                return initial;
+            }
+            let remaining = duration_seconds - initial;
+            let blocks = remaining.div_ceil(increment);
+            initial + increment * blocks
+        }
+
+        use rust_decimal::prelude::ToPrimitive;
+
+        self.lrn = lrn;
+        self.jurisdiction = jurisdiction;
+
+        // Client (sell) side -- use the client rate's own increment config
+        // when the LCR engine resolved one, else fall back to this route's
+        // shared min_increment/interval (today's only option for
+        // international calls and the static-route fallback).
+        let (client_initial, client_interval) = route
+            .client_rate
+            .as_ref()
+            .map(|r| (r.min_increment, r.interval))
+            .unwrap_or((route.min_increment, route.interval));
+        let client_secs = billed_seconds(duration, client_initial, client_interval);
+        let client_rate_per_minute = route.selling_per_minute.to_f64().unwrap_or(0.0);
+        self.client_rate = Some(client_rate_per_minute);
+        self.client_billed_seconds = Some(client_secs);
+        self.client_cost = Some(client_rate_per_minute * (client_secs as f64 / 60.0));
+        self.client_rate_deck_version = route.client_rate.as_ref().map(|r| r.deck_id.to_string());
+
+        // Vendor (buy) side.
+        let vendor_secs = billed_seconds(duration, route.min_increment, route.interval);
+        let vendor_rate_per_minute = route.cost_per_minute.to_f64().unwrap_or(0.0);
+        self.vendor_rate = Some(vendor_rate_per_minute);
+        self.vendor_billed_seconds = Some(vendor_secs);
+        self.vendor_cost = Some(vendor_rate_per_minute * (vendor_secs as f64 / 60.0));
+        self.vendor_rate_deck_version = route.vendor_rate.as_ref().map(|r| r.deck_id.to_string());
+    }
+
     /// Calculate billable minutes based on billing increment
     fn calculate_billable_minutes(&self, actual_minutes: f64, billing_increment: u32) -> f64 {
         if billing_increment <= 1 {
@@ -565,6 +649,7 @@ impl Class4B2BUA {
         termination_service: Arc<Mutex<TerminationRoutingService>>,
         route_advancement: Arc<Mutex<RouteAdvancementEngine>>,
         trunk_configs: Vec<TrunkRateConfig>, // Add trunk configurations
+        db_pool: sqlx::PgPool,
     ) -> Result<Self> {
         let bind_addr = SocketAddr::new(config.bind_address, config.bind_port);
         let socket = UdpSocket::bind(bind_addr).await?;
@@ -579,7 +664,7 @@ impl Class4B2BUA {
         let cdr_generator = Arc::new(CDRGenerator::new(config_arc.clone(), cdr_sender));
 
         // Start CDR processing task
-        CDRGenerator::start_cdr_processor(cdr_receiver);
+        CDRGenerator::start_cdr_processor(cdr_receiver, db_pool);
 
         let codec_translator = Arc::new(CodecTranslator::new());
 
@@ -1287,6 +1372,8 @@ impl Class4B2BUA {
 
         if let Some(route) = routing_response.selected_route {
             session.current_route = Some(route.clone());
+            session.lrn = routing_response.lrn.clone();
+            session.jurisdiction = Some(routing_response.jurisdiction);
             session.state = SessionState::Terminating;
             self.session_manager.update_session(session.clone()).await;
 
@@ -1739,6 +1826,16 @@ impl Class4B2BUA {
                 session.cdr.calculate_costs(ingress_trunk, egress_trunk);
             }
 
+            // Wholesale CDR fields: use the LCR engine's actually-selected
+            // route (vendor/client rate-deck lookup, LRN, jurisdiction)
+            // rather than the static trunk-config costing above, when this
+            // call was routed through LCR at all.
+            if let Some(route) = session.current_route.clone() {
+                session
+                    .cdr
+                    .apply_lcr_route_costs(&route, session.jurisdiction, session.lrn.clone());
+            }
+
             // Send CDR with calculated costs
             if self.config.enable_cdr_generation {
                 self.cdr_generator.generate_cdr(session.cdr.clone()).await;
@@ -2017,6 +2114,16 @@ impl Class4B2BUA {
             is_toll_free: crate::ani_ii::toll_free::is_toll_free(&called),
             payphone_surcharge_amount: None, // Will be calculated if ANI-II indicates payphone
             payphone_surcharge_reason: None, // Will be set if surcharge applies
+            lrn: None,
+            jurisdiction: None,
+            client_rate: None,
+            client_billed_seconds: None,
+            client_cost: None,
+            client_rate_deck_version: None,
+            vendor_rate: None,
+            vendor_billed_seconds: None,
+            vendor_cost: None,
+            vendor_rate_deck_version: None,
         };
 
         Ok(CallSession {
@@ -2028,6 +2135,8 @@ impl Class4B2BUA {
             last_activity: Utc::now(),
             route_attempts: 0,
             current_route: None,
+            lrn: None,
+            jurisdiction: None,
             codec_negotiation: CodecNegotiation {
                 a_leg_codecs: self.extract_codecs(&sip_message),
                 b_leg_codecs: vec![],
@@ -2136,6 +2245,16 @@ impl Class4B2BUA {
             is_toll_free: crate::ani_ii::toll_free::is_toll_free(&customer_dnis),
             payphone_surcharge_amount: None, // Will be calculated if ANI-II indicates payphone
             payphone_surcharge_reason: None, // Will be set if surcharge applies
+            lrn: None,
+            jurisdiction: None,
+            client_rate: None,
+            client_billed_seconds: None,
+            client_cost: None,
+            client_rate_deck_version: None,
+            vendor_rate: None,
+            vendor_billed_seconds: None,
+            vendor_cost: None,
+            vendor_rate_deck_version: None,
         };
 
         // Set revenue flag for ingress if it's a revenue trunk
@@ -2152,6 +2271,8 @@ impl Class4B2BUA {
             last_activity: Utc::now(),
             route_attempts: 0,
             current_route: None,
+            lrn: None,
+            jurisdiction: None,
             codec_negotiation: CodecNegotiation {
                 a_leg_codecs: self.extract_codecs(&sip_message),
                 b_leg_codecs: vec![],
@@ -2251,6 +2372,16 @@ impl Class4B2BUA {
             is_toll_free: crate::ani_ii::toll_free::is_toll_free(&destination),
             payphone_surcharge_amount: None, // Will be calculated if ANI-II indicates payphone
             payphone_surcharge_reason: None, // Will be set if surcharge applies
+            lrn: None,
+            jurisdiction: None,
+            client_rate: None,
+            client_billed_seconds: None,
+            client_cost: None,
+            client_rate_deck_version: None,
+            vendor_rate: None,
+            vendor_billed_seconds: None,
+            vendor_cost: None,
+            vendor_rate_deck_version: None,
         };
 
         Ok(CallSession {
@@ -2262,6 +2393,8 @@ impl Class4B2BUA {
             last_activity: Utc::now(),
             route_attempts: 0,
             current_route: None,
+            lrn: None,
+            jurisdiction: None,
             codec_negotiation: CodecNegotiation {
                 a_leg_codecs: self.extract_codecs(&sip_message),
                 b_leg_codecs: vec![],
@@ -2774,6 +2907,16 @@ impl Class4B2BUA {
             is_toll_free: crate::ani_ii::toll_free::is_toll_free(called_number),
             payphone_surcharge_amount: None, // No surcharge for blocked calls
             payphone_surcharge_reason: Some(format!("BLOCKED: {}", block_reason)),
+            lrn: None,
+            jurisdiction: None,
+            client_rate: None,
+            client_billed_seconds: None,
+            client_cost: None,
+            client_rate_deck_version: None,
+            vendor_rate: None,
+            vendor_billed_seconds: None,
+            vendor_cost: None,
+            vendor_rate_deck_version: None,
         }
     }
 
@@ -2946,17 +3089,158 @@ impl CDRGenerator {
         }
     }
 
-    pub fn start_cdr_processor(mut receiver: mpsc::UnboundedReceiver<CallDetailRecord>) {
+    pub fn start_cdr_processor(
+        mut receiver: mpsc::UnboundedReceiver<CallDetailRecord>,
+        pool: sqlx::PgPool,
+    ) {
         tokio::spawn(async move {
             while let Some(cdr) = receiver.recv().await {
-                // In production, this would write to database or file
                 info!(
                     "CDR: {} -> {} duration: {:?}s",
                     cdr.ani, cdr.dnis, cdr.duration_seconds
                 );
+                match persist_cdr(&pool, &cdr).await {
+                    Ok(()) => {
+                        // Sync is a separate, best-effort step -- a failed
+                        // webhook must never be treated as a failed CDR
+                        // write, since the CDR is already durably persisted.
+                        match crate::boss_webhook::send_wholesale_cdr(&cdr).await {
+                            Ok(()) => {
+                                let _ = mark_boss_synced(&pool, &cdr.a_leg_call_id, true).await;
+                            }
+                            Err(e) => {
+                                warn!(
+                                    "Wholesale CDR sync to boss failed for call {} -- will remain boss_sync_status=PENDING: {}",
+                                    cdr.a_leg_call_id, e
+                                );
+                                let _ = mark_boss_synced(&pool, &cdr.a_leg_call_id, false).await;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!(
+                            "Failed to persist CDR for call {} ({} -> {}): {}",
+                            cdr.a_leg_call_id, cdr.ani, cdr.dnis, e
+                        );
+                    }
+                }
             }
         });
     }
+}
+
+/// Maps CallJurisdiction to the lowercase string stored in the jurisdiction
+/// column / sent in the switch_to_boss.wholesale_cdr contract.
+fn jurisdiction_str(j: crate::lcr::types::CallJurisdiction) -> &'static str {
+    use crate::lcr::types::CallJurisdiction;
+    match j {
+        CallJurisdiction::Local => "local",
+        CallJurisdiction::Intrastate => "intrastate",
+        CallJurisdiction::Interstate => "interstate",
+        CallJurisdiction::International => "international",
+        CallJurisdiction::Indeterminate => "indeterminate",
+    }
+}
+
+/// Derives a disposition string for the (legacy, simple) disposition column
+/// -- CallDetailRecord doesn't carry its own disposition enum, only
+/// termination_cause/termination_reason, so approximate from the SIP cause.
+fn disposition_str(cdr: &CallDetailRecord) -> &'static str {
+    if cdr.answer_time.is_some() {
+        return "answered";
+    }
+    match cdr.termination_cause {
+        Some(486) | Some(600) => "busy",
+        Some(480) | Some(408) => "no_answer",
+        Some(487) => "canceled",
+        _ => "failed",
+    }
+}
+
+/// Persists a completed call's CDR -- this is the actual database write the
+/// CDR pipeline never had (see start_cdr_processor's prior log-only loop).
+/// Column names/types match migrations/001_initial_schema.sql's original
+/// simple shape plus the wholesale fields added in
+/// migrations/004_wholesale_cdr_fields.sql.
+async fn persist_cdr(pool: &sqlx::PgPool, cdr: &CallDetailRecord) -> Result<()> {
+    let id = uuid::Uuid::new_v4();
+    let session_uuid = uuid::Uuid::parse_str(&cdr.session_id).ok();
+    let trunk_id = cdr
+        .egress_trunk_name
+        .clone()
+        .unwrap_or_else(|| cdr.ingress_trunk_name.clone());
+    let jurisdiction = cdr.jurisdiction.map(jurisdiction_str);
+    let duration = cdr.duration_seconds.map(|d| d as i64);
+    let client_billed_seconds = cdr.client_billed_seconds.map(|d| d as i64);
+    let vendor_billed_seconds = cdr.vendor_billed_seconds.map(|d| d as i64);
+
+    sqlx::query(
+        r#"
+        INSERT INTO call_detail_records (
+            id, call_id, session_id, from_number, to_number, from_ip, to_ip,
+            start_time, end_time, duration_seconds, disposition, hangup_cause,
+            trunk_id, route_id, codec_in, codec_out, recording_enabled, cost,
+            lrn, jurisdiction, client_rate, client_billed_seconds, client_cost,
+            client_rate_deck_version, vendor_rate, vendor_billed_seconds,
+            vendor_cost, vendor_rate_deck_version
+        ) VALUES (
+            $1, $2, $3, $4, $5, $6::inet, $7::inet,
+            $8, $9, $10, $11, $12,
+            $13, $14, $15, $16, $17, $18,
+            $19, $20, $21, $22, $23,
+            $24, $25, $26,
+            $27, $28
+        )
+        "#,
+    )
+    .bind(id)
+    .bind(&cdr.a_leg_call_id)
+    .bind(session_uuid)
+    .bind(&cdr.ani)
+    .bind(&cdr.dnis)
+    .bind(cdr.ingress_ip.to_string())
+    .bind(cdr.egress_ip.map(|ip| ip.to_string()))
+    .bind(cdr.start_time)
+    .bind(cdr.end_time)
+    .bind(duration)
+    .bind(disposition_str(cdr))
+    .bind(cdr.termination_cause.map(|c| c as i32))
+    .bind(trunk_id)
+    .bind(&cdr.final_route)
+    .bind(&cdr.codec_negotiated)
+    .bind(&cdr.codec_negotiated)
+    .bind(false)
+    .bind(cdr.total_cost)
+    .bind(&cdr.lrn)
+    .bind(jurisdiction)
+    .bind(cdr.client_rate)
+    .bind(client_billed_seconds)
+    .bind(cdr.client_cost)
+    .bind(&cdr.client_rate_deck_version)
+    .bind(cdr.vendor_rate)
+    .bind(vendor_billed_seconds)
+    .bind(cdr.vendor_cost)
+    .bind(&cdr.vendor_rate_deck_version)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Records whether the wholesale-CDR webhook to boss succeeded. Failures
+/// here are swallowed by the caller (`let _ = ...`) -- this is bookkeeping
+/// for the already-persisted CDR, never a reason to fail the CDR pipeline.
+async fn mark_boss_synced(pool: &sqlx::PgPool, call_id: &str, synced: bool) -> Result<()> {
+    let status = if synced { "SYNCED" } else { "PENDING" };
+    sqlx::query(
+        "UPDATE call_detail_records SET boss_sync_status = $1, boss_synced_at = CASE WHEN $2 THEN NOW() ELSE boss_synced_at END WHERE call_id = $3",
+    )
+    .bind(status)
+    .bind(synced)
+    .bind(call_id)
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 impl CodecTranslator {
@@ -3049,5 +3333,230 @@ impl CodecTranslator {
 
         debug!("Extracted B-leg codecs: {:?}", codecs);
         codecs
+    }
+}
+
+#[cfg(test)]
+mod wholesale_cdr_tests {
+    use super::*;
+    use crate::lcr::types::{CallJurisdiction, CallRoute, EgressTrunk, NanpaRate, TransportProtocol};
+    use rust_decimal::Decimal;
+    use std::str::FromStr;
+
+    fn minimal_cdr(duration_seconds: u64) -> CallDetailRecord {
+        CallDetailRecord {
+            session_id: "sess-1".to_string(),
+            a_leg_call_id: "a-leg-1".to_string(),
+            b_leg_call_id: None,
+            ani: "+15551234567".to_string(),
+            dnis: "+14155550100".to_string(),
+            start_time: Utc::now(),
+            answer_time: Some(Utc::now()),
+            end_time: Some(Utc::now()),
+            duration_seconds: Some(duration_seconds),
+            ingress_trunk_id: 1,
+            ingress_trunk_name: "ingress-1".to_string(),
+            ingress_ip: "127.0.0.1".parse().unwrap(),
+            ingress_rate_per_minute: 0.0,
+            ingress_cost: 0.0,
+            ingress_revenue: None,
+            egress_trunk_id: None,
+            egress_trunk_name: None,
+            egress_ip: None,
+            egress_rate_per_minute: 0.0,
+            egress_cost: 0.0,
+            egress_revenue: None,
+            total_cost: 0.0,
+            total_revenue: 0.0,
+            net_margin: 0.0,
+            profit_margin_percent: 0.0,
+            codec_negotiated: None,
+            transcoding_used: false,
+            termination_cause: None,
+            termination_reason: None,
+            route_attempts: 0,
+            final_route: None,
+            ani_ii_ingress: None,
+            ani_ii_egress: None,
+            ani_ii_source: None,
+            is_toll_free: false,
+            payphone_surcharge_amount: None,
+            payphone_surcharge_reason: None,
+            lrn: None,
+            jurisdiction: None,
+            client_rate: None,
+            client_billed_seconds: None,
+            client_cost: None,
+            client_rate_deck_version: None,
+            vendor_rate: None,
+            vendor_billed_seconds: None,
+            vendor_cost: None,
+            vendor_rate_deck_version: None,
+        }
+    }
+
+    fn test_egress_trunk() -> EgressTrunk {
+        EgressTrunk {
+            id: 1,
+            name: "egress-1".to_string(),
+            vendor_id: 1,
+            host: "sip.vendor.test".to_string(),
+            port: 5060,
+            transport: TransportProtocol::Udp,
+            capacity_limit: 100,
+            cps_limit: Decimal::from(10),
+            active: true,
+            priority: 1,
+            weight: 100,
+            tech_prefix: None,
+            supports_international: false,
+        }
+    }
+
+    fn test_nanpa_rate(deck_id: i32, rate: &str, min_increment: i32, interval: i32) -> NanpaRate {
+        NanpaRate {
+            id: 1,
+            deck_id,
+            code: "1415555".to_string(),
+            inter_rate: Decimal::from_str(rate).unwrap(),
+            intra_rate: Decimal::from_str(rate).unwrap(),
+            ij_rate: Decimal::from_str(rate).unwrap(),
+            local_rate: None,
+            min_increment,
+            interval,
+            setup_fee: None,
+        }
+    }
+
+    /// Mirrors redfire-boss's src/utils/call-rating.ts computeBilledSeconds
+    /// exactly: a 31s call against a 30s-initial/6s-increment plan bills 36s.
+    /// The two systems must agree on this math since boss trusts whatever
+    /// billed_seconds the switch sends via PASSTHROUGH.
+    #[test]
+    fn apply_lcr_route_costs_rounds_up_to_next_increment_independently_per_side() {
+        let mut cdr = minimal_cdr(31);
+
+        let route = CallRoute {
+            egress_trunk: test_egress_trunk(),
+            vendor: "Vendor 1".to_string(),
+            vendor_rate: Some(test_nanpa_rate(9, "0.008", 60, 60)),
+            client_rate: Some(test_nanpa_rate(14, "0.02", 30, 6)),
+            cost_per_minute: Decimal::from_str("0.008").unwrap(),
+            selling_per_minute: Decimal::from_str("0.02").unwrap(),
+            profit_margin: Decimal::from_str("0.012").unwrap(),
+            priority: 1,
+            setup_fee: Decimal::ZERO,
+            min_increment: 60, // shared fallback (vendor's, per routing.rs today)
+            interval: 60,
+        };
+
+        cdr.apply_lcr_route_costs(&route, Some(CallJurisdiction::Interstate), Some("4155550000".to_string()));
+
+        assert_eq!(cdr.lrn, Some("4155550000".to_string()));
+        assert_eq!(cdr.jurisdiction, Some(CallJurisdiction::Interstate));
+
+        // Client: 30/6 -> 31s bills as 30 + 6*ceil(1/6) = 36s @ $0.02/min = $0.012
+        assert_eq!(cdr.client_billed_seconds, Some(36));
+        assert_eq!(cdr.client_rate, Some(0.02));
+        assert!((cdr.client_cost.unwrap() - 0.012).abs() < 1e-9);
+        assert_eq!(cdr.client_rate_deck_version, Some("14".to_string()));
+
+        // Vendor: 60/60 -> 31s bills as a full 60s @ $0.008/min = $0.008
+        assert_eq!(cdr.vendor_billed_seconds, Some(60));
+        assert_eq!(cdr.vendor_rate, Some(0.008));
+        assert!((cdr.vendor_cost.unwrap() - 0.008).abs() < 1e-9);
+        assert_eq!(cdr.vendor_rate_deck_version, Some("9".to_string()));
+    }
+
+    #[test]
+    fn apply_lcr_route_costs_falls_back_to_route_increment_when_no_client_deck() {
+        let mut cdr = minimal_cdr(31);
+
+        let route = CallRoute {
+            egress_trunk: test_egress_trunk(),
+            vendor: "Vendor 1".to_string(),
+            vendor_rate: None,
+            client_rate: None, // e.g. international / static-route fallback
+            cost_per_minute: Decimal::ZERO,
+            selling_per_minute: Decimal::from_str("0.05").unwrap(),
+            profit_margin: Decimal::from_str("0.05").unwrap(),
+            priority: 1,
+            setup_fee: Decimal::ZERO,
+            min_increment: 6,
+            interval: 6,
+        };
+
+        cdr.apply_lcr_route_costs(&route, Some(CallJurisdiction::International), None);
+
+        // No client NanpaRate -> falls back to route's own 6/6.
+        // 31s -> 6 + 6*ceil(25/6) = 6 + 30 = 36s
+        assert_eq!(cdr.client_billed_seconds, Some(36));
+        assert_eq!(cdr.client_rate_deck_version, None);
+        assert_eq!(cdr.jurisdiction, Some(CallJurisdiction::International));
+    }
+
+    /// Real round-trip against Postgres: runs the actual migration sequence
+    /// (proving 004_wholesale_cdr_fields + the default partition fix both
+    /// apply cleanly), persists a CDR, and reads it back. Requires
+    /// TEST_DATABASE_URL pointed at a scratch/disposable database -- skips
+    /// itself (not a failure) when that's not set, since this needs a real
+    /// Postgres, not sqlite/mocks.
+    #[tokio::test]
+    async fn persist_cdr_round_trips_through_real_postgres() {
+        let Ok(url) = std::env::var("TEST_DATABASE_URL") else {
+            eprintln!("TEST_DATABASE_URL not set, skipping persist_cdr_round_trips_through_real_postgres");
+            return;
+        };
+
+        let db_config = crate::database::DatabaseConfig {
+            url,
+            ..Default::default()
+        };
+        let db = crate::database::DatabaseService::new(db_config)
+            .await
+            .expect("DatabaseService::new (migrations + connect) failed");
+
+        let mut cdr = minimal_cdr(31);
+        cdr.a_leg_call_id = format!("round-trip-{}", uuid::Uuid::new_v4());
+        cdr.start_time = Utc::now();
+        cdr.end_time = Some(Utc::now());
+
+        let route = CallRoute {
+            egress_trunk: test_egress_trunk(),
+            vendor: "Vendor 1".to_string(),
+            vendor_rate: Some(test_nanpa_rate(9, "0.008", 60, 60)),
+            client_rate: Some(test_nanpa_rate(14, "0.02", 30, 6)),
+            cost_per_minute: Decimal::from_str("0.008").unwrap(),
+            selling_per_minute: Decimal::from_str("0.02").unwrap(),
+            profit_margin: Decimal::from_str("0.012").unwrap(),
+            priority: 1,
+            setup_fee: Decimal::ZERO,
+            min_increment: 60,
+            interval: 60,
+        };
+        cdr.apply_lcr_route_costs(&route, Some(CallJurisdiction::Interstate), Some("4155550000".to_string()));
+
+        persist_cdr(db.pool(), &cdr)
+            .await
+            .expect("persist_cdr failed");
+
+        let row: (String, String, String, Option<String>, Option<String>, i64, f64, i64, f64)
+            = sqlx::query_as(
+                "SELECT call_id, from_number, to_number, lrn, jurisdiction, client_billed_seconds, client_cost::float8, vendor_billed_seconds, vendor_cost::float8 FROM call_detail_records WHERE call_id = $1"
+            )
+            .bind(&cdr.a_leg_call_id)
+            .fetch_one(db.pool())
+            .await
+            .expect("row not found after insert");
+
+        assert_eq!(row.0, cdr.a_leg_call_id);
+        assert_eq!(row.1, "+15551234567");
+        assert_eq!(row.2, "+14155550100");
+        assert_eq!(row.3, Some("4155550000".to_string()));
+        assert_eq!(row.4, Some("interstate".to_string()));
+        assert_eq!(row.5, 36);
+        assert!((row.6 - 0.012).abs() < 1e-9);
+        assert_eq!(row.7, 60);
+        assert!((row.8 - 0.008).abs() < 1e-9);
     }
 }

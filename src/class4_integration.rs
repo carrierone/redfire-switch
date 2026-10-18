@@ -142,6 +142,7 @@ impl Class4SwitchBuilder {
                 termination_service,
                 route_advancement,
                 vec![], // TODO: Add trunk rate configurations
+                database_pool.pool.clone(),
             )
             .await?,
         );

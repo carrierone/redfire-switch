@@ -193,6 +193,10 @@ pub struct TerminationRoutingResponse {
     pub total_attempts: u32,
     pub routing_time_ms: u64,
     pub reason: String,
+    // Previously computed by the LCR engine (find_routes) and dropped here --
+    // CDR persistence needs these to survive past route selection.
+    pub jurisdiction: crate::lcr::types::CallJurisdiction,
+    pub lrn: Option<String>,
 }
 
 /// Routing decision outcome
@@ -482,6 +486,8 @@ impl TerminationRoutingService {
                 total_attempts: request.attempt_number,
                 routing_time_ms: start_time.elapsed().as_millis() as u64,
                 reason: "Maximum routing attempts reached".to_string(),
+                jurisdiction: crate::lcr::types::CallJurisdiction::Indeterminate,
+                lrn: None,
             });
         }
 
@@ -503,6 +509,8 @@ impl TerminationRoutingService {
                     total_attempts: request.attempt_number,
                     routing_time_ms: start_time.elapsed().as_millis() as u64,
                     reason: format!("LCR routing failed: {}", e),
+                    jurisdiction: crate::lcr::types::CallJurisdiction::Indeterminate,
+                    lrn: None,
                 });
             }
         };
@@ -516,6 +524,8 @@ impl TerminationRoutingService {
                 total_attempts: request.attempt_number,
                 routing_time_ms: start_time.elapsed().as_millis() as u64,
                 reason: "No routes available for destination".to_string(),
+                jurisdiction: lcr_response.jurisdiction,
+                lrn: lcr_response.lrn.clone(),
             });
         }
 
@@ -532,6 +542,8 @@ impl TerminationRoutingService {
                 total_attempts: request.attempt_number,
                 routing_time_ms: start_time.elapsed().as_millis() as u64,
                 reason: "All available routes have been attempted and failed".to_string(),
+                jurisdiction: lcr_response.jurisdiction,
+                lrn: lcr_response.lrn.clone(),
             });
         }
 
@@ -554,6 +566,8 @@ impl TerminationRoutingService {
                         routing_time_ms: start_time.elapsed().as_millis() as u64,
                         reason: "All routes would result in loss - profit protection activated"
                             .to_string(),
+                        jurisdiction: lcr_response.jurisdiction,
+                        lrn: lcr_response.lrn.clone(),
                     });
                 } else {
                     return Ok(TerminationRoutingResponse {
@@ -565,6 +579,8 @@ impl TerminationRoutingService {
                         routing_time_ms: start_time.elapsed().as_millis() as u64,
                         reason: "No routes pass policy checks (CPS limits, capacity, etc.)"
                             .to_string(),
+                        jurisdiction: lcr_response.jurisdiction,
+                        lrn: lcr_response.lrn.clone(),
                     });
                 }
             }
@@ -596,6 +612,8 @@ impl TerminationRoutingService {
             total_attempts: request.attempt_number,
             routing_time_ms: start_time.elapsed().as_millis() as u64,
             reason: "Route successfully selected".to_string(),
+            jurisdiction: lcr_response.jurisdiction,
+            lrn: lcr_response.lrn.clone(),
         })
     }
 
@@ -987,6 +1005,7 @@ mod tests {
             },
             vendor: "unprofitable_vendor".to_string(),
             vendor_rate: None,
+            client_rate: None,
             cost_per_minute: Decimal::from_str("0.020").unwrap(), // 2 cents cost
             selling_per_minute: Decimal::from_str("0.015").unwrap(), // 1.5 cents selling (LOSS!)
             profit_margin: Decimal::from_str("-0.005").unwrap(),  // Negative margin
@@ -1035,6 +1054,7 @@ mod tests {
             },
             vendor: "profitable_vendor".to_string(),
             vendor_rate: None,
+            client_rate: None,
             cost_per_minute: Decimal::from_str("0.010").unwrap(), // 1 cent cost
             selling_per_minute: Decimal::from_str("0.015").unwrap(), // 1.5 cents selling (PROFIT!)
             profit_margin: Decimal::from_str("0.005").unwrap(),   // Positive margin
